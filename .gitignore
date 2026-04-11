@@ -1,0 +1,9 @@
+buttons
+dist/
+.claude/
+.env
+.env.*
+*.pem
+*.key
+AUDIT.md
+.DS_Store

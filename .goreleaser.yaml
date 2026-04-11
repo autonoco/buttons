@@ -1,0 +1,191 @@
+# goreleaser configuration for the Buttons CLI.
+#
+# Validate:   goreleaser check
+# Snapshot:   goreleaser release --snapshot --clean --skip=publish
+# Release:    runs automatically from .github/workflows/release.yml on tag push
+#
+# Docs: https://goreleaser.com/customization/
+
+version: 2
+
+project_name: buttons
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod verify
+
+builds:
+  - id: buttons
+    main: .
+    binary: buttons
+    env:
+      # Static binaries — no libc dependency on the host.
+      - CGO_ENABLED=0
+    # Windows is intentionally excluded from v0.1.0. internal/engine/execute.go
+    # uses syscall.Setpgid / syscall.Kill(-pgid, SIGTERM) which are Unix-only.
+    # Supporting Windows needs a parallel execute_windows.go using taskkill or
+    # Job Objects for process group semantics. Tracked as a follow-up issue.
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath  # Strip local paths from the binary for reproducibility.
+    ldflags:
+      - -s -w  # Strip symbol/debug info (~25-30% smaller).
+      - -X github.com/autonoco/buttons/cmd.version={{ .Version }}
+      - -X github.com/autonoco/buttons/cmd.commit={{ .FullCommit }}
+      - -X github.com/autonoco/buttons/cmd.date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"  # Reproducible builds.
+
+archives:
+  - id: buttons
+    formats:
+      - tar.gz
+    # Examples:
+    #   buttons_0.1.0_darwin_x86_64.tar.gz  (Intel Mac)
+    #   buttons_0.1.0_darwin_arm64.tar.gz   (Apple Silicon)
+    #   buttons_0.1.0_linux_x86_64.tar.gz   (most Linux servers / WSL)
+    #   buttons_0.1.0_linux_arm64.tar.gz    (ARM servers, Raspberry Pi)
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - SECURITY.md
+
+dockers:
+  # Build the linux/amd64 image from the prebuilt amd64 binary.
+  # goreleaser copies the correct binary into the build context before
+  # running `docker build`. The image is tagged per-arch; the manifest
+  # list below joins them into multi-arch tags (:{version}, :latest).
+  - id: buttons-amd64
+    goos: linux
+    goarch: amd64
+    dockerfile: Dockerfile
+    use: buildx
+    image_templates:
+      - "ghcr.io/autonoco/buttons:{{ .Version }}-amd64"
+      - "ghcr.io/autonoco/buttons:latest-amd64"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title=buttons"
+      - "--label=org.opencontainers.image.description=Deterministic workflow engine for AI agents"
+      - "--label=org.opencontainers.image.source=https://github.com/autonoco/buttons"
+      - "--label=org.opencontainers.image.url=https://github.com/autonoco/buttons"
+      - "--label=org.opencontainers.image.documentation=https://github.com/autonoco/buttons#readme"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .CommitDate }}"
+
+  # Same for linux/arm64.
+  - id: buttons-arm64
+    goos: linux
+    goarch: arm64
+    dockerfile: Dockerfile
+    use: buildx
+    image_templates:
+      - "ghcr.io/autonoco/buttons:{{ .Version }}-arm64"
+      - "ghcr.io/autonoco/buttons:latest-arm64"
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title=buttons"
+      - "--label=org.opencontainers.image.description=Deterministic workflow engine for AI agents"
+      - "--label=org.opencontainers.image.source=https://github.com/autonoco/buttons"
+      - "--label=org.opencontainers.image.url=https://github.com/autonoco/buttons"
+      - "--label=org.opencontainers.image.documentation=https://github.com/autonoco/buttons#readme"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .CommitDate }}"
+
+docker_manifests:
+  # Multi-arch manifest list aliasing both per-arch images under the
+  # version tag. This is what users typically pull:
+  #   docker pull ghcr.io/autonoco/buttons:v0.1.0
+  - name_template: "ghcr.io/autonoco/buttons:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/autonoco/buttons:{{ .Version }}-amd64"
+      - "ghcr.io/autonoco/buttons:{{ .Version }}-arm64"
+
+  # Rolling :latest manifest. Updated on every release.
+  - name_template: "ghcr.io/autonoco/buttons:latest"
+    image_templates:
+      - "ghcr.io/autonoco/buttons:latest-amd64"
+      - "ghcr.io/autonoco/buttons:latest-arm64"
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# For local snapshot builds without a real tag.
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Security
+      regexp: '^.*?(chore|fix)\(sec.*?\)?.+$'
+      order: 2
+    - title: CI & build
+      regexp: '^.*?(ci|build)(\(.+\))??!?:.+$'
+      order: 3
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore\(deps\):'
+      - '^Merge pull request'
+      - '^Merge branch'
+
+release:
+  github:
+    owner: autonoco
+    name: buttons
+  draft: false
+  # Tags like v0.1.0-beta1 get marked prerelease automatically.
+  prerelease: auto
+  # Replace assets on a failed retry instead of erroring out.
+  mode: replace
+  name_template: "Buttons {{ .Tag }}"
+  header: |
+    ## Buttons {{ .Tag }}
+
+    Deterministic workflow engine for AI agents — give your agent pressable buttons instead of fragile multi-step procedures.
+  footer: |
+    ---
+
+    ### Installation
+
+    **curl:**
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh | sh
+    ```
+
+    **Go:**
+    ```bash
+    go install github.com/autonoco/buttons@{{ .Tag }}
+    ```
+
+    **Manual:** download the archive for your platform from the assets below and extract `buttons` into a directory on your `$PATH`.
+
+    ---
+
+    Questions or issues? [Open an issue](https://github.com/autonoco/buttons/issues).

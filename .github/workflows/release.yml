@@ -1,0 +1,61 @@
+name: Release
+
+# Runs goreleaser on every semver tag push (v*). For a snapshot build
+# that doesn't publish, run locally:
+#
+#   goreleaser release --snapshot --clean --skip=publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # Create the GitHub Release.
+  packages: write   # Push Docker images to ghcr.io.
+
+jobs:
+  goreleaser:
+    name: goreleaser
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history + tags for goreleaser changelog.
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.2"
+          cache: true
+
+      # QEMU + Buildx let us build the linux/arm64 image from an amd64
+      # runner. goreleaser's dockers: block drives `docker buildx build`
+      # with per-platform flags; buildx transparently uses QEMU for the
+      # non-native arch.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Log in to GHCR so goreleaser can push the built images. The
+      # default GITHUB_TOKEN has packages:write from the permissions
+      # block above, so no PAT is required for pushes to ghcr.io.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"  # Track the v2 major.
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
