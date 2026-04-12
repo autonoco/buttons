@@ -45,7 +45,7 @@ jobs:
       # default GITHUB_TOKEN has packages:write from the permissions
       # block above, so no PAT is required for pushes to ghcr.io.
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
