@@ -182,6 +182,14 @@ buttons history [flags]
 |------|------|-------------|
 | `--last` | int | number of runs to show |
 
+### `buttons init`
+
+Initialize a project-local .buttons directory
+
+```
+buttons init
+```
+
 ### `buttons list`
 
 List all buttons
