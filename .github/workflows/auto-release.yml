@@ -1,12 +1,17 @@
 name: Auto-release
 
-# Creates a new minor release (v0.1.0 → v0.2.0 → v0.3.0) on every
-# push to main. Skips if the push was a docs-only change or if the
-# commit was made by github-actions[bot] (prevents infinite loops
-# from the docs-sync workflow).
+# On every push to main, tags the next minor version and runs
+# goreleaser to publish binaries + Docker image in ONE workflow.
 #
-# To skip a release on a specific merge, include [skip release] in
-# the merge commit message.
+# Previous approach (separate auto-release → release.yml) broke
+# because GitHub blocks cross-workflow triggering from GITHUB_TOKEN:
+#   "Events triggered by GITHUB_TOKEN will not create a new workflow run."
+#
+# By combining tag + goreleaser in a single workflow, we avoid
+# cross-workflow triggering entirely.
+#
+# To skip a release: include [skip release] in the merge commit.
+# Bot commits (docs-sync) are skipped automatically.
 
 on:
   push:
@@ -14,12 +19,13 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   release:
-    name: Tag next minor release
+    name: Tag and release
     runs-on: ubuntu-latest
-    # Don't release for bot commits (docs-sync) or if [skip release] is in the message.
+    timeout-minutes: 30
     if: |
       github.actor != 'github-actions[bot]' &&
       !contains(github.event.head_commit.message, '[skip release]')
@@ -27,28 +33,23 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Need full tag history to find the latest version.
+          fetch-depth: 0
 
       - name: Determine next version
         id: version
         run: |
-          # Find the latest semver tag on this repo.
           LATEST=$(git tag --list 'v*' --sort=-version:refname | head -n1)
-
           if [ -z "$LATEST" ]; then
             NEXT="v0.1.0"
           else
-            # Parse major.minor.patch from the tag.
             VERSION="${LATEST#v}"
             MAJOR=$(echo "$VERSION" | cut -d. -f1)
             MINOR=$(echo "$VERSION" | cut -d. -f2)
-            # Increment minor, reset patch to 0.
             NEXT="v${MAJOR}.$((MINOR + 1)).0"
           fi
-
           echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "Latest: $LATEST → Next: $NEXT"
+          echo "Releasing: $LATEST → $NEXT"
 
       - name: Create and push tag
         run: |
@@ -56,3 +57,31 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "${{ steps.version.outputs.next }}" -m "Auto-release ${{ steps.version.outputs.next }}"
           git push origin "${{ steps.version.outputs.next }}"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.2"
+          cache: true
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

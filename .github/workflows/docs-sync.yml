@@ -53,7 +53,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add docs/cli/ .agents/skills/buttons/SKILL.md
-          git commit -m "chore: auto-sync CLI docs and SKILL.md from command tree"
+          git commit -m "chore: auto-sync CLI docs and SKILL.md [skip release]"
           git push origin "$BRANCH"
           gh pr create \
             --base main \
