@@ -3,6 +3,32 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-12" description="Four button types, drawers, and batteries">
+## Four button types, drawers, and batteries
+
+Buttons ships with four ways to create a button and two new command groups for organizing and running them.
+
+### New features
+
+- **Code buttons** — write inline shell, Python, or Node scripts directly in a button. Arguments are injected as `BUTTONS_ARG_<NAME>` environment variables to prevent shell injection. Supports `--code` for inline scripts and `--code-stdin` for piping longer scripts. See [code buttons](/buttons/code).
+
+- **HTTP API buttons** — wrap any HTTP endpoint as a pressable button with `--url`, `--method`, `--header`, and `--body`. Placeholders like `{{arg}}` are automatically encoded based on context (path segment, query string, JSON body, or form body) so values are always safe. See [HTTP API buttons](/buttons/http-api).
+
+- **File buttons** — import an existing script file with `--file`. The script is copied into the button folder at create time so the button is self-contained. No size limit applies, unlike inline code buttons. See [file buttons](/buttons/file).
+
+- **Agent buttons** — attach an LLM prompt to a button with `--agent`. Use it standalone to encode a task for an AI agent, or combine it with a code or HTTP button so the agent receives both the execution result and instructions in one response. See [agent buttons](/buttons/agent).
+
+- **Drawers** — group related buttons into named collections with `buttons drawer create` and `buttons drawer add`. Use drawers to organize buttons by project, team, or workflow. See the [CLI reference](/cli/buttons_drawer).
+
+- **`buttons smash`** — run multiple buttons in parallel with a single command. Useful for kicking off several tasks at once without scripting. See the [CLI reference](/cli/buttons_smash).
+
+- **Batteries** — manage environment variables and secrets with `buttons batteries set`, `buttons batteries list`, and `buttons batteries rm`. Values set here are available to all buttons at press time. See the [CLI reference](/cli/buttons_batteries).
+
+### Updates
+
+- **Release pipeline fix** — resolved an issue where automated releases could fail on merge to `main`. Releases now run reliably on every push.
+</Update>
+
 <Update label="2026-04-12" description="Project-scoped buttons">
 ## Project-scoped buttons with `buttons init`
 
