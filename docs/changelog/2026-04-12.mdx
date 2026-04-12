@@ -3,8 +3,10 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
-<Update label="2026-04-12" description="Self-update, agent integrations, and automatic releases">
+<Update label="2026-04-12" description="Project-local buttons, self-update, agent integrations, and automatic releases">
   ## New features
+
+  **`buttons init` command.** You can now create project-local buttons with `buttons init`. This creates a `.buttons/` directory in your project so buttons are scoped to that repo instead of the global `~/.buttons/`. Project-local buttons are discovered automatically from any subdirectory, can be committed to git, and shared with collaborators. Run history is gitignored by default. See the [CLI reference](/cli/buttons_init) for details.
 
   **`buttons update` command.** You can now update Buttons to the latest version directly from the CLI. It downloads the correct binary for your OS, verifies the SHA256 checksum, and atomically replaces the running binary. Use `--check` to see if an update is available without installing. See the [CLI reference](/cli/buttons_update) for details.
 

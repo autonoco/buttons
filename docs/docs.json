@@ -91,6 +91,7 @@
             "pages": [
               "cli/buttons",
               "cli/buttons_create",
+              "cli/buttons_init",
               "cli/buttons_press",
               "cli/buttons_list",
               "cli/buttons_history",
@@ -129,18 +130,6 @@
             "pages": [
               "cli/buttons_board",
               "cli/buttons_store"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Changelog",
-        "groups": [
-          {
-            "group": "Changelog",
-            "public": true,
-            "pages": [
-              "changelog/2026-04-12"
             ]
           }
         ]
