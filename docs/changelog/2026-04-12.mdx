@@ -3,6 +3,26 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-12" description="Scaffold-by-default and simpler button creation">
+## Scaffold-by-default and simpler button creation
+
+Running `buttons create` without a source flag now scaffolds a placeholder script you can edit, instead of returning an error. This makes the default workflow scaffold → edit → press, which is faster for agents and humans alike.
+
+### New features
+
+- **Scaffold-by-default** — `buttons create deploy --arg env:string:required` now succeeds and writes a `main.sh` with a shebang and a TODO placeholder. Open the file, add your logic, and press. No `--code` or `--file` required. See [code buttons](/buttons/code).
+
+- **Python and Node scaffolds** — pass `--runtime python` or `--runtime node` to scaffold `main.py` or `main.js` with the correct shebang. Previously `--runtime` required `--code`.
+
+- **Create output shows the file path** — after `buttons create`, the CLI now prints the path to the scaffolded script and the press command, so you know exactly where to edit and how to run it. JSON output adds `code_path` and `button_dir` fields.
+
+### Updates
+
+- **`--code-stdin` removed** — the `--code-stdin` flag has been dropped. Anything it could do, `--file` or `--code "$(cat)"` can do with fewer flags to learn. If you were piping scripts via stdin, use `--file` instead.
+
+- **`--code` repositioned as a shortcut** — `--code` is now documented as a convenience for one-liners. The default path is to scaffold and edit.
+</Update>
+
 <Update label="2026-04-12" description="Prompt buttons, consolidated docs, and five upcoming button types">
 ## Prompt buttons, consolidated docs, and five upcoming button types
 
