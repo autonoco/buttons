@@ -31,6 +31,7 @@ func main() {
 	front := flag.Bool("frontmatter", true, "prepend Mintlify-compatible YAML front matter to markdown")
 	flag.Parse()
 
+	// #nosec G301 -- docs output directory needs to be world-readable for Mintlify and CI.
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		log.Fatal(err)
 	}
@@ -121,6 +122,8 @@ func postProcessMDX(dir string) error {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
+		// #nosec G304 -- path is constructed from the output directory we own
+		// + a DirEntry name from os.ReadDir, not user input.
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
@@ -130,6 +133,7 @@ func postProcessMDX(dir string) error {
 		content = fenceExamples(content)
 		content = escapeAngleBrackets(content)
 
+		// #nosec G306 -- generated docs must be world-readable.
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			return err
 		}

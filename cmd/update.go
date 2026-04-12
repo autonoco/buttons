@@ -276,17 +276,18 @@ func atomicReplace(path string, newData []byte) error {
 	tmpPath := tmp.Name()
 
 	if _, err := tmp.Write(newData); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return err
 	}
+	// #nosec G302 -- the replacement binary needs exec bit to run.
 	if err := tmp.Chmod(0755); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return err
 	}
 
@@ -294,7 +295,7 @@ func atomicReplace(path string, newData []byte) error {
 	oldPath := path + ".old"
 	_ = os.Remove(oldPath) // clean up any leftover from a previous update
 	if err := os.Rename(path, oldPath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("cannot move current binary: %w", err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
