@@ -123,24 +123,27 @@ buttons history weather
 
 ## Creating Buttons
 
-Four ways to create buttons. Use `--agent` as a modifier on any of them to attach an instruction for the consuming agent.
+Three button types. Use `--prompt` as a modifier on any of them to attach an instruction for the consuming agent.
 
 ### Code
 
 ```bash
-# Shell (default)
+# Scaffold + edit (default). Creates main.sh with a placeholder, tells you where to edit it.
+buttons create deploy --arg env:string:required
+# Then edit ~/.buttons/buttons/deploy/main.sh and press:
+buttons press deploy --arg env=staging
+
+# Or skip the scaffold with --code for one-liners
 buttons create greet --code 'echo "Hello, $BUTTONS_ARG_NAME!"' --arg name:string:required
 
-# Python
-buttons create transform --runtime python --code 'import json; print(json.dumps({"ok": True}))'
+# Python scaffold
+buttons create transform --runtime python --arg input:string:required
 
-# Node
-buttons create parse --runtime node --code 'console.log(JSON.stringify({status: "ok"}))'
+# Node scaffold
+buttons create parse --runtime node
 
-# Multi-line via stdin
-buttons create etl --code-stdin <<'EOF'
-curl -s $BUTTONS_ARG_SOURCE | jq '.data[]'
-EOF
+# Or import an existing script file
+buttons create etl --file ./scripts/etl.sh --arg source:string:required
 ```
 
 ### API
@@ -290,17 +293,18 @@ Error codes: `NOT_FOUND`, `MISSING_ARG`, `VALIDATION_ERROR`, `TIMEOUT`, `SCRIPT_
 
 ## Create Flags
 
+By default, `buttons create <name>` scaffolds a shell button with a placeholder `main.sh` the agent can edit. Shortcut flags below let you skip the placeholder.
+
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--code` | | Inline script code |
-| `--code-stdin` | | Read code from piped stdin |
-| `--runtime` | | Code runtime: shell, python, node (default: shell) |
+| `--runtime` | | Scaffold runtime: shell, python, node (default: shell) |
+| `--code` | | Inline script body (shortcut for one-liners) |
+| `--file` | `-f` | Copy an existing script file into the button folder |
 | `--url` | | HTTP API endpoint (supports `{{arg}}` templates) |
 | `--method` | | HTTP method (default: GET) |
 | `--header` | | HTTP header as `Key: Value` (repeatable) |
 | `--body` | | HTTP request body (supports `{{arg}}` templates) |
-| `--file` | `-f` | Import a script file (copied into button folder) |
-| `--prompt` | | Prompt instruction for the consuming agent (standalone or modifier on any source) |
+| `--prompt` | | Prompt instruction written to AGENT.md (standalone or modifier on any source) |
 | `--arg` | | Argument: `name:type:required\|optional` |
 | `--description` | `-d` | Button description |
 | `--timeout` | | Execution timeout in seconds (default: 60) |

@@ -73,7 +73,10 @@ func writeSkill(b *strings.Builder, root *cobra.Command) {
 	// Quick reference
 	b.WriteString("## Quick reference\n\n")
 	b.WriteString("```bash\n")
-	b.WriteString("# Create buttons\n")
+	b.WriteString("# Default: scaffold + edit + press. Creates main.sh with placeholder you edit.\n")
+	b.WriteString("buttons create deploy --arg env:string:required\n")
+	b.WriteString("# → edit ~/.buttons/buttons/deploy/main.sh, then: buttons press deploy --arg env=staging\n\n")
+	b.WriteString("# Shortcuts for known content (skip the scaffold):\n")
 	b.WriteString("buttons create greet --code 'echo \"Hello, $BUTTONS_ARG_NAME\"' --arg name:string:required\n")
 	b.WriteString("buttons create weather --url 'https://wttr.in/{{city}}?format=j1' --arg city:string:required\n")
 	b.WriteString("buttons create deploy-checklist --prompt \"Verify: tests pass, staging green, team notified\"\n")
@@ -133,10 +136,11 @@ func writeSkill(b *strings.Builder, root *cobra.Command) {
 
 	// Button sources
 	b.WriteString("## Button sources\n\n")
+	b.WriteString("`buttons create <name>` scaffolds a shell button with a placeholder `main.sh` the agent edits, then presses. Use a shortcut flag to skip the scaffold:\n\n")
 	b.WriteString("| Flag | Source | Runtime |\n")
 	b.WriteString("|------|--------|--------|\n")
-	b.WriteString("| `--code` | Inline script | `--runtime shell\\|python\\|node` (default: shell) |\n")
-	b.WriteString("| `--code-stdin` | Piped script from stdin | Same as `--code` |\n")
+	b.WriteString("| (none) | Scaffold `main.<ext>` with shebang + TODO | `--runtime shell\\|python\\|node` (default: shell) |\n")
+	b.WriteString("| `--code` | Inline script body (one-liners) | Same as above |\n")
 	b.WriteString("| `-f`/`--file` | Existing script file (copied into button folder) | Detected from shebang |\n")
 	b.WriteString("| `--url` | HTTP endpoint with `{{arg}}` templates | HTTP client |\n")
 	b.WriteString("| `--prompt` | Instruction for the consuming agent | Returns text, no execution |\n\n")

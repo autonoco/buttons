@@ -38,3 +38,18 @@ func ExtForRuntime(runtime string) string {
 		return ".sh"
 	}
 }
+
+// scaffoldFor returns the placeholder body written to main.<ext> when a
+// button is created without --code or --file. The shebang makes the runtime
+// obvious when the agent opens the file; the TODO comment signals where to
+// put the real implementation.
+func scaffoldFor(runtime string) string {
+	switch runtime {
+	case "python", "python3":
+		return "#!/usr/bin/env python3\n# TODO: add your code here\n# Args arrive as os.environ[\"BUTTONS_ARG_<NAME>\"]\n"
+	case "node", "javascript", "js":
+		return "#!/usr/bin/env node\n// TODO: add your code here\n// Args arrive as process.env.BUTTONS_ARG_<NAME>\n"
+	default:
+		return "#!/bin/sh\nset -eu\n\n# TODO: add your command here\n# Args arrive as $BUTTONS_ARG_<NAME>\n"
+	}
+}

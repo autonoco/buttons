@@ -62,16 +62,28 @@ func TestCreate_MutualExclusion_FileAndCode(t *testing.T) {
 	}
 }
 
-func TestCreate_MutualExclusion_NeitherFileNorCode(t *testing.T) {
+func TestCreate_Scaffold_NoSource(t *testing.T) {
 	env := newTestEnv(t)
 
+	// With no source flag, create scaffolds a shell button with a placeholder main.sh.
 	res := env.run("create", "test", "--json")
-	if res.ExitCode == 0 {
-		t.Fatal("expected non-zero exit")
+	if res.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d: %s", res.ExitCode, res.Stderr)
 	}
-	resp := parseJSON(t, res.Stdout)
-	if resp.Error.Code != "VALIDATION_ERROR" {
-		t.Errorf("code = %q, want VALIDATION_ERROR", resp.Error.Code)
+
+	btn := parseButton(t, parseJSON(t, res.Stdout).Data)
+	if btn.Runtime != "shell" {
+		t.Errorf("runtime = %q, want shell", btn.Runtime)
+	}
+
+	// main.sh should exist with the shebang placeholder so the agent can open it.
+	codePath := filepath.Join(env.home, "buttons", "test", "main.sh")
+	data, err := os.ReadFile(codePath)
+	if err != nil {
+		t.Fatalf("scaffolded main.sh not found: %v", err)
+	}
+	if !strings.HasPrefix(string(data), "#!/bin/sh") {
+		t.Errorf("main.sh should start with shebang, got: %q", string(data[:min(len(data), 40)]))
 	}
 }
 
@@ -142,53 +154,27 @@ func TestPress_InlineCode_CodeFileExists(t *testing.T) {
 	}
 }
 
-func TestCreate_InlineCode_CodeStdin(t *testing.T) {
+func TestCreate_Scaffold_Python(t *testing.T) {
 	env := newTestEnv(t)
 
-	res := env.runWithStdin("echo 'hello from stdin'", "create", "stdin-test", "--code-stdin", "--json")
+	// With --runtime python and no source, create scaffolds main.py.
+	res := env.run("create", "test", "--runtime", "python", "--json")
 	if res.ExitCode != 0 {
 		t.Fatalf("expected exit 0, got %d: %s", res.ExitCode, res.Stderr)
 	}
 
-	resp := parseJSON(t, res.Stdout)
-	if !resp.OK {
-		t.Fatal("expected ok: true")
+	btn := parseButton(t, parseJSON(t, res.Stdout).Data)
+	if btn.Runtime != "python" {
+		t.Errorf("runtime = %q, want python", btn.Runtime)
 	}
 
-	res = env.run("press", "stdin-test", "--json")
-	if res.ExitCode != 0 {
-		t.Fatalf("press failed: %s", res.Stderr)
+	codePath := filepath.Join(env.home, "buttons", "test", "main.py")
+	data, err := os.ReadFile(codePath)
+	if err != nil {
+		t.Fatalf("scaffolded main.py not found: %v", err)
 	}
-	pr := parsePressResult(t, parseJSON(t, res.Stdout).Data)
-	if !strings.Contains(pr.Stdout, "hello from stdin") {
-		t.Errorf("stdout = %q, want to contain 'hello from stdin'", pr.Stdout)
-	}
-}
-
-func TestCreate_MutualExclusion_FileAndCodeStdin(t *testing.T) {
-	env := newTestEnv(t)
-	script := env.createScript("test.sh")
-
-	res := env.runWithStdin("echo hi", "create", "test", "--file", script, "--code-stdin", "--json")
-	if res.ExitCode == 0 {
-		t.Fatal("expected non-zero exit for --file + --code-stdin")
-	}
-	resp := parseJSON(t, res.Stdout)
-	if resp.Error.Code != "VALIDATION_ERROR" {
-		t.Errorf("code = %q, want VALIDATION_ERROR", resp.Error.Code)
-	}
-}
-
-func TestCreate_RuntimeWithoutCode(t *testing.T) {
-	env := newTestEnv(t)
-
-	res := env.run("create", "test", "--runtime", "python", "--json")
-	if res.ExitCode == 0 {
-		t.Fatal("expected non-zero exit for --runtime without --code")
-	}
-	resp := parseJSON(t, res.Stdout)
-	if resp.Error.Code != "VALIDATION_ERROR" {
-		t.Errorf("code = %q, want VALIDATION_ERROR", resp.Error.Code)
+	if !strings.HasPrefix(string(data), "#!/usr/bin/env python3") {
+		t.Errorf("main.py should start with python shebang, got: %q", string(data[:min(len(data), 40)]))
 	}
 }
 
@@ -242,19 +228,6 @@ func TestCreate_InlineCode_ExceedsMaxSize(t *testing.T) {
 	res := env.run("create", "test", "--code", bigCode, "--json")
 	if res.ExitCode == 0 {
 		t.Fatal("expected non-zero exit for code > 64KB")
-	}
-	resp := parseJSON(t, res.Stdout)
-	if resp.Error.Code != "VALIDATION_ERROR" {
-		t.Errorf("code = %q, want VALIDATION_ERROR", resp.Error.Code)
-	}
-}
-
-func TestCreate_MutualExclusion_CodeAndCodeStdin(t *testing.T) {
-	env := newTestEnv(t)
-
-	res := env.runWithStdin("echo hi", "create", "test", "--code", "echo hello", "--code-stdin", "--json")
-	if res.ExitCode == 0 {
-		t.Fatal("expected non-zero exit for --code + --code-stdin")
 	}
 	resp := parseJSON(t, res.Stdout)
 	if resp.Error.Code != "VALIDATION_ERROR" {
