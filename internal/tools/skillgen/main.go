@@ -49,7 +49,7 @@ func writeSkill(b *strings.Builder, root *cobra.Command) {
 	b.WriteString("name: buttons\n")
 	b.WriteString("description: |\n")
 	b.WriteString("  Deterministic workflow engine for AI agents. Create and press\n")
-	b.WriteString("  reusable buttons (shell scripts, HTTP APIs, agent instructions)\n")
+	b.WriteString("  reusable buttons (shell scripts, HTTP APIs, prompt instructions)\n")
 	b.WriteString("  with typed inputs and structured JSON output. Use when wrapping\n")
 	b.WriteString("  repeatable actions, calling HTTP endpoints, or building multi-step\n")
 	b.WriteString("  workflows where each step is a named, typed, pressable button.\n")
@@ -65,7 +65,7 @@ func writeSkill(b *strings.Builder, root *cobra.Command) {
 
 	// When to use
 	b.WriteString("## When to use\n\n")
-	b.WriteString("- Wrap a repeatable action (shell script, HTTP API call, agent instruction) as a named, typed, pressable button\n")
+	b.WriteString("- Wrap a repeatable action (shell script, HTTP API call, prompt instruction) as a named, typed, pressable button\n")
 	b.WriteString("- Get structured JSON output from shell commands or HTTP endpoints\n")
 	b.WriteString("- Create self-documenting actions that other agents can discover and press\n")
 	b.WriteString("- Build multi-step workflows where each step is a button with typed args\n\n")
@@ -76,7 +76,7 @@ func writeSkill(b *strings.Builder, root *cobra.Command) {
 	b.WriteString("# Create buttons\n")
 	b.WriteString("buttons create greet --code 'echo \"Hello, $BUTTONS_ARG_NAME\"' --arg name:string:required\n")
 	b.WriteString("buttons create weather --url 'https://wttr.in/{{city}}?format=j1' --arg city:string:required\n")
-	b.WriteString("buttons create deploy-checklist --agent \"Verify: tests pass, staging green, team notified\"\n")
+	b.WriteString("buttons create deploy-checklist --prompt \"Verify: tests pass, staging green, team notified\"\n")
 	b.WriteString("buttons create etl -f ./scripts/transform.sh --arg source:string:required\n\n")
 	b.WriteString("# Press buttons\n")
 	b.WriteString("buttons press weather --arg city=Miami\n")
@@ -139,8 +139,8 @@ func writeSkill(b *strings.Builder, root *cobra.Command) {
 	b.WriteString("| `--code-stdin` | Piped script from stdin | Same as `--code` |\n")
 	b.WriteString("| `-f`/`--file` | Existing script file (copied into button folder) | Detected from shebang |\n")
 	b.WriteString("| `--url` | HTTP endpoint with `{{arg}}` templates | HTTP client |\n")
-	b.WriteString("| `--agent` | Instruction for the consuming agent | Returns text, no execution |\n\n")
-	b.WriteString("`--agent` can be combined with any other source as a modifier.\n\n")
+	b.WriteString("| `--prompt` | Instruction for the consuming agent | Returns text, no execution |\n\n")
+	b.WriteString("`--prompt` can be combined with any other source as a modifier.\n\n")
 
 	// Common patterns
 	b.WriteString("## Common patterns\n\n")
@@ -152,13 +152,13 @@ func writeSkill(b *strings.Builder, root *cobra.Command) {
 	b.WriteString("buttons history check-health  # all past runs\n")
 	b.WriteString("```\n\n")
 
-	b.WriteString("### Code button with agent context\n")
+	b.WriteString("### Code button with prompt context\n")
 	b.WriteString("```bash\n")
 	b.WriteString("buttons create check-logs \\\n")
 	b.WriteString("  --code 'tail -100 /var/log/app.log' \\\n")
-	b.WriteString("  --agent \"Summarize any errors or warnings from these logs\"\n")
+	b.WriteString("  --prompt \"Summarize any errors or warnings from these logs\"\n")
 	b.WriteString("```\n\n")
-	b.WriteString("The `agent_prompt` field appears in `--json` output so the calling agent knows what to do with the stdout.\n\n")
+	b.WriteString("The `prompt` field appears in `--json` output so the calling agent knows what to do with the stdout.\n\n")
 
 	b.WriteString("### HTTP button hitting a local dev server\n")
 	b.WriteString("```bash\n")
@@ -176,7 +176,7 @@ func writeSkill(b *strings.Builder, root *cobra.Command) {
 	b.WriteString("~/.buttons/buttons/<name>/\n")
 	b.WriteString("  button.json     # spec (args, runtime, timeout)\n")
 	b.WriteString("  main.sh         # code file (.sh, .py, .js)\n")
-	b.WriteString("  AGENT.md        # agent instruction\n")
+	b.WriteString("  AGENT.md        # prompt instruction\n")
 	b.WriteString("  pressed/        # run history as JSON files\n")
 	b.WriteString("```\n")
 }

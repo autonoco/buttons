@@ -28,8 +28,12 @@
             "pages": [
               "buttons/code",
               "buttons/http-api",
-              "buttons/file",
-              "buttons/agent"
+              "buttons/prompt",
+              "buttons/cli",
+              "buttons/sql",
+              "buttons/webhook",
+              "buttons/cron",
+              "buttons/mcp"
             ]
           },
           {
@@ -129,18 +133,6 @@
             "pages": [
               "cli/buttons_board",
               "cli/buttons_store"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Changelog",
-        "groups": [
-          {
-            "group": "Changelog",
-            "public": true,
-            "pages": [
-              "changelog/2026-04-12"
             ]
           }
         ]

@@ -1,0 +1,34 @@
+---
+title: "CLI buttons"
+sidebarTitle: "CLI"
+description: "Wrap a shell command as a button without writing a script."
+tag: "Coming soon"
+---
+
+CLI buttons will be sugar for the common case: wrap a command-line invocation as a button in one line, no `--runtime`, no script body.
+
+```bash
+# Planned shape
+buttons create tail-logs --cli 'openclaw tail --service api --env production'
+buttons create git-status --cli 'git status --short'
+```
+
+Under the hood, a CLI button is a shell code button whose `main.sh` is the command you passed. The preset exists so agents can recognize the pattern — "I just want to run this command" — without thinking about runtimes.
+
+## Today
+
+You can already wrap any CLI command with `--code`:
+
+```bash
+buttons create tail-logs \
+  --code 'openclaw tail --service api --env production' \
+  --runtime shell
+```
+
+See [Code buttons](/buttons/code) for the full flag set.
+
+## What's changing
+
+- `--cli '<command>'` flag on `buttons create`
+- Runtime value `cli` in `button.json` (still executes via `/bin/sh`)
+- Detail view and `list` surface CLI buttons with a dedicated label

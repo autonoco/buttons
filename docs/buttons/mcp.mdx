@@ -1,0 +1,40 @@
+---
+title: "MCP buttons"
+sidebarTitle: "MCP"
+description: "Freeze an MCP tool invocation as a deterministic, reusable button."
+tag: "Coming soon"
+---
+
+MCP buttons capture the result of an agent's exploration of an MCP server. The agent lists tools, figures out the right tool and the right parameter shape, confirms the call works — and then saves that frozen invocation as a button. Future presses skip the exploration entirely and go straight to the known-good call.
+
+```bash
+# Planned shape
+buttons create notify-deploy \
+  --mcp 'slack://post_message' \
+  --mcp-arg channel='#deploys' \
+  --mcp-arg text='{{message}}' \
+  --arg message:string:required
+```
+
+Press it:
+
+```bash
+buttons press notify-deploy --arg message="v1.4.2 shipped"
+```
+
+The same button works in two contexts:
+
+- An agent reviewing the button sees it's a safe, scoped Slack post — no re-discovery of the MCP server required
+- A deterministic workflow (drawer, cron, webhook) can press it without involving an LLM at all — the MCP call is already parameterized and approved
+
+## Why this matters
+
+Without MCP buttons, every agent session has to rediscover the same tools: list servers, list tools, read schemas, guess parameters, verify the call. MCP buttons turn that one-time exploration into a reusable asset.
+
+## What's changing when MCP buttons land
+
+- `--mcp '<server>://<tool>'` flag naming the MCP server and tool
+- `--mcp-arg key=value` for static parameters; `--arg` for dynamic ones bound at press time
+- Runtime value `mcp` in `button.json`
+- Connection details resolved via the same credential system as SQL buttons (register an MCP server once, reference by name)
+- Press returns the tool's structured response, same JSON envelope as every other button

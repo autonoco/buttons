@@ -28,7 +28,7 @@ buttons create weather --url 'https://wttr.in/{{city}}?format=j1' --arg city:str
 buttons create webhook --url https://api.example.com/hook --method POST
 buttons create graphql --url https://api.example.com/graphql --method POST \
   --header "Content-Type: application/json" --body '{"query": "{ viewer { login } }"}'
-buttons create check-logs --agent "Use the Northflank CLI to read production logs and summarize errors"
+buttons create check-logs --prompt "Use the Northflank CLI to read production logs and summarize errors"
 ```
 
 ```
@@ -38,7 +38,6 @@ buttons create [name] [flags]
 ### Options
 
 ```
-      --agent string               agent instruction/system prompt
       --allow-private-networks     allow --url buttons to reach private network addresses (localhost, 10/8, 172.16/12, 192.168/16, 169.254/16, IPv6 private ranges). Required for local dev targets.
       --arg stringArray            argument definition (name:type:required|optional)
       --body string                HTTP request body (supports {{arg}} templates)
@@ -50,6 +49,7 @@ buttons create [name] [flags]
   -h, --help                       help for create
       --max-response-size string   max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M
       --method string              HTTP method for --url (default: GET)
+      --prompt string              prompt/instruction for the consuming agent (written to AGENT.md)
       --runtime string             code runtime: shell, python, node (default: shell)
       --timeout int                execution timeout in seconds (default 60)
       --url string                 HTTP API endpoint URL (supports {{arg}} templates)

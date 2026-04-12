@@ -1,11 +1,12 @@
 ---
 title: "Code buttons"
-description: "Run inline shell, Python, or Node scripts as buttons."
+sidebarTitle: "Code"
+description: "Wrap inline or file-based scripts as pressable, typed actions."
 ---
 
-Code buttons let you write a script directly in the button spec. The code runs in a subprocess every time you press the button.
+Code buttons wrap a script — shell, Python, or Node — as a named action with typed arguments, a timeout, and structured output. Every code button stores its script as a file inside the button folder, whether you provide it inline with `--code` or import it from disk with `--file`.
 
-## Inline code
+## Create from inline code
 
 Pass the script body with `--code`:
 
@@ -24,9 +25,7 @@ buttons press greet --arg name=Ada
 # Hello, Ada
 ```
 
-## Piped code
-
-For longer scripts, pipe from stdin using `--code-stdin`:
+For longer scripts, pipe from stdin with `--code-stdin`:
 
 ```bash
 cat scripts/deploy.sh | buttons create deploy \
@@ -47,6 +46,30 @@ df -h | awk 'NR==1 || /\/$/ {print}'
 EOF
 ```
 
+Inline code is capped at **64 KB**. Import from a file when your script is larger.
+
+## Create from a file
+
+Use `-f` or `--file` to import an existing script. The file is copied into the button folder at create time so the button is self-contained:
+
+```bash
+buttons create deploy \
+  --file ./scripts/deploy.sh \
+  --arg env:string:required \
+  --arg version:string:required \
+  -d "Deploy a tagged release to an environment"
+```
+
+Press it the same way as any other button:
+
+```bash
+buttons press deploy --arg env=staging --arg version=v1.4.2
+```
+
+The source file is **copied**, not symlinked. Editing the original after creation has no effect. To update the script, recreate the button or edit the copy directly at `~/.buttons/buttons/<name>/main.<ext>`.
+
+File buttons have no size limit.
+
 ## Choosing a runtime
 
 Use `--runtime` to pick the interpreter. The binary must be present on `$PATH` at press time.
@@ -65,7 +88,7 @@ buttons create parse-json \
 ```
 
 <Note>
-`--runtime` defaults to `shell` when omitted. If you pass `--code` without `--runtime`, the script runs under `/bin/sh`.
+  If you import a script with `--file` and it starts with a shebang, the OS uses that interpreter directly — no need to pass `--runtime`. When there is no shebang and no `--runtime`, Buttons defaults to `/bin/sh`.
 </Note>
 
 ## Argument injection
@@ -80,12 +103,34 @@ echo "$BUTTONS_ARG_BUCKET"
 
 This prevents shell injection regardless of what value is passed at press time.
 
-## Code size limit
+## Example: wrap a deploy script
 
-The inline code body is capped at **64 KB**. For larger scripts, use a [file button](/buttons/file) instead.
+```bash
+# scripts/deploy.sh
+#!/bin/bash
+set -euo pipefail
+
+ENV=$BUTTONS_ARG_ENV
+VERSION=$BUTTONS_ARG_VERSION
+
+echo "Deploying $VERSION to $ENV..."
+kubectl set image deployment/app app=registry.example.com/app:$VERSION -n $ENV
+kubectl rollout status deployment/app -n $ENV
+```
+
+Import it:
+
+```bash
+buttons create k8s-deploy \
+  --file ./scripts/deploy.sh \
+  --arg env:string:required \
+  --arg version:string:required \
+  -d "Roll out a new image version to a Kubernetes namespace"
+```
 
 ## Related
 
-- [File buttons](/buttons/file) — import an existing script file
+- [Prompt buttons](/buttons/prompt) — attach an instruction to any button for the consuming agent
 - [Arguments](/concepts/arguments) — declare and pass typed args
 - [JSON output](/concepts/json-output) — capture results programmatically
+- [Folder structure](/concepts/folder-structure) — where the script lives on disk

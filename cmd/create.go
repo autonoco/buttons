@@ -21,7 +21,7 @@ var createURL string
 var createMethod string
 var createHeaders []string
 var createBody string
-var createAgent string
+var createPrompt string
 var createDescription string
 var createTimeout int
 var createMaxResponseSize string
@@ -48,7 +48,7 @@ Examples:
   buttons create webhook --url https://api.example.com/hook --method POST
   buttons create graphql --url https://api.example.com/graphql --method POST \
     --header "Content-Type: application/json" --body '{"query": "{ viewer { login } }"}'
-  buttons create check-logs --agent "Use the Northflank CLI to read production logs and summarize errors"`,
+  buttons create check-logs --prompt "Use the Northflank CLI to read production logs and summarize errors"`,
 	Args: exactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		code := createCode
@@ -110,7 +110,7 @@ Examples:
 			Method:               createMethod,
 			Headers:              headers,
 			Body:                 createBody,
-			Agent:                createAgent,
+			Prompt:               createPrompt,
 			Description:          createDescription,
 			TimeoutSeconds:       createTimeout,
 			MaxResponseBytes:     maxResponseBytes,
@@ -139,7 +139,7 @@ func init() {
 	createCmd.Flags().StringVar(&createMethod, "method", "", "HTTP method for --url (default: GET)")
 	createCmd.Flags().StringArrayVar(&createHeaders, "header", nil, "HTTP header as 'Key: Value' (repeatable)")
 	createCmd.Flags().StringVar(&createBody, "body", "", "HTTP request body (supports {{arg}} templates)")
-	createCmd.Flags().StringVar(&createAgent, "agent", "", "agent instruction/system prompt")
+	createCmd.Flags().StringVar(&createPrompt, "prompt", "", "prompt/instruction for the consuming agent (written to AGENT.md)")
 	createCmd.Flags().StringVarP(&createDescription, "description", "d", "", "button description")
 	createCmd.Flags().IntVar(&createTimeout, "timeout", 60, "execution timeout in seconds")
 	createCmd.Flags().StringVar(&createMaxResponseSize, "max-response-size", "", "max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M")

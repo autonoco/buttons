@@ -42,8 +42,8 @@ func TestLifecycle_CreateListRemove(t *testing.T) {
 	if len(buttons) != 1 {
 		t.Fatalf("expected 1 button, got %d", len(buttons))
 	}
-	if buttons[0].SchemaVersion != 1 {
-		t.Errorf("schema_version = %d, want 1", buttons[0].SchemaVersion)
+	if buttons[0].SchemaVersion != 2 {
+		t.Errorf("schema_version = %d, want 2", buttons[0].SchemaVersion)
 	}
 
 	// Remove

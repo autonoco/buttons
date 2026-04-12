@@ -182,19 +182,19 @@ The `--agent` flag attaches an instruction for the consuming agent. Use it stand
 buttons create deploy-checklist \
   --agent "Before deploying, verify: 1) All tests pass 2) Staging is green 3) Team notified"
 
-# Code + agent: run the command, agent knows what to do with the output
+# Code + prompt: run the command, agent knows what to do with the output
 buttons create check-logs \
   --code 'northflank logs --service api --env production --tail 100' \
-  --agent "Summarize any errors or warnings from these logs"
+  --prompt "Summarize any errors or warnings from these logs"
 
-# API + agent: call the API, agent interprets the result
+# API + prompt: call the API, agent interprets the result
 buttons create analyze-weather \
   --url 'https://wttr.in/{{city}}?format=j1' \
   --arg city:string:required \
-  --agent "Extract temperature and conditions as a one-line summary"
+  --prompt "Extract temperature and conditions as a one-line summary"
 ```
 
-When pressed, the result includes both the output and the `agent_prompt`:
+When pressed, the result includes both the output and the `prompt`:
 
 ```json
 {
@@ -202,7 +202,7 @@ When pressed, the result includes both the output and the `agent_prompt`:
   "data": {
     "status": "ok",
     "stdout": "ERROR 2026-03-31 connection timeout to db-primary...",
-    "agent_prompt": "Summarize any errors or warnings from these logs",
+    "prompt": "Summarize any errors or warnings from these logs",
     "button": "check-logs"
   }
 }
@@ -282,7 +282,7 @@ Override storage location with `BUTTONS_HOME` environment variable.
 Every command supports `--json`. Piped output auto-detects non-TTY and outputs JSON automatically.
 
 ```json
-{"ok": true, "data": {"status": "ok", "stdout": "...", "agent_prompt": "...", "button": "weather"}}
+{"ok": true, "data": {"status": "ok", "stdout": "...", "prompt": "...", "button": "weather"}}
 {"ok": false, "error": {"code": "MISSING_ARG", "message": "...", "hint": "...", "spec": [...]}}
 ```
 
@@ -300,7 +300,7 @@ Error codes: `NOT_FOUND`, `MISSING_ARG`, `VALIDATION_ERROR`, `TIMEOUT`, `SCRIPT_
 | `--header` | | HTTP header as `Key: Value` (repeatable) |
 | `--body` | | HTTP request body (supports `{{arg}}` templates) |
 | `--file` | `-f` | Import a script file (copied into button folder) |
-| `--agent` | | Agent instruction (standalone or modifier on any source) |
+| `--prompt` | | Prompt instruction for the consuming agent (standalone or modifier on any source) |
 | `--arg` | | Argument: `name:type:required\|optional` |
 | `--description` | `-d` | Button description |
 | `--timeout` | | Execution timeout in seconds (default: 60) |

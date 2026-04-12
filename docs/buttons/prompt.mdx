@@ -1,0 +1,96 @@
+---
+title: "Prompt buttons"
+sidebarTitle: "Prompt"
+description: "Attach instructions for the consuming AI agent."
+---
+
+Prompt buttons let you embed an instruction set directly into a button. When the button is pressed, the JSON output includes a `prompt` field that the calling agent can read and act on.
+
+You can use `--prompt` in two ways: as a standalone button that contains only instructions, or as a modifier on an existing code or HTTP button.
+
+## Standalone prompt button
+
+A standalone prompt button has no code to execute. It just carries an instruction. Use this to encode a task, a decision procedure, or an analysis request that an agent should carry out itself.
+
+```bash
+buttons create summarize-pr \
+  --prompt 'You are a code reviewer. Read the diff provided in BUTTONS_ARG_DIFF and write a summary of what changed, why it matters, and any risks. Return JSON with keys: summary, risks, verdict.' \
+  --arg diff:string:required \
+  -d "Summarize a pull request diff"
+```
+
+Pressing it returns the prompt with the argument values substituted, so the caller can pass it straight to an LLM:
+
+```bash
+buttons press summarize-pr --arg diff="$(git diff main)" --json
+```
+
+```json
+{
+  "ok": true,
+  "data": {
+    "button": "summarize-pr",
+    "prompt": "You are a code reviewer. Read the diff provided in BUTTONS_ARG_DIFF and write a summary..."
+  }
+}
+```
+
+## Prompt as a modifier
+
+Add `--prompt` to a code or HTTP button to attach supplementary instructions alongside the execution result. The code runs first, then the result and the prompt are both present in the output.
+
+```bash
+buttons create analyze-logs \
+  --code 'tail -n 200 /var/log/app.log' \
+  --runtime shell \
+  --prompt 'Analyze the log lines in stdout. Identify error patterns, classify by severity, and suggest the most likely root cause. Return JSON.' \
+  -d "Collect recent logs and instruct the agent to analyze them"
+```
+
+Press:
+
+```bash
+buttons press analyze-logs --json
+```
+
+```json
+{
+  "ok": true,
+  "data": {
+    "button": "analyze-logs",
+    "status": "ok",
+    "stdout": "2026-04-10T12:00:01Z ERROR db connection timeout...",
+    "stderr": "",
+    "exit_code": 0,
+    "prompt": "Analyze the log lines in stdout. Identify error patterns..."
+  }
+}
+```
+
+The agent receives both the raw output and the instruction in a single structured response.
+
+## Updating prompt instructions
+
+The prompt lives at `~/.buttons/buttons/<name>/AGENT.md` — agents look for that filename by convention. Edit it directly, or recreate the button:
+
+```bash
+buttons delete summarize-pr
+buttons create summarize-pr --prompt 'Updated instructions...' --arg diff:string:required
+```
+
+<Tip>
+Store your prompt text in a file and pipe it in for longer instructions:
+
+```bash
+buttons create analyze-logs \
+  --code 'tail -n 200 /var/log/app.log' \
+  --prompt "$(cat prompts/log-analysis.txt)" \
+  --runtime shell
+```
+</Tip>
+
+## Related
+
+- [Code buttons](/buttons/code) — add code execution alongside a prompt
+- [Arguments](/concepts/arguments) — typed args available in the prompt
+- [JSON output](/concepts/json-output) — reading `prompt` programmatically

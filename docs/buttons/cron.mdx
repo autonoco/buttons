@@ -1,0 +1,32 @@
+---
+title: "Cron buttons"
+sidebarTitle: "Cron"
+description: "Run a button on a recurring schedule."
+tag: "Coming soon"
+---
+
+Cron buttons will press themselves automatically on a cron schedule. No separate scheduler to configure — you define the cadence when you create the button, and a background trigger daemon handles the rest.
+
+```bash
+# Planned shape
+buttons create daily-snapshot \
+  --code './scripts/snapshot.sh' \
+  --cron '0 3 * * *'    # every day at 3am
+```
+
+List scheduled buttons:
+
+```bash
+buttons list --scheduled
+```
+
+## Blocked on
+
+The trigger system ([autonoco/autono#272](https://github.com/autonoco/autono/issues/272)). A cron schedule stored on a button is inert without a daemon watching the schedule and firing the button when the time arrives.
+
+## What's changing when triggers land
+
+- `--cron '<schedule>'` flag accepts standard cron expressions (minute hour day month weekday)
+- Each scheduled press is recorded in the button's run history just like a manual press
+- Trigger daemon surface: `buttons serve --with-cron` or a standalone `buttons cron` process
+- Overlap protection: if a previous run is still executing when the next trigger fires, the new run is either skipped or queued (configurable per button)

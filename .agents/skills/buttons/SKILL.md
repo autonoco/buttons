@@ -2,7 +2,7 @@
 name: buttons
 description: |
   Deterministic workflow engine for AI agents. Create and press
-  reusable buttons (shell scripts, HTTP APIs, agent instructions)
+  reusable buttons (shell scripts, HTTP APIs, prompt instructions)
   with typed inputs and structured JSON output. Use when wrapping
   repeatable actions, calling HTTP endpoints, or building multi-step
   workflows where each step is a named, typed, pressable button.
@@ -19,7 +19,7 @@ Deterministic workflow engine for AI agents. Create reusable, composable actions
 
 ## When to use
 
-- Wrap a repeatable action (shell script, HTTP API call, agent instruction) as a named, typed, pressable button
+- Wrap a repeatable action (shell script, HTTP API call, prompt instruction) as a named, typed, pressable button
 - Get structured JSON output from shell commands or HTTP endpoints
 - Create self-documenting actions that other agents can discover and press
 - Build multi-step workflows where each step is a button with typed args
@@ -30,7 +30,7 @@ Deterministic workflow engine for AI agents. Create reusable, composable actions
 # Create buttons
 buttons create greet --code 'echo "Hello, $BUTTONS_ARG_NAME"' --arg name:string:required
 buttons create weather --url 'https://wttr.in/{{city}}?format=j1' --arg city:string:required
-buttons create deploy-checklist --agent "Verify: tests pass, staging green, team notified"
+buttons create deploy-checklist --prompt "Verify: tests pass, staging green, team notified"
 buttons create etl -f ./scripts/transform.sh --arg source:string:required
 
 # Press buttons
@@ -111,7 +111,6 @@ buttons create [flags]
 
 | Flag | Type | Description |
 |------|------|-------------|
-| `--agent` | string | agent instruction/system prompt |
 | `--allow-private-networks` | bool | allow --url buttons to reach private network addresses (localhost, 10/8, 172.16/12, 192.168/16, 169.254/16, IPv6 private ranges). Required for local dev targets. |
 | `--arg` | stringArray | argument definition (name:type:required|optional) |
 | `--body` | string | HTTP request body (supports {{arg}} templates) |
@@ -122,6 +121,7 @@ buttons create [flags]
 | `--header` | stringArray | HTTP header as 'Key: Value' (repeatable) |
 | `--max-response-size` | string | max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M |
 | `--method` | string | HTTP method for --url (default: GET) |
+| `--prompt` | string | prompt/instruction for the consuming agent (written to AGENT.md) |
 | `--runtime` | string | code runtime: shell, python, node (default: shell) |
 | `--timeout` | int | execution timeout in seconds |
 | `--url` | string | HTTP API endpoint URL (supports {{arg}} templates) |
@@ -287,9 +287,9 @@ Pass at press time: `--arg key=value`
 | `--code-stdin` | Piped script from stdin | Same as `--code` |
 | `-f`/`--file` | Existing script file (copied into button folder) | Detected from shebang |
 | `--url` | HTTP endpoint with `{{arg}}` templates | HTTP client |
-| `--agent` | Instruction for the consuming agent | Returns text, no execution |
+| `--prompt` | Instruction for the consuming agent | Returns text, no execution |
 
-`--agent` can be combined with any other source as a modifier.
+`--prompt` can be combined with any other source as a modifier.
 
 ## Common patterns
 
@@ -301,14 +301,14 @@ buttons check-health         # detail view: args, last run, usage examples
 buttons history check-health  # all past runs
 ```
 
-### Code button with agent context
+### Code button with prompt context
 ```bash
 buttons create check-logs \
   --code 'tail -100 /var/log/app.log' \
-  --agent "Summarize any errors or warnings from these logs"
+  --prompt "Summarize any errors or warnings from these logs"
 ```
 
-The `agent_prompt` field appears in `--json` output so the calling agent knows what to do with the stdout.
+The `prompt` field appears in `--json` output so the calling agent knows what to do with the stdout.
 
 ### HTTP button hitting a local dev server
 ```bash
@@ -328,6 +328,6 @@ All data lives under `~/.buttons/` (override with `BUTTONS_HOME`):
 ~/.buttons/buttons/<name>/
   button.json     # spec (args, runtime, timeout)
   main.sh         # code file (.sh, .py, .js)
-  AGENT.md        # agent instruction
+  AGENT.md        # prompt instruction
   pressed/        # run history as JSON files
 ```
