@@ -132,18 +132,6 @@
             ]
           }
         ]
-      },
-      {
-        "tab": "Changelog",
-        "groups": [
-          {
-            "group": "Changelog",
-            "public": true,
-            "pages": [
-              "changelog/2026-04-12"
-            ]
-          }
-        ]
       }
     ],
     "global": {

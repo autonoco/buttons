@@ -3,32 +3,40 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
-<Update label="2026-04-12" description="Project-scoped buttons">
-## Project-scoped buttons with `buttons init`
+<Update label="2026-04-12" description="Project-scoped buttons and self-update" tags={["Feature"]}>
+## Project-scoped buttons
 
-You can now scope buttons to a project instead of storing everything globally in `~/.buttons/`.
+You can now keep buttons inside a project instead of storing everything globally.
 
-### New features
+- **`buttons init`** — Run this in any directory to create a local `.buttons/` folder. Buttons created there are versioned alongside your code and shared with collaborators via git. See [folder structure](/concepts/folder-structure) for details.
 
-- **`buttons init` command** — run `buttons init` in any project directory to create a local `.buttons/` folder. Buttons created inside that project are versioned alongside your code and shared with collaborators via git. See [folder structure](/concepts/folder-structure) for details.
+- **Automatic discovery** — All commands now walk up the directory tree to find the nearest `.buttons/` folder, the same way git finds `.git/`. No flags needed.
 
-- **Automatic discovery** — all Buttons commands now walk up the directory tree to find the nearest `.buttons/` folder, the same way git finds `.git/`. No flags or config needed — just `cd` into your project and go.
+- **Discovery priority** — Buttons resolves the home directory in order: `BUTTONS_HOME` env var, then `.buttons/` in the current or any parent directory, then the global `~/.buttons/` fallback.
 
-- **Discovery priority** — Buttons resolves the home directory in order: `BUTTONS_HOME` environment variable first, then a `.buttons/` folder in the current or any parent directory, then the global `~/.buttons/` fallback.
+- **Git-friendly defaults** — `buttons init` generates a `.gitignore` that excludes run history but keeps button specs, scripts, and agent instructions committed.
 
-- **Git-friendly defaults** — `buttons init` generates a `.gitignore` inside `.buttons/` that excludes run history (`pressed/`) but keeps button specs, scripts, and agent instructions committed.
+## Self-update from the CLI
+
+- **`buttons update`** — Update Buttons to the latest version directly from the CLI. It downloads the correct binary for your OS, verifies the SHA-256 checksum, and atomically replaces the running binary. Use `--check` to see if an update is available without installing. See the [CLI reference](/cli/buttons_update) for details.
 </Update>
 
-<Update label="2026-04-12" description="v0.1.0 — Initial release">
-## Buttons is live
+<Update label="2026-04-12" description="AI tool integrations" tags={["Feature"]}>
+## AI tool integrations
 
-  **`buttons update` command.** You can now update Buttons to the latest version directly from the CLI. It downloads the correct binary for your OS, verifies the SHA256 checksum, and atomically replaces the running binary. Use `--check` to see if an update is available without installing. See the [CLI reference](/cli/buttons_update) for details.
+- **Agent skill discovery** — AI tools like Claude Code, Cursor, and VS Code can now discover and install the Buttons skill automatically. Run `npx skills add https://buttons.mintlify.app` to teach your agent every command, flag, and output format. Learn more in the [skill.md guide](/ai/skill-md).
 
-  **Agent skill discovery.** AI tools like Claude Code, Cursor, and VS Code can now discover and install the Buttons skill automatically. Run `npx skills add https://buttons.mintlify.app` to teach your agent every command, flag, and output format. Learn more in the [skill.md guide](/ai/skill-md).
+- **MCP server** — Buttons documentation is searchable from AI tools via a hosted [MCP server](/ai/mcp-server). Connect it in Claude, Cursor, or VS Code to search docs and retrieve full pages without leaving your editor.
 
-  **MCP server and llms.txt.** Buttons documentation is now searchable from AI tools via a hosted [MCP server](/ai/mcp-server). Connect it in Claude, Cursor, or VS Code to search docs and retrieve full pages without leaving your editor. An auto-generated [llms.txt](/ai/llms-txt) index is also available for RAG pipelines and generative search engines.
+- **llms.txt** — An auto-generated [llms.txt](/ai/llms-txt) index is available for RAG pipelines and generative search engines.
+</Update>
 
-  ## Updates
+<Update label="2026-04-12" description="v0.1.0 — Initial release" tags={["Release"]}>
+## v0.1.0 — Initial release
 
-  **Automatic releases.** Every merge to `main` now triggers a new release with built binaries and a Docker image on GitHub Container Registry. You no longer need to wait for a manual release to get the latest changes.
+Buttons is live. Create, manage, and run buttons from the command line.
+
+### Updates
+
+- **Automatic releases** — Every merge to `main` now triggers a new release with built binaries and a Docker image on GitHub Container Registry. You no longer need to wait for a manual release to get the latest changes.
 </Update>
