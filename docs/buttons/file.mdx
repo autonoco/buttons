@@ -1,0 +1,89 @@
+---
+title: "File buttons"
+description: "Import an existing script file as a button."
+---
+
+File buttons let you wrap a script that already exists on disk. The file is copied into the button folder at create time so the button is self-contained.
+
+## Create from a file
+
+Use `-f` or `--file` and point it at the script:
+
+```bash
+buttons create deploy \
+  --file ./scripts/deploy.sh \
+  --arg env:string:required \
+  --arg version:string:required \
+  -d "Deploy a tagged release to an environment"
+```
+
+Press it the same way as any other button:
+
+```bash
+buttons press deploy --arg env=staging --arg version=v1.4.2
+```
+
+## What happens to the file
+
+The source file is **copied** into `~/.buttons/buttons/deploy/main.sh`. It is not symlinked or referenced in place. Editing the original after creation has no effect on the button.
+
+To update the script, recreate the button or edit the copy directly at `~/.buttons/buttons/<name>/main.<ext>`.
+
+## Shebangs are respected
+
+If the script starts with a shebang line, the OS uses that interpreter directly:
+
+```bash
+#!/usr/bin/env python3
+import os, sys
+env = os.environ["BUTTONS_ARG_ENV"]
+print(f"Deploying to {env}")
+```
+
+When there is no shebang and no `--runtime` flag, Buttons defaults to `/bin/sh`.
+
+## File extension and runtime
+
+The file extension determines the stored filename (`main.sh`, `main.py`, `main.js`). You can also pass `--runtime` explicitly:
+
+```bash
+buttons create transform \
+  --file ./transform.py \
+  --runtime python \
+  --arg input:string:required
+```
+
+<Note>
+The 64 KB code size limit that applies to `--code` does not apply to file buttons. File buttons support scripts of any size.
+</Note>
+
+## Example: wrap a deploy script
+
+```bash
+# scripts/deploy.sh
+#!/bin/bash
+set -euo pipefail
+
+ENV=$BUTTONS_ARG_ENV
+VERSION=$BUTTONS_ARG_VERSION
+
+echo "Deploying $VERSION to $ENV..."
+kubectl set image deployment/app app=registry.example.com/app:$VERSION -n $ENV
+kubectl rollout status deployment/app -n $ENV
+```
+
+Import it:
+
+```bash
+buttons create k8s-deploy \
+  --file ./scripts/deploy.sh \
+  --arg env:string:required \
+  --arg version:string:required \
+  -d "Roll out a new image version to a Kubernetes namespace"
+```
+
+## Related
+
+- [Code buttons](/buttons/code) — write the script inline instead of importing a file
+- [Arguments](/concepts/arguments) — typed args injected as `BUTTONS_ARG_<NAME>`
+- [Button folder structure](/concepts/folder-structure) — where the copied file lives on disk

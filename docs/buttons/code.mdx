@@ -1,0 +1,91 @@
+---
+title: "Code buttons"
+description: "Run inline shell, Python, or Node scripts as buttons."
+---
+
+Code buttons let you write a script directly in the button spec. The code runs in a subprocess every time you press the button.
+
+## Inline code
+
+Pass the script body with `--code`:
+
+```bash
+buttons create greet \
+  --code 'echo "Hello, $BUTTONS_ARG_NAME"' \
+  --runtime shell \
+  --arg name:string:required \
+  -d "Print a greeting"
+```
+
+Press it:
+
+```bash
+buttons press greet --arg name=Ada
+# Hello, Ada
+```
+
+## Piped code
+
+For longer scripts, pipe from stdin using `--code-stdin`:
+
+```bash
+cat scripts/deploy.sh | buttons create deploy \
+  --code-stdin \
+  --runtime shell \
+  --arg env:string:required \
+  -d "Deploy to an environment"
+```
+
+Or use a heredoc:
+
+```bash
+buttons create check-disk \
+  --code-stdin \
+  --runtime shell \
+  -d "Report disk usage" <<'EOF'
+df -h | awk 'NR==1 || /\/$/ {print}'
+EOF
+```
+
+## Choosing a runtime
+
+Use `--runtime` to pick the interpreter. The binary must be present on `$PATH` at press time.
+
+| Flag value | Interpreter used |
+|---|---|
+| `shell` | `/bin/sh` (default) |
+| `python` | `python3` |
+| `node` | `node` |
+
+```bash
+buttons create parse-json \
+  --code 'import json, os; print(json.loads(os.environ["BUTTONS_ARG_INPUT"])["key"])' \
+  --runtime python \
+  --arg input:string:required
+```
+
+<Note>
+`--runtime` defaults to `shell` when omitted. If you pass `--code` without `--runtime`, the script runs under `/bin/sh`.
+</Note>
+
+## Argument injection
+
+Arguments are never interpolated into the script body. They arrive as environment variables named `BUTTONS_ARG_<NAME>` (uppercased).
+
+```bash
+# Arg declared as:  --arg bucket:string:required
+# Available in script as:
+echo "$BUTTONS_ARG_BUCKET"
+```
+
+This prevents shell injection regardless of what value is passed at press time.
+
+## Code size limit
+
+The inline code body is capped at **64 KB**. For larger scripts, use a [file button](/buttons/file) instead.
+
+## Related
+
+- [File buttons](/buttons/file) — import an existing script file
+- [Arguments](/concepts/arguments) — declare and pass typed args
+- [JSON output](/concepts/json-output) — capture results programmatically
