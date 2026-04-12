@@ -97,7 +97,12 @@ You can also update through your original install channel:
 
 | Installed via | Update with |
 |---|---|
+| Self-update | `buttons update` |
 | curl | Re-run the same `curl \| sh` command |
 | Docker | `docker pull ghcr.io/autonoco/buttons:latest` |
 | Go | `go install github.com/autonoco/buttons@latest` |
 | Homebrew | `brew upgrade buttons` |
+
+<Note>
+If you installed via Homebrew, `buttons update` detects this and asks you to use `brew upgrade` instead.
+</Note>
