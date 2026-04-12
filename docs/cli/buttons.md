@@ -35,5 +35,6 @@ buttons [flags]
 * [buttons press](buttons_press.md)	 - Run a button
 * [buttons smash](buttons_smash.md)	 - Run multiple buttons in parallel
 * [buttons store](buttons_store.md)	 - Marketplace (search/install/import/publish)
+* [buttons update](buttons_update.md)	 - Update buttons to the latest version
 * [buttons version](buttons_version.md)	 - Print build version, commit, and date
 
