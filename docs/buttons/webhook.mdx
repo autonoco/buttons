@@ -1,0 +1,39 @@
+---
+title: "Webhook buttons"
+sidebarTitle: "Webhook"
+description: "Expose a button as a webhook endpoint that external services can POST to."
+tag: "Coming soon"
+---
+
+Webhook buttons will turn a button into a **receiver**: an HTTP endpoint you can register with GitHub, Stripe, Linear, or any other service that fires webhooks. When the endpoint receives a POST, the button is pressed with the request body and headers available as arguments.
+
+This is the inverse of an [HTTP API button](/buttons/http-api). HTTP API buttons *send* requests; webhook buttons *receive* them.
+
+```bash
+# Planned shape
+buttons create github-pr-opened \
+  --webhook \
+  --secret $GITHUB_WEBHOOK_SECRET \
+  --code './scripts/on-pr-opened.sh'
+```
+
+Start the receiver:
+
+```bash
+buttons serve --port 8080
+# → POST http://localhost:8080/webhooks/github-pr-opened
+```
+
+Point GitHub at that URL and every PR event fires the button.
+
+## Blocked on
+
+`buttons serve` — a long-running server mode. Not just a flag: it needs an HTTP listener, a router, signature verification, retry/ack semantics, and a way to run in the background (launchd, systemd, Docker).
+
+## What's changing when serve lands
+
+- `--webhook` flag on `buttons create`
+- `--secret` flag for HMAC signature verification (required for production)
+- Request body injected as `BUTTONS_ARG_BODY`, headers as `BUTTONS_ARG_HEADER_<NAME>`
+- `buttons serve` sub-command that exposes all webhook buttons on one port
+- Per-button path routing: `/webhooks/<button-name>`

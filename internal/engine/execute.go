@@ -33,9 +33,9 @@ func Execute(ctx context.Context, btn *button.Button, args map[string]string, co
 		return executeHTTP(ctx, btn, args, result)
 	}
 
-	// Agent buttons return the instruction from AGENT.md
-	if btn.Runtime == "agent" {
-		return executeAgent(ctx, codePath, result)
+	// Prompt buttons return the instruction from AGENT.md
+	if btn.Runtime == "prompt" {
+		return executePrompt(ctx, codePath, result)
 	}
 
 	// Resolve interpreter for the button's runtime
@@ -157,8 +157,8 @@ func interpreterForRuntime(runtime string) (string, error) {
 	}
 }
 
-// executeAgent reads the AGENT.md instruction and returns it as output.
-func executeAgent(ctx context.Context, agentMDPath string, result *Result) *Result {
+// executePrompt reads the AGENT.md instruction and returns it as output.
+func executePrompt(ctx context.Context, promptPath string, result *Result) *Result {
 	start := result.StartedAt
 
 	// Respect context cancellation / timeout
@@ -166,18 +166,18 @@ func executeAgent(ctx context.Context, agentMDPath string, result *Result) *Resu
 		result.Status = "timeout"
 		result.ExitCode = -1
 		result.ErrorType = "TIMEOUT"
-		result.Stderr = "timed out before reading agent instruction"
+		result.Stderr = "timed out before reading prompt instruction"
 		result.DurationMs = time.Since(start).Milliseconds()
 		return result
 	}
 
-	// #nosec G304 -- agentMDPath is constructed by callers from config.ButtonDir()
+	// #nosec G304 -- promptPath is constructed by callers from config.ButtonDir()
 	// (which rejects paths escaping ButtonsDir) + the literal "AGENT.md" suffix.
-	data, err := os.ReadFile(agentMDPath)
+	data, err := os.ReadFile(promptPath)
 	if err != nil {
 		result.Status = "error"
 		result.ExitCode = -1
-		result.ErrorType = "AGENT_ERROR"
+		result.ErrorType = "PROMPT_ERROR"
 		result.Stderr = fmt.Sprintf("failed to read AGENT.md: %v", err)
 		result.DurationMs = time.Since(start).Milliseconds()
 		return result

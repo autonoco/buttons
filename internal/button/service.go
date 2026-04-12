@@ -24,7 +24,7 @@ type CreateOpts struct {
 	Method               string
 	Headers              map[string]string
 	Body                 string
-	Agent                string // Agent instruction/system prompt
+	Prompt               string // Prompt/instruction written to AGENT.md
 	Description          string
 	TimeoutSeconds       int
 	MaxResponseBytes     int64 // URL buttons only; zero → DefaultMaxResponseBytes
@@ -47,11 +47,11 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "button name is empty after slugification"}
 	}
 
-	// Validate sources: file, code, or url (--agent is a modifier, not a source)
+	// Validate sources: file, code, or url (--prompt is a modifier, not a source)
 	hasFile := opts.FilePath != ""
 	hasCode := opts.Code != ""
 	hasURL := opts.URL != ""
-	hasAgent := opts.Agent != ""
+	hasPrompt := opts.Prompt != ""
 	sources := 0
 	if hasFile {
 		sources++
@@ -65,8 +65,8 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 	if sources > 1 {
 		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "only one of --file, --code, or --url can be provided"}
 	}
-	if sources == 0 && !hasAgent {
-		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "must provide --file, --code, --url, or --agent"}
+	if sources == 0 && !hasPrompt {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "must provide --file, --code, --url, or --prompt"}
 	}
 
 	if hasCode && len(opts.Code) > maxCodeBytes {
@@ -77,8 +77,8 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 	runtime := opts.Runtime
 	if hasURL {
 		runtime = "http"
-	} else if sources == 0 && hasAgent {
-		runtime = "agent" // standalone agent, no code/url/file
+	} else if sources == 0 && hasPrompt {
+		runtime = "prompt" // standalone prompt button, no code/url/file
 	} else if runtime == "" {
 		runtime = "shell"
 	}
@@ -153,7 +153,7 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 
 	now := time.Now().UTC()
 	btn := &Button{
-		SchemaVersion:        1,
+		SchemaVersion:        2,
 		Name:                 name,
 		Description:          opts.Description,
 		Runtime:              runtime,
@@ -203,18 +203,18 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 	}
 
 	// Write AGENT.md
-	var agentMD string
-	if hasAgent {
-		// Agent button: the instruction IS the AGENT.md
-		agentMD = opts.Agent + "\n"
+	var promptMD string
+	if hasPrompt {
+		// Prompt button: the instruction IS the AGENT.md
+		promptMD = opts.Prompt + "\n"
 	} else {
-		agentMD = fmt.Sprintf("# %s\n\n", name)
+		promptMD = fmt.Sprintf("# %s\n\n", name)
 		if opts.Description != "" {
-			agentMD += opts.Description + "\n\n"
+			promptMD += opts.Description + "\n\n"
 		}
-		agentMD += "## Notes\n\n_Add context about this button here: why it exists, gotchas, expected output format._\n"
+		promptMD += "## Notes\n\n_Add context about this button here: why it exists, gotchas, expected output format._\n"
 	}
-	if err := os.WriteFile(filepath.Join(btnDir, "AGENT.md"), []byte(agentMD), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(btnDir, "AGENT.md"), []byte(promptMD), 0600); err != nil {
 		// Best-effort cleanup of the partially created button directory.
 		// Error is intentionally ignored: we are already returning a failure
 		// and there is no useful recovery path if the cleanup itself fails.

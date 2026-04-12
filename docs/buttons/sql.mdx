@@ -1,0 +1,37 @@
+---
+title: "SQL buttons"
+sidebarTitle: "SQL"
+description: "Run a stored SQL query against a connected database."
+tag: "Coming soon"
+---
+
+SQL buttons will wrap a parameterized query as a pressable action. The query lives as a file inside the button folder, the database connection is resolved from a reusable credential stored in Buttons' credential system, and arguments are bound as query parameters (not string-interpolated).
+
+```bash
+# Planned shape
+buttons create top-users \
+  --sql ./queries/top-users.sql \
+  --db analytics-prod \
+  --arg limit:int:optional
+```
+
+Press it:
+
+```bash
+buttons press top-users --arg limit=50 --json
+```
+
+## Blocked on
+
+Credential storage ([autonoco/autono#264](https://github.com/autonoco/autono/issues/264) — batteries). The SQL preset depends on being able to:
+
+- Register a database connection once (`buttons store db analytics-prod --url 'postgres://...'`)
+- Reference it by name from any button (`--db analytics-prod`)
+- Share the same credential across multiple SQL buttons without re-specifying
+
+## What's changing when batteries lands
+
+- `--sql <file>` flag reads the query from disk, copies it into the button folder
+- `--db <name>` resolves to a stored connection string
+- Arguments bind as parameters, not string substitution — no SQL injection surface
+- Supported drivers: Postgres first, then MySQL, then SQLite

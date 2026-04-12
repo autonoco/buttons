@@ -22,8 +22,8 @@ func TestCreate_Basic(t *testing.T) {
 	}
 
 	btn := parseButton(t, resp.Data)
-	if btn.SchemaVersion != 1 {
-		t.Errorf("schema_version = %d, want 1", btn.SchemaVersion)
+	if btn.SchemaVersion != 2 {
+		t.Errorf("schema_version = %d, want 2", btn.SchemaVersion)
 	}
 	if btn.Name != "test" {
 		t.Errorf("name = %q, want %q", btn.Name, "test")

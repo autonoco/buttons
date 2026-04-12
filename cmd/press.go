@@ -74,10 +74,10 @@ Examples:
 			return dryRun(btn, parsedArgs, timeout)
 		}
 
-		// Resolve code/agent path for non-HTTP buttons
+		// Resolve code/prompt path for non-HTTP buttons
 		var codePath string
 		if btn.URL == "" {
-			if btn.Runtime == "agent" {
+			if btn.Runtime == "prompt" {
 				btnDir, err := config.ButtonDir(btn.Name)
 				if err != nil {
 					return handleServiceError(err)
@@ -97,9 +97,9 @@ Examples:
 
 		result := engine.Execute(ctx, btn, parsedArgs, codePath)
 
-		// Attach agent prompt if AGENT.md has custom content (not the default template)
-		if agentMD := readAgentPrompt(btn.Name); agentMD != "" {
-			result.AgentPrompt = agentMD
+		// Attach prompt if AGENT.md has custom content (not the default template)
+		if promptMD := readPrompt(btn.Name); promptMD != "" {
+			result.Prompt = promptMD
 		}
 
 		// Persist run history (non-fatal)
@@ -180,7 +180,7 @@ func dryRun(btn *button.Button, args map[string]string, timeout int) error {
 	return nil
 }
 
-func readAgentPrompt(buttonName string) string {
+func readPrompt(buttonName string) string {
 	btnDir, err := config.ButtonDir(buttonName)
 	if err != nil {
 		return ""

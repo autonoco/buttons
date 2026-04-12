@@ -42,8 +42,8 @@ func TestService_Create(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if btn.SchemaVersion != 1 {
-		t.Errorf("schema_version = %d, want 1", btn.SchemaVersion)
+	if btn.SchemaVersion != 2 {
+		t.Errorf("schema_version = %d, want 2", btn.SchemaVersion)
 	}
 	if btn.Runtime != "shell" {
 		t.Errorf("runtime = %q, want %q", btn.Runtime, "shell")
@@ -96,8 +96,8 @@ func TestService_Create(t *testing.T) {
 	data, _ := os.ReadFile(specPath)
 	var saved Button
 	json.Unmarshal(data, &saved)
-	if saved.SchemaVersion != 1 {
-		t.Errorf("saved schema_version = %d, want 1", saved.SchemaVersion)
+	if saved.SchemaVersion != 2 {
+		t.Errorf("saved schema_version = %d, want 2", saved.SchemaVersion)
 	}
 	if len(saved.Args) != 1 || saved.Args[0].Name != "url" {
 		t.Errorf("saved args = %+v, want [{url string true}]", saved.Args)

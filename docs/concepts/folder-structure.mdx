@@ -50,11 +50,11 @@ The spec file for a button. It describes the button type, arguments, runtime, an
 
 ## main.\*
 
-The script file for [code buttons](/buttons/code) and [file buttons](/buttons/file). The extension matches the runtime: `main.sh` for shell, `main.py` for Python, `main.js` for Node. HTTP and agent-only buttons do not have a `main.*` file.
+The script file for [code buttons](/buttons/code). The extension matches the runtime: `main.sh` for shell, `main.py` for Python, `main.js` for Node. HTTP and prompt-only buttons do not have a `main.*` file.
 
 ## AGENT.md
 
-Present on [agent buttons](/buttons/agent). Contains the raw instruction text stored at create time via `--agent`. When pressed, the contents are returned in the `agent_prompt` field of the JSON output.
+Present on every button. For [prompt buttons](/buttons/prompt), contains the raw instruction text stored at create time via `--prompt`; when pressed, the contents are returned in the `prompt` field of the JSON output. For other button types, AGENT.md holds notes and context an agent can read to understand when and how to press the button.
 
 ## pressed/
 
