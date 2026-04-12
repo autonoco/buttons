@@ -1,0 +1,58 @@
+name: Auto-release
+
+# Creates a new minor release (v0.1.0 → v0.2.0 → v0.3.0) on every
+# push to main. Skips if the push was a docs-only change or if the
+# commit was made by github-actions[bot] (prevents infinite loops
+# from the docs-sync workflow).
+#
+# To skip a release on a specific merge, include [skip release] in
+# the merge commit message.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Tag next minor release
+    runs-on: ubuntu-latest
+    # Don't release for bot commits (docs-sync) or if [skip release] is in the message.
+    if: |
+      github.actor != 'github-actions[bot]' &&
+      !contains(github.event.head_commit.message, '[skip release]')
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full tag history to find the latest version.
+
+      - name: Determine next version
+        id: version
+        run: |
+          # Find the latest semver tag on this repo.
+          LATEST=$(git tag --list 'v*' --sort=-version:refname | head -n1)
+
+          if [ -z "$LATEST" ]; then
+            NEXT="v0.1.0"
+          else
+            # Parse major.minor.patch from the tag.
+            VERSION="${LATEST#v}"
+            MAJOR=$(echo "$VERSION" | cut -d. -f1)
+            MINOR=$(echo "$VERSION" | cut -d. -f2)
+            # Increment minor, reset patch to 0.
+            NEXT="v${MAJOR}.$((MINOR + 1)).0"
+          fi
+
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Latest: $LATEST → Next: $NEXT"
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.next }}" -m "Auto-release ${{ steps.version.outputs.next }}"
+          git push origin "${{ steps.version.outputs.next }}"
