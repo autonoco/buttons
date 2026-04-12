@@ -1,0 +1,57 @@
+---
+title: "Security overview"
+description: "Threat model, assumptions, and vulnerability reporting."
+---
+
+Buttons is a tool that executes user-defined code by design. This page describes what the threat model covers, what it explicitly does not cover, and how to report a vulnerability.
+
+## What Buttons does by design
+
+When you press a button, Buttons runs a subprocess (shell, Python, Node) or sends an HTTP request. There is no sandbox around that execution. A button that contains `rm -rf /` will run `rm -rf /`. This is intentional — it is the core feature.
+
+The security controls in Buttons are aimed at preventing unintended execution or escalation, not at sandboxing arbitrary code.
+
+## In-scope threats
+
+| Threat | Control |
+|---|---|
+| Path traversal via argument values | `PathEscape` applied to URL path segments — see [template encoding](/security/template-encoding) |
+| Command injection via argument values | Args injected as env vars (`BUTTONS_ARG_<NAME>`), never interpolated into the shell body |
+| SSRF via HTTP buttons targeting internal services | Private network blocking by default — see [SSRF protection](/security/ssrf-protection) |
+| Credential leakage via run history | `pressed/*.json` and `state.db` created with mode `0600` |
+| Unauthorized reads of button specs | `~/.buttons/` created with mode `0700` |
+| Query/JSON injection via argument values | Context-aware encoding in URL and body templates |
+
+## Out-of-scope threats
+
+- **Malicious button specs:** Buttons does not validate whether a button's code is safe. If you import or run a button from an untrusted source, you are responsible for reviewing its contents.
+- **Privilege escalation:** Buttons runs as the invoking user. It does not attempt to drop privileges. If your agent runs as root, buttons run as root.
+- **Side-channel attacks:** Timing or memory side-channels are not in scope.
+- **Third-party MCP tools:** When a button wraps an MCP tool call, the security of that tool is the responsibility of the MCP server operator.
+
+## Assumptions
+
+- **`$PATH` is trusted.** Buttons resolves `python3`, `node`, `sh`, and other interpreters by name. If an attacker can modify `$PATH`, they can substitute a malicious interpreter.
+- **`~/.buttons/` is user-private.** The directory is created with mode `0700`. On shared systems, confirm your `umask` does not override this.
+- **The button creator is trusted.** Buttons does not distinguish between a button you created and one an agent created on your behalf. Both execute with your permissions.
+
+## Vulnerability reporting
+
+If you find a security vulnerability in Buttons, please report it privately rather than opening a public issue.
+
+**Preferred:** Open a [GitHub Security Advisory](https://github.com/autonoco/buttons/security/advisories/new) on the repository. This keeps the report private until a fix is released.
+
+**Alternative:** Email [bobak@autono.co](mailto:bobak@autono.co) with the subject line `[SECURITY] Buttons vulnerability report`.
+
+Please include:
+- A description of the vulnerability and its impact
+- Steps to reproduce
+- The version of Buttons you tested against
+- Any suggested mitigations if you have them
+
+We aim to acknowledge reports within 2 business days and release a fix within 14 days for confirmed vulnerabilities.
+
+## Related
+
+- [SSRF protection](/security/ssrf-protection) — private network blocking for HTTP buttons
+- [Template encoding](/security/template-encoding) — injection prevention in URL and body templates

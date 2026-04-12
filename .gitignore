@@ -1,4 +1,4 @@
-buttons
+/buttons
 dist/
 .claude/
 .env
@@ -7,3 +7,4 @@ dist/
 *.key
 AUDIT.md
 .DS_Store
+.crush/

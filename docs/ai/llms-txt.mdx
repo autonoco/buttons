@@ -1,0 +1,68 @@
+---
+title: "llms.txt"
+description: "Auto-generated documentation index for LLMs and AI agents."
+icon: "file-lines"
+---
+
+Mintlify automatically generates and hosts two files that help AI tools index your documentation:
+
+- **`llms.txt`** — a structured index listing every page with its title, URL, and description
+- **`llms-full.txt`** — your entire documentation site combined into a single file
+
+Both are always up to date and require zero maintenance. They update every time you deploy.
+
+## Where to find them
+
+| File | URL | Purpose |
+|---|---|---|
+| `llms.txt` | `https://buttons.mintlify.app/llms.txt` | Page index with links and descriptions |
+| `llms-full.txt` | `https://buttons.mintlify.app/llms-full.txt` | Full content of every page in one file |
+
+Both are also available at `/.well-known/llms.txt` and `/.well-known/llms-full.txt` for tools that follow the `.well-known` convention.
+
+Mintlify adds HTTP headers to every page response so AI tools can discover these files automatically:
+
+```
+Link: </llms.txt>; rel="llms-txt", </llms-full.txt>; rel="llms-full-txt"
+X-Llms-Txt: /llms.txt
+```
+
+## What llms.txt looks like
+
+A plain Markdown file with your site title, description, and a link to every page:
+
+```markdown
+# Buttons
+
+> Deterministic workflow engine for AI agents.
+
+## Docs
+
+- [Installation](https://buttons.mintlify.app/installation.md): Install Buttons via curl, Docker, Go, or Homebrew.
+- [Quick start](https://buttons.mintlify.app/quickstart.md): Create and press your first button in 30 seconds.
+- [Code buttons](https://buttons.mintlify.app/buttons/code.md): Run inline shell, Python, or Node scripts as buttons.
+...
+```
+
+Page links include a `.md` extension so AI tools can fetch the Markdown version of each page directly. Descriptions come from each page's `description` frontmatter field.
+
+## When agents use llms.txt
+
+- **RAG pipelines** — fetch `llms.txt`, extract URLs, embed each page for vector search
+- **Agent discovery** — check `llms.txt` to learn what documentation exists before deciding what to read in full
+- **Generative search engines** — Perplexity, ChatGPT, Claude, and similar tools use `llms.txt` to index docs
+- **`llms-full.txt` for full context** — agents with large context windows can load the entire docs site in one fetch
+
+## llms.txt vs MCP vs SKILL.md
+
+| | llms.txt | [MCP server](/ai/mcp-server) | [SKILL.md](https://github.com/autonoco/buttons/blob/main/SKILL.md) |
+|---|---|---|---|
+| **Format** | Text index with page URLs | Real-time search API | Full CLI reference in one file |
+| **How agents use it** | Fetch once, discover pages, then fetch individually | Search on demand during conversation | Load into context at session start |
+| **Best for** | RAG, embedding pipelines, generative search | Interactive sessions (Claude Code, Cursor) | Offline agents, CI pipelines |
+| **Stays current** | Updated on every deploy | Updated on every deploy | Regenerated via `make skill` |
+| **Network** | One-time fetch + per-page | Per-query | None (file is in the repo) |
+
+## Custom override
+
+To replace the auto-generated `llms.txt` with a custom version, add an `llms.txt` file to the root of your docs project. Mintlify uses your custom file instead. Delete it to restore the auto-generated version.

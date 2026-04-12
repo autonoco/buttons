@@ -1,0 +1,112 @@
+---
+title: "Connect via MCP"
+description: "Search Buttons documentation from Claude, Cursor, VS Code, and other AI tools."
+icon: "plug"
+---
+
+Mintlify generates a hosted MCP server from these docs. Connect it to your AI tools so they can search Buttons documentation and retrieve full page content directly — no browser, no copy-paste.
+
+The MCP server exposes two tools:
+- **Search** — find relevant docs pages by query
+- **Get page** — retrieve the full content of a specific page by path
+
+Your AI tool decides when to use these tools based on the conversation context. If you ask about creating an HTTP button, it searches the docs and pulls the relevant page automatically.
+
+## Connect to your AI tool
+
+<Tabs>
+  <Tab title="Claude Code">
+    Add the Buttons docs MCP server to Claude Code:
+
+    ```bash
+    claude mcp add --transport http buttons-docs https://buttons.mintlify.app/mcp
+    ```
+
+    Verify:
+
+    ```bash
+    claude mcp list
+    ```
+
+    Now ask Claude Code about Buttons and it can search these docs during response generation.
+  </Tab>
+
+  <Tab title="Claude (web)">
+    <Steps>
+      <Step title="Open Claude settings">
+        Go to [Connectors](https://claude.ai/settings/connectors) in your Claude settings.
+      </Step>
+      <Step title="Add the MCP server">
+        Select **Add custom connector** and enter:
+        - **Name:** `Buttons`
+        - **URL:** `https://buttons.mintlify.app/mcp`
+      </Step>
+      <Step title="Use it in chat">
+        Select the attachments button (plus icon) in any conversation, then select the Buttons connector. Claude searches these docs to answer your questions.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Cursor">
+    <Steps>
+      <Step title="Open MCP settings">
+        Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux), search for "Open MCP settings", and select **Add custom MCP**.
+      </Step>
+      <Step title="Add the server config">
+        In `mcp.json`:
+
+        ```json
+        {
+          "mcpServers": {
+            "buttons-docs": {
+              "url": "https://buttons.mintlify.app/mcp"
+            }
+          }
+        }
+        ```
+      </Step>
+      <Step title="Test it">
+        In Cursor's chat, ask "How do I create an HTTP button with Buttons CLI?" — Cursor should search these docs and return an accurate answer.
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="VS Code">
+    Create `.vscode/mcp.json` in your project:
+
+    ```json
+    {
+      "servers": {
+        "buttons-docs": {
+          "type": "http",
+          "url": "https://buttons.mintlify.app/mcp"
+        }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Quick install from any docs page
+
+Select any text on this docs site and use the contextual menu to:
+- **Copy MCP server URL** — paste into your tool's MCP configuration
+- **Connect to Cursor** — one-click install into Cursor
+- **Connect to VS Code** — one-click install into VS Code
+
+## MCP + SKILL.md
+
+MCP and the [SKILL.md](https://github.com/autonoco/buttons/blob/main/SKILL.md) file in the Buttons repo serve complementary roles:
+
+| | MCP server | SKILL.md |
+|---|---|---|
+| **What it provides** | Real-time search across all docs pages | Full CLI reference in one file |
+| **How the agent uses it** | Searches on demand during conversation | Loaded into context at session start |
+| **Stays current** | Auto-indexed on every docs deployment | Regenerated via `go run ./internal/tools/skillgen` |
+| **Best for** | Deep questions, discovering pages, getting full page content | Quick reference, offline use, CI agents without network |
+
+Use both: load `SKILL.md` for baseline context, connect the MCP server for deep dives.
+
+<Note>
+The MCP server URL above uses `buttons.mintlify.app`. If you're self-hosting or using a custom domain, replace with your actual docs URL followed by `/mcp`.
+</Note>

@@ -1,0 +1,105 @@
+---
+title: "Docker"
+description: "Use the Buttons Docker image for deployed agents."
+---
+
+Buttons publishes a multi-arch Docker image to GitHub Container Registry. Use it to bake the binary into your agent image, run one-off commands, or mount state from the host.
+
+## Image details
+
+```
+ghcr.io/autonoco/buttons:latest
+ghcr.io/autonoco/buttons:v0.1.0   # pinned version
+```
+
+- **Base:** Alpine Linux
+- **Shell available:** `/bin/sh` — shell buttons work out of the box
+- **Python / Node:** not included — add via `apk add` in your derived image
+- **Architectures:** `linux/amd64`, `linux/arm64`
+
+## Pattern 1: Multi-stage copy (recommended)
+
+The most common pattern for agent deployments. Copy just the binary into your own image — no Alpine overhead:
+
+```dockerfile
+FROM ghcr.io/autonoco/buttons:v0.1.0 AS buttons
+
+FROM python:3.12-slim AS agent
+
+COPY --from=buttons /usr/local/bin/buttons /usr/local/bin/buttons
+
+# Your agent setup
+COPY . /app
+WORKDIR /app
+RUN pip install -r requirements.txt
+
+CMD ["python", "agent.py"]
+```
+
+The `buttons` binary is statically linked with no external dependencies, so it runs in any Linux image.
+
+## Pattern 2: Direct docker run
+
+For one-off commands or quick tests:
+
+```bash
+docker run --rm ghcr.io/autonoco/buttons:latest version
+docker run --rm ghcr.io/autonoco/buttons:latest list
+```
+
+State created inside the container is discarded when the container exits.
+
+## Pattern 3: Volume-mounted state
+
+Persist button state and run history to the host by mounting `~/.buttons`:
+
+```bash
+docker run --rm \
+  -v "$HOME/.buttons:/root/.buttons" \
+  ghcr.io/autonoco/buttons:latest \
+  press deploy --arg env=staging --arg version=v1.4.2
+```
+
+This lets you manage buttons on the host and invoke them from containers, or share state between multiple containers.
+
+## Adding Python or Node to a derived image
+
+Shell buttons work in the base image. For Python or Node buttons, extend the image:
+
+<CodeGroup>
+
+```dockerfile Python
+FROM ghcr.io/autonoco/buttons:v0.1.0
+
+RUN apk add --no-cache python3 py3-pip
+```
+
+```dockerfile Node
+FROM ghcr.io/autonoco/buttons:v0.1.0
+
+RUN apk add --no-cache nodejs npm
+```
+
+```dockerfile Python + Node
+FROM ghcr.io/autonoco/buttons:v0.1.0
+
+RUN apk add --no-cache python3 py3-pip nodejs npm
+```
+
+</CodeGroup>
+
+## Environment variables in containers
+
+Set `BUTTONS_HOME` to control where state is stored inside the container:
+
+```dockerfile
+ENV BUTTONS_HOME=/data/buttons
+```
+
+This is useful when your container has a dedicated data volume at a non-default path.
+
+## Related
+
+- [Installation](/installation) — all install options including curl and Go
+- [Install script](/deployment/install-script) — how the install.sh script works
+- [Button folder structure](/concepts/folder-structure) — what lives in `BUTTONS_HOME`

@@ -1,0 +1,95 @@
+---
+title: "Installation"
+description: "Install Buttons via curl, Docker, Go, or Homebrew."
+icon: "download"
+---
+
+Buttons ships as a single static binary for **macOS** and **Linux** (amd64 + arm64). No runtime dependencies.
+
+## curl (macOS / Linux)
+
+The fastest path for a single machine:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh | sh
+```
+
+The script detects your OS and architecture, downloads the matching archive from GitHub Releases, verifies the SHA256 checksum, and installs to `/usr/local/bin`. Uses `sudo` only if the target directory isn't writable.
+
+### Pin a version
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh | BUTTONS_VERSION=v0.1.0 sh
+```
+
+### Custom install directory
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh | BUTTONS_INSTALL_DIR=$HOME/.local/bin sh
+```
+
+## Docker (for deployed agents)
+
+Multi-arch image on GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/autonoco/buttons:latest
+docker run --rm ghcr.io/autonoco/buttons:latest version
+```
+
+Most agent deployments bake the binary into their own image via multi-stage copy:
+
+```dockerfile
+FROM python:3.12-slim AS agent
+# your agent setup...
+
+COPY --from=ghcr.io/autonoco/buttons:v0.1.0 /usr/local/bin/buttons /usr/local/bin/buttons
+```
+
+The image is Alpine-based with `/bin/sh`, so shell buttons work out of the box. Add `python3` or `nodejs` via `apk add` in derived images when those runtimes are needed.
+
+<Tip>
+For one-off invocations with state persisted to the host:
+
+```bash
+docker run --rm -v $PWD/.buttons:/home/buttons/.buttons \
+  ghcr.io/autonoco/buttons:latest press weather --arg city=Miami
+```
+</Tip>
+
+## Go
+
+If you already have a Go toolchain:
+
+```bash
+go install github.com/autonoco/buttons@latest
+```
+
+Installs to `$(go env GOPATH)/bin` (usually `~/go/bin`). Make sure that directory is on your `$PATH`.
+
+## Homebrew (coming soon)
+
+A Homebrew tap is in progress. When it lands:
+
+```bash
+brew install autonoco/tap/buttons
+```
+
+## Verify
+
+```bash
+buttons version
+buttons version --json
+buttons --version
+```
+
+## Updating
+
+Buttons does not ship a `buttons update` command. Each install channel has its own upgrade path:
+
+| Installed via | Update with |
+|---|---|
+| curl | Re-run the same `curl \| sh` command |
+| Docker | `docker pull ghcr.io/autonoco/buttons:latest` |
+| Go | `go install github.com/autonoco/buttons@latest` |
+| Homebrew | `brew upgrade buttons` |
