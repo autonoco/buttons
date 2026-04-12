@@ -3,6 +3,22 @@ title: "Changelog"
 description: "New features and updates for Buttons."
 ---
 
+<Update label="2026-04-12" description="Project-scoped buttons">
+## Project-scoped buttons with `buttons init`
+
+You can now scope buttons to a project instead of storing everything globally in `~/.buttons/`.
+
+### New features
+
+- **`buttons init` command** — run `buttons init` in any project directory to create a local `.buttons/` folder. Buttons created inside that project are versioned alongside your code and shared with collaborators via git. See [folder structure](/concepts/folder-structure) for details.
+
+- **Automatic discovery** — all Buttons commands now walk up the directory tree to find the nearest `.buttons/` folder, the same way git finds `.git/`. No flags or config needed — just `cd` into your project and go.
+
+- **Discovery priority** — Buttons resolves the home directory in order: `BUTTONS_HOME` environment variable first, then a `.buttons/` folder in the current or any parent directory, then the global `~/.buttons/` fallback.
+
+- **Git-friendly defaults** — `buttons init` generates a `.gitignore` inside `.buttons/` that excludes run history (`pressed/`) but keeps button specs, scripts, and agent instructions committed.
+</Update>
+
 <Update label="2026-04-12" description="v0.1.0 — Initial release">
 ## Buttons is live
 
