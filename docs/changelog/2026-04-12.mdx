@@ -3,8 +3,24 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
-<Update label="2026-04-12" description="Self-update, agent integrations, and automatic releases">
-  ## New features
+<Update label="2026-04-12" description="Project-scoped buttons">
+## Project-scoped buttons with `buttons init`
+
+You can now scope buttons to a project instead of storing everything globally in `~/.buttons/`.
+
+### New features
+
+- **`buttons init` command** — run `buttons init` in any project directory to create a local `.buttons/` folder. Buttons created inside that project are versioned alongside your code and shared with collaborators via git. See [folder structure](/concepts/folder-structure) for details.
+
+- **Automatic discovery** — all Buttons commands now walk up the directory tree to find the nearest `.buttons/` folder, the same way git finds `.git/`. No flags or config needed — just `cd` into your project and go.
+
+- **Discovery priority** — Buttons resolves the home directory in order: `BUTTONS_HOME` environment variable first, then a `.buttons/` folder in the current or any parent directory, then the global `~/.buttons/` fallback.
+
+- **Git-friendly defaults** — `buttons init` generates a `.gitignore` inside `.buttons/` that excludes run history (`pressed/`) but keeps button specs, scripts, and agent instructions committed.
+</Update>
+
+<Update label="2026-04-12" description="v0.1.0 — Initial release">
+## Buttons is live
 
   **`buttons update` command.** You can now update Buttons to the latest version directly from the CLI. It downloads the correct binary for your OS, verifies the SHA256 checksum, and atomically replaces the running binary. Use `--check` to see if an update is available without installing. See the [CLI reference](/cli/buttons_update) for details.
 
