@@ -85,11 +85,24 @@ buttons --version
 
 ## Updating
 
-Buttons does not ship a `buttons update` command. Each install channel has its own upgrade path:
+The fastest way to update is the built-in self-update command:
+
+```bash
+buttons update
+```
+
+This downloads the latest release, verifies the SHA256 checksum, and atomically replaces the running binary. Use `--check` to see if an update is available without installing.
+
+You can also update through your original install channel:
 
 | Installed via | Update with |
 |---|---|
+| Self-update | `buttons update` |
 | curl | Re-run the same `curl \| sh` command |
 | Docker | `docker pull ghcr.io/autonoco/buttons:latest` |
 | Go | `go install github.com/autonoco/buttons@latest` |
 | Homebrew | `brew upgrade buttons` |
+
+<Note>
+If you installed via Homebrew, `buttons update` detects this and asks you to use `brew upgrade` instead.
+</Note>

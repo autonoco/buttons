@@ -1,0 +1,34 @@
+---
+title: "Changelog"
+description: "New features and updates for Buttons."
+---
+
+<Update label="2026-04-12" description="v0.1.0 — Initial release">
+## Buttons is live
+
+Buttons is a CLI workflow engine that gives AI agents deterministic, reusable actions. Create a button once — a shell script, HTTP API call, Python/Node snippet, or agent instruction — and press it whenever you need structured, predictable output.
+
+### New features
+
+- **Four button types** — wrap [shell/Python/Node code](/buttons/code), [HTTP API calls](/buttons/http-api), [script files](/buttons/file), or [agent instructions](/buttons/agent) as self-contained buttons with typed arguments, timeouts, and structured JSON output.
+
+- **Structured JSON output** — every command returns [machine-readable JSON](/concepts/json-output) when run with `--json` or in non-TTY environments. Agents parse output reliably without scraping text.
+
+- **`buttons update` command** — run `buttons update` to self-update to the latest release. The CLI downloads the correct binary for your OS and architecture, verifies the SHA256 checksum, and atomically replaces itself. Use `--check` to see if an update is available without installing.
+
+- **Drawers and `buttons smash`** — group related buttons into [drawers](/cli/buttons_drawer) and press them all at once with [`buttons smash`](/cli/buttons_smash) for batch workflows.
+
+- **Template encoding** — use `{{arg}}` placeholders in HTTP URLs and request bodies with automatic [context-aware encoding](/security/template-encoding) to prevent injection.
+
+- **SSRF protection** — HTTP buttons block requests to private and internal networks by default. See [SSRF protection](/security/ssrf-protection) for details.
+
+- **MCP server** — connect your AI tools (Claude, Cursor, VS Code) to the Buttons documentation via [MCP](/ai/mcp-server) for real-time doc search during conversations.
+
+- **skill.md for AI agents** — install the Buttons [agent skill](/ai/skill-md) so your coding agent knows every command, flag, and output format without reading the full docs.
+
+### Distribution
+
+- **Install script** — one-line install via `curl` for macOS and Linux (amd64 + arm64). See [installation](/installation).
+- **Docker image** — multi-arch image at `ghcr.io/autonoco/buttons`. Bake it into agent containers with a single `COPY --from` line. See [Docker deployment](/deployment/docker).
+- **Go install** — `go install github.com/autonoco/buttons@latest` for Go toolchain users.
+</Update>

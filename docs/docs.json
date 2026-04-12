@@ -71,6 +71,18 @@
         ]
       },
       {
+        "tab": "Changelog",
+        "groups": [
+          {
+            "group": "Changelog",
+            "public": true,
+            "pages": [
+              "changelog/2026-04-12"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "CLI reference",
         "groups": [
           {
@@ -83,6 +95,7 @@
               "cli/buttons_list",
               "cli/buttons_history",
               "cli/buttons_delete",
+              "cli/buttons_update",
               "cli/buttons_version"
             ]
           },
