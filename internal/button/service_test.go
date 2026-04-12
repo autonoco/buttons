@@ -104,6 +104,30 @@ func TestService_Create(t *testing.T) {
 	}
 }
 
+func TestService_Create_ScaffoldNoSource(t *testing.T) {
+	home := setupTestEnv(t)
+	svc := NewService()
+
+	// No FilePath, Code, URL, or Prompt — should scaffold a shell button.
+	btn, err := svc.Create(CreateOpts{Name: "scaffolded", TimeoutSeconds: 60})
+	if err != nil {
+		t.Fatalf("scaffold create failed: %v", err)
+	}
+	if btn.Runtime != "shell" {
+		t.Errorf("runtime = %q, want shell", btn.Runtime)
+	}
+
+	// main.sh should exist with the shebang placeholder.
+	codePath := filepath.Join(home, "buttons", "scaffolded", "main.sh")
+	data, err := os.ReadFile(codePath)
+	if err != nil {
+		t.Fatalf("scaffolded main.sh not found: %v", err)
+	}
+	if len(data) == 0 {
+		t.Fatal("scaffolded main.sh is empty, expected shebang + TODO")
+	}
+}
+
 func TestService_Create_CustomTimeout(t *testing.T) {
 	home := setupTestEnv(t)
 	script := createTestScript(t, home)

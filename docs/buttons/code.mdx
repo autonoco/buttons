@@ -1,107 +1,129 @@
 ---
 title: "Code buttons"
 sidebarTitle: "Code"
-description: "Wrap inline or file-based scripts as pressable, typed actions."
+description: "Wrap a shell, Python, or Node script as a pressable, typed action."
 ---
 
-Code buttons wrap a script — shell, Python, or Node — as a named action with typed arguments, a timeout, and structured output. Every code button stores its script as a file inside the button folder, whether you provide it inline with `--code` or import it from disk with `--file`.
+A code button is a script the runtime executes every time you press it. The script lives as a file inside the button folder, so you can edit it the same way you edit any other file.
 
-## Create from inline code
+## The default flow: scaffold, edit, press
 
-Pass the script body with `--code`:
+The simplest way to create a button is to let Buttons scaffold a placeholder script you can fill in. Declare the args you'll need up front — they're part of the button spec and can't be added later without recreating the button:
 
 ```bash
-buttons create greet \
-  --code 'echo "Hello, $BUTTONS_ARG_NAME"' \
-  --runtime shell \
-  --arg name:string:required \
-  -d "Print a greeting"
+buttons create greet --arg name:string:required
+# Created button: greet
+#   Edit:  /Users/you/.buttons/buttons/greet/main.sh
+#   Press: buttons press greet
 ```
 
-Press it:
+Open the scaffolded `main.sh` — it has a shebang, a TODO comment, and a hint about where args arrive:
+
+```bash
+#!/bin/sh
+set -eu
+
+# TODO: add your command here
+# Args arrive as $BUTTONS_ARG_<NAME>
+```
+
+Edit it to whatever you want:
+
+```bash
+#!/bin/sh
+echo "Hello, $BUTTONS_ARG_NAME"
+```
+
+Press:
 
 ```bash
 buttons press greet --arg name=Ada
-# Hello, Ada
+# → Hello, Ada
 ```
 
-For longer scripts, pipe from stdin with `--code-stdin`:
+<Note>
+  Args are declared at create time and stored in `button.json`. If you need to change them, delete and recreate the button — your `main.sh` is at the same path each time, so you can copy your edits over.
+</Note>
+
+## Scaffold in Python or Node
+
+Pass `--runtime` to scaffold with the right shebang and extension:
 
 ```bash
-cat scripts/deploy.sh | buttons create deploy \
-  --code-stdin \
-  --runtime shell \
-  --arg env:string:required \
-  -d "Deploy to an environment"
+buttons create parse-json --runtime python --arg input:string:required
+# → scaffolds main.py with:
+#     #!/usr/bin/env python3
+#     # TODO: add your code here
+#     # Args arrive as os.environ["BUTTONS_ARG_<NAME>"]
 ```
-
-Or use a heredoc:
 
 ```bash
-buttons create check-disk \
-  --code-stdin \
-  --runtime shell \
-  -d "Report disk usage" <<'EOF'
-df -h | awk 'NR==1 || /\/$/ {print}'
-EOF
+buttons create transform --runtime node --arg payload:string:required
+# → scaffolds main.js
 ```
 
-Inline code is capped at **64 KB**. Import from a file when your script is larger.
+| Flag value | Interpreter used | File written |
+|---|---|---|
+| `shell` (default) | `/bin/sh` | `main.sh` |
+| `python` | `python3` | `main.py` |
+| `node` | `node` | `main.js` |
 
-## Create from a file
+## Shortcuts for when you already know the code
 
-Use `-f` or `--file` to import an existing script. The file is copied into the button folder at create time so the button is self-contained:
+Three shortcuts let you skip the edit step when the script is trivial or already on disk.
+
+### `--code 'one-liner'`
+
+Pass a one-line script inline. Useful when the body is a single command and quoting isn't painful:
+
+```bash
+buttons create hostname --code 'hostname -f'
+buttons create ls-home --code 'ls -la ~' --runtime shell
+```
+
+Inline code is capped at **64 KB**. Beyond that, write it to a file and use `--file`.
+
+### `--file ./path/to/script.sh`
+
+Copy an existing script into the button folder. The file is copied (not symlinked) so the button is self-contained:
 
 ```bash
 buttons create deploy \
   --file ./scripts/deploy.sh \
   --arg env:string:required \
   --arg version:string:required \
-  -d "Deploy a tagged release to an environment"
+  -d "Deploy a tagged release"
 ```
 
-Press it the same way as any other button:
-
-```bash
-buttons press deploy --arg env=staging --arg version=v1.4.2
-```
-
-The source file is **copied**, not symlinked. Editing the original after creation has no effect. To update the script, recreate the button or edit the copy directly at `~/.buttons/buttons/<name>/main.<ext>`.
-
-File buttons have no size limit.
-
-## Choosing a runtime
-
-Use `--runtime` to pick the interpreter. The binary must be present on `$PATH` at press time.
-
-| Flag value | Interpreter used |
-|---|---|
-| `shell` | `/bin/sh` (default) |
-| `python` | `python3` |
-| `node` | `node` |
-
-```bash
-buttons create parse-json \
-  --code 'import json, os; print(json.loads(os.environ["BUTTONS_ARG_INPUT"])["key"])' \
-  --runtime python \
-  --arg input:string:required
-```
-
-<Note>
-  If you import a script with `--file` and it starts with a shebang, the OS uses that interpreter directly — no need to pass `--runtime`. When there is no shebang and no `--runtime`, Buttons defaults to `/bin/sh`.
-</Note>
+If the script has a shebang, the OS uses that interpreter directly — no need to pass `--runtime`. Without a shebang and without `--runtime`, Buttons defaults to `/bin/sh`.
 
 ## Argument injection
 
-Arguments are never interpolated into the script body. They arrive as environment variables named `BUTTONS_ARG_<NAME>` (uppercased).
+Arguments are never interpolated into the script body. They arrive as environment variables named `BUTTONS_ARG_<NAME>` (uppercased):
 
 ```bash
-# Arg declared as:  --arg bucket:string:required
-# Available in script as:
-echo "$BUTTONS_ARG_BUCKET"
+# Declared:  --arg bucket:string:required
+# Available:
+echo "$BUTTONS_ARG_BUCKET"           # shell
+os.environ["BUTTONS_ARG_BUCKET"]     # python
+process.env.BUTTONS_ARG_BUCKET       # node
 ```
 
-This prevents shell injection regardless of what value is passed at press time.
+This prevents shell injection regardless of what the caller passes at press time.
+
+## Where the code lives
+
+After `buttons create`, the button folder contains:
+
+```
+~/.buttons/buttons/<name>/
+  button.json     # spec: args, runtime, timeout
+  main.sh         # your code (or main.py / main.js)
+  AGENT.md        # notes for agents pressing this button
+  pressed/        # run history, one JSON file per press
+```
+
+Edit `main.sh` any time. Changes take effect on the next press — no recreate needed.
 
 ## Example: wrap a deploy script
 
@@ -133,4 +155,4 @@ buttons create k8s-deploy \
 - [Prompt buttons](/buttons/prompt) — attach an instruction to any button for the consuming agent
 - [Arguments](/concepts/arguments) — declare and pass typed args
 - [JSON output](/concepts/json-output) — capture results programmatically
-- [Folder structure](/concepts/folder-structure) — where the script lives on disk
+- [Folder structure](/concepts/folder-structure) — what lives inside a button folder

@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 	"os"
+	"path/filepath"
 	"strings"
-
-	"github.com/mattn/go-isatty"
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
@@ -15,7 +13,6 @@ import (
 
 var createFile string
 var createCode string
-var createCodeStdin bool
 var createRuntime string
 var createURL string
 var createMethod string
@@ -31,51 +28,32 @@ var createArgs []string
 var createCmd = &cobra.Command{
 	Use:   "create [name]",
 	Short: "Create a new button",
-	Long: `Create a new button from a script file, inline code, or API endpoint.
+	Long: `Create a new button.
 
-A button wraps a single action with typed arguments, a timeout, and
-structured output. Provide --file for a script, --code for inline code,
-or --url for an HTTP API endpoint.
+By default, 'buttons create <name>' scaffolds a shell button with a
+placeholder main.sh the agent can edit, then press. Use --runtime to
+scaffold a Python or Node button instead.
+
+Provide a shortcut flag to skip the placeholder: --code for a one-line
+inline script, --file to copy an existing script, --url for an HTTP
+endpoint, or --prompt for a standalone instruction.
 
 Arguments are defined with --arg in name:type:required|optional format.
 Supported types: string, int, bool. Args are injected as env vars for
 scripts or substituted into URL templates for API buttons.
 
 Examples:
-  buttons create deploy -f ./scripts/deploy.sh --arg env:string:required
+  buttons create deploy                                  # scaffold, then edit main.sh
+  buttons create etl --runtime python                    # scaffold, then edit main.py
   buttons create greet --code 'echo "Hello, $BUTTONS_ARG_NAME"' --arg name:string:required
+  buttons create k8s-deploy -f ./scripts/deploy.sh --arg env:string:required
   buttons create weather --url 'https://wttr.in/{{city}}?format=j1' --arg city:string:required
-  buttons create webhook --url https://api.example.com/hook --method POST
   buttons create graphql --url https://api.example.com/graphql --method POST \
     --header "Content-Type: application/json" --body '{"query": "{ viewer { login } }"}'
   buttons create check-logs --prompt "Use the Northflank CLI to read production logs and summarize errors"`,
 	Args: exactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		code := createCode
-
-		// Read code from stdin if --code-stdin
-		if createCodeStdin {
-			if createFile != "" {
-				return handleServiceError(&button.ServiceError{Code: "VALIDATION_ERROR", Message: "cannot use both --file and --code-stdin"})
-			}
-			if createCode != "" {
-				return handleServiceError(&button.ServiceError{Code: "VALIDATION_ERROR", Message: "cannot use both --code and --code-stdin"})
-			}
-			if isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd()) {
-				return handleServiceError(&button.ServiceError{Code: "VALIDATION_ERROR", Message: "--code-stdin requires piped input (stdin is a terminal)"})
-			}
-			data, err := io.ReadAll(io.LimitReader(os.Stdin, 65536+1))
-			if err != nil {
-				return handleServiceError(&button.ServiceError{Code: "VALIDATION_ERROR", Message: fmt.Sprintf("failed to read stdin: %v", err)})
-			}
-			if len(data) > 65536 {
-				return handleServiceError(&button.ServiceError{Code: "VALIDATION_ERROR", Message: "stdin code exceeds 64KB limit"})
-			}
-			if len(data) == 0 {
-				return handleServiceError(&button.ServiceError{Code: "VALIDATION_ERROR", Message: "no code provided on stdin"})
-			}
-			code = string(data)
-		}
 
 		argDefs, err := button.ParseArgDefs(createArgs)
 		if err != nil {
@@ -121,19 +99,42 @@ Examples:
 			return handleServiceError(err)
 		}
 
+		// Resolve the on-disk paths for the created button so callers can
+		// jump straight to the code file (scaffolded or otherwise).
+		btnDir, _ := config.ButtonDir(btn.Name)
+		var codePath string
+		if btn.URL == "" && btn.Runtime != "prompt" {
+			if p, err := svc.CodePath(btn.Name); err == nil {
+				codePath = p
+			}
+		}
+
 		if jsonOutput {
-			return config.WriteJSON(btn)
+			return config.WriteJSON(struct {
+				*button.Button
+				CodePath  string `json:"code_path,omitempty"`
+				ButtonDir string `json:"button_dir"`
+			}{
+				Button:    btn,
+				CodePath:  codePath,
+				ButtonDir: btnDir,
+			})
 		}
 
 		fmt.Fprintf(os.Stderr, "Created button: %s\n", btn.Name)
+		if codePath != "" {
+			fmt.Fprintf(os.Stderr, "  Edit:  %s\n", codePath)
+		} else if btn.Runtime == "prompt" {
+			fmt.Fprintf(os.Stderr, "  Edit:  %s\n", filepath.Join(btnDir, "AGENT.md"))
+		}
+		fmt.Fprintf(os.Stderr, "  Press: buttons press %s\n", btn.Name)
 		return nil
 	},
 }
 
 func init() {
-	createCmd.Flags().StringVarP(&createFile, "file", "f", "", "path to script file")
-	createCmd.Flags().StringVar(&createCode, "code", "", "inline script code")
-	createCmd.Flags().BoolVar(&createCodeStdin, "code-stdin", false, "read code from stdin")
+	createCmd.Flags().StringVarP(&createFile, "file", "f", "", "copy an existing script file into the button folder")
+	createCmd.Flags().StringVar(&createCode, "code", "", "inline script code (shortcut for one-liners)")
 	createCmd.Flags().StringVar(&createRuntime, "runtime", "", "code runtime: shell, python, node (default: shell)")
 	createCmd.Flags().StringVar(&createURL, "url", "", "HTTP API endpoint URL (supports {{arg}} templates)")
 	createCmd.Flags().StringVar(&createMethod, "method", "", "HTTP method for --url (default: GET)")

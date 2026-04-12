@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 )
 
@@ -83,33 +82,6 @@ func (e *testEnv) run(args ...string) result {
 	e.t.Helper()
 	cmd := exec.Command(e.binary, args...)
 	cmd.Env = append(os.Environ(), "BUTTONS_HOME="+e.home)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	exitCode := 0
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			e.t.Fatalf("failed to run command: %v", err)
-		}
-	}
-
-	return result{
-		Stdout:   stdout.String(),
-		Stderr:   stderr.String(),
-		ExitCode: exitCode,
-	}
-}
-
-func (e *testEnv) runWithStdin(stdinContent string, args ...string) result {
-	e.t.Helper()
-	cmd := exec.Command(e.binary, args...)
-	cmd.Env = append(os.Environ(), "BUTTONS_HOME="+e.home)
-	cmd.Stdin = strings.NewReader(stdinContent)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

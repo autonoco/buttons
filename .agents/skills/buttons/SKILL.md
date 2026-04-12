@@ -27,7 +27,11 @@ Deterministic workflow engine for AI agents. Create reusable, composable actions
 ## Quick reference
 
 ```bash
-# Create buttons
+# Default: scaffold + edit + press. Creates main.sh with placeholder you edit.
+buttons create deploy --arg env:string:required
+# → edit ~/.buttons/buttons/deploy/main.sh, then: buttons press deploy --arg env=staging
+
+# Shortcuts for known content (skip the scaffold):
 buttons create greet --code 'echo "Hello, $BUTTONS_ARG_NAME"' --arg name:string:required
 buttons create weather --url 'https://wttr.in/{{city}}?format=j1' --arg city:string:required
 buttons create deploy-checklist --prompt "Verify: tests pass, staging green, team notified"
@@ -114,10 +118,9 @@ buttons create [flags]
 | `--allow-private-networks` | bool | allow --url buttons to reach private network addresses (localhost, 10/8, 172.16/12, 192.168/16, 169.254/16, IPv6 private ranges). Required for local dev targets. |
 | `--arg` | stringArray | argument definition (name:type:required|optional) |
 | `--body` | string | HTTP request body (supports {{arg}} templates) |
-| `--code` | string | inline script code |
-| `--code-stdin` | bool | read code from stdin |
+| `--code` | string | inline script code (shortcut for one-liners) |
 | `-d, --description` | string | button description |
-| `-f, --file` | string | path to script file |
+| `-f, --file` | string | copy an existing script file into the button folder |
 | `--header` | stringArray | HTTP header as 'Key: Value' (repeatable) |
 | `--max-response-size` | string | max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M |
 | `--method` | string | HTTP method for --url (default: GET) |
@@ -281,10 +284,12 @@ Pass at press time: `--arg key=value`
 
 ## Button sources
 
+`buttons create <name>` scaffolds a shell button with a placeholder `main.sh` the agent edits, then presses. Use a shortcut flag to skip the scaffold:
+
 | Flag | Source | Runtime |
 |------|--------|--------|
-| `--code` | Inline script | `--runtime shell\|python\|node` (default: shell) |
-| `--code-stdin` | Piped script from stdin | Same as `--code` |
+| (none) | Scaffold `main.<ext>` with shebang + TODO | `--runtime shell\|python\|node` (default: shell) |
+| `--code` | Inline script body (one-liners) | Same as above |
 | `-f`/`--file` | Existing script file (copied into button folder) | Detected from shebang |
 | `--url` | HTTP endpoint with `{{arg}}` templates | HTTP client |
 | `--prompt` | Instruction for the consuming agent | Returns text, no execution |

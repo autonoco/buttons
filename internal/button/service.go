@@ -65,32 +65,34 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 	if sources > 1 {
 		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "only one of --file, --code, or --url can be provided"}
 	}
-	if sources == 0 && !hasPrompt {
-		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "must provide --file, --code, --url, or --prompt"}
-	}
 
 	if hasCode && len(opts.Code) > maxCodeBytes {
 		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "inline code exceeds 64KB limit"}
 	}
 
-	// Resolve runtime
+	// Resolve runtime. URL → http, prompt-only (no sources) → prompt,
+	// otherwise honor --runtime or default to shell. Bare `buttons create foo`
+	// scaffolds a shell button with a placeholder main.sh the agent can edit.
 	runtime := opts.Runtime
 	if hasURL {
 		runtime = "http"
 	} else if sources == 0 && hasPrompt {
-		runtime = "prompt" // standalone prompt button, no code/url/file
+		runtime = "prompt" // standalone prompt button, no code file
 	} else if runtime == "" {
 		runtime = "shell"
 	}
-	if opts.Runtime != "" && !hasCode {
-		if hasFile {
-			return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "--runtime is only valid with --code (file-based buttons use shebangs)"}
-		}
+	// --runtime applies to code buttons written by buttons (scaffold or --code).
+	// --file uses the imported script's shebang, --url is HTTP, --prompt-only
+	// is text — all three ignore the runtime concept.
+	if opts.Runtime != "" {
 		if hasURL {
 			return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "--runtime is not valid with --url"}
 		}
-		if sources > 0 {
-			return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "--runtime requires --code"}
+		if hasFile {
+			return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "--runtime is not valid with --file (file-based buttons use their own shebang)"}
+		}
+		if sources == 0 && hasPrompt {
+			return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "--runtime is not valid with a prompt-only button"}
 		}
 	}
 
@@ -180,24 +182,35 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 		return nil, fmt.Errorf("failed to write button spec: %w", err)
 	}
 
-	// Write code file (for code and file-based buttons, not URL)
-	if hasCode || hasFile {
+	// Write code file for every code-based button. HTTP buttons (--url)
+	// and standalone prompt buttons (--prompt with no source) do not get
+	// a main.* file. Source priority: --code > --file > scaffold placeholder.
+	writeCodeFile := !hasURL && !(sources == 0 && hasPrompt)
+	if writeCodeFile {
 		ext := ExtForRuntime(runtime)
 		codePath := filepath.Join(btnDir, "main"+ext)
 
-		if hasCode {
+		switch {
+		case hasCode:
 			// #nosec G306 -- code files require the exec bit to run via /bin/sh, python3, node;
 			// 0700 keeps them user-private while allowing execution.
 			if err := os.WriteFile(codePath, []byte(opts.Code), 0700); err != nil {
 				return nil, fmt.Errorf("failed to write code file: %w", err)
 			}
-		} else {
+		case hasFile:
 			if err := copyFile(opts.FilePath, codePath); err != nil {
 				return nil, fmt.Errorf("failed to copy file: %w", err)
 			}
 			// #nosec G302 -- code files require the exec bit; see rationale above.
 			if err := os.Chmod(codePath, 0700); err != nil {
 				return nil, fmt.Errorf("failed to set code file permissions: %w", err)
+			}
+		default:
+			// Scaffold: write a placeholder the agent can edit. Shebang + TODO
+			// so opening the file reveals the runtime and what to do next.
+			// #nosec G306 -- see rationale above.
+			if err := os.WriteFile(codePath, []byte(scaffoldFor(runtime)), 0700); err != nil {
+				return nil, fmt.Errorf("failed to write scaffold: %w", err)
 			}
 		}
 	}
