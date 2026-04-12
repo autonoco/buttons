@@ -35,6 +35,7 @@ func main() {
 	var b strings.Builder
 	writeSkill(&b, root)
 
+	// #nosec G306 -- generated skill file must be world-readable.
 	if err := os.WriteFile(*out, []byte(b.String()), 0o644); err != nil {
 		log.Fatal(err)
 	}

@@ -25,7 +25,7 @@ var reservedNames = map[string]bool{
 	"create": true, "press": true, "list": true, "rm": true,
 	"board": true, "drawer": true, "batteries": true, "smash": true,
 	"store": true, "history": true, "help": true, "version": true,
-	"mcp": true, "serve": true,
+	"mcp": true, "serve": true, "update": true, "delete": true,
 }
 
 func IsReservedName(name string) bool {
