@@ -205,6 +205,18 @@ Marketplace (search/install/import/publish)
 buttons store
 ```
 
+### `buttons update`
+
+Update buttons to the latest version
+
+```
+buttons update [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--check` | bool | check for updates without installing |
+
 ### `buttons version`
 
 Print build version, commit, and date
