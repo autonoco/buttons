@@ -1,0 +1,18 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-12" description="Self-update, agent integrations, and automatic releases">
+  ## New features
+
+  **`buttons update` command.** You can now update Buttons to the latest version directly from the CLI. It downloads the correct binary for your OS, verifies the SHA256 checksum, and atomically replaces the running binary. Use `--check` to see if an update is available without installing. See the [CLI reference](/cli/buttons_update) for details.
+
+  **Agent skill discovery.** AI tools like Claude Code, Cursor, and VS Code can now discover and install the Buttons skill automatically. Run `npx skills add https://buttons.mintlify.app` to teach your agent every command, flag, and output format. Learn more in the [skill.md guide](/ai/skill-md).
+
+  **MCP server and llms.txt.** Buttons documentation is now searchable from AI tools via a hosted [MCP server](/ai/mcp-server). Connect it in Claude, Cursor, or VS Code to search docs and retrieve full pages without leaving your editor. An auto-generated [llms.txt](/ai/llms-txt) index is also available for RAG pipelines and generative search engines.
+
+  ## Updates
+
+  **Automatic releases.** Every merge to `main` now triggers a new release with built binaries and a Docker image on GitHub Container Registry. You no longer need to wait for a manual release to get the latest changes.
+</Update>
