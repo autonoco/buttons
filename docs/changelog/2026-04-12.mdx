@@ -3,6 +3,26 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-12" description="Prompt buttons, consolidated docs, and five upcoming button types">
+## Prompt buttons, consolidated docs, and five upcoming button types
+
+This release renames agent buttons to prompt buttons, simplifies the button type lineup, and previews five new button types on the roadmap.
+
+### New features
+
+- **Five upcoming button types** — the docs now include preview pages for button types coming soon: [CLI](/buttons/cli), [SQL](/buttons/sql), [Webhook](/buttons/webhook), [Cron](/buttons/cron), and [MCP](/buttons/mcp). Each page explains the planned behavior and what it's blocked on.
+
+### Updates
+
+- **`--agent` renamed to `--prompt`** — the `--agent` flag on `buttons create` is now `--prompt`. The JSON output field changes from `agent_prompt` to `prompt`. Existing buttons created with `--agent` will need to be recreated. See [prompt buttons](/buttons/prompt).
+
+- **File buttons merged into code buttons** — file-based button creation (`--file`) is now documented alongside inline code under [code buttons](/buttons/code). The separate file buttons page has been removed. No CLI changes — `--file` works exactly the same way.
+
+- **API buttons renamed** — "HTTP API buttons" are now just "API buttons" in the docs. The flags and behavior are unchanged. See [API buttons](/buttons/http-api).
+
+- **Schema version bumped to v2** — newly created buttons use schema version 2. This reflects the `--agent` → `--prompt` rename in the stored spec.
+</Update>
+
 <Update label="2026-04-12" description="Four button types, drawers, and batteries">
 ## Four button types, drawers, and batteries
 
