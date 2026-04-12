@@ -1,0 +1,84 @@
+---
+title: "skill.md"
+description: "Install the Buttons agent skill into Claude Code, Cursor, and other AI tools."
+icon: "brain"
+---
+
+`skill.md` is a machine-readable file that tells AI agents what your product can do, what inputs it needs, and what constraints apply. While [llms.txt](/ai/llms-txt) is a documentation index and [MCP](/ai/mcp-server) is a search API, `skill.md` is a **capability summary** — the agent loads it once and knows how to use Buttons.
+
+## Install the Buttons skill
+
+```bash
+npx skills add https://buttons.mintlify.app
+```
+
+This fetches the Buttons skill from the hosted discovery endpoint and installs it into your agent's skill directory. The skill includes every command, flag, the JSON output contract, argument types, and common usage patterns — all auto-generated from the Cobra command tree.
+
+## Discovery endpoints
+
+Mintlify hosts the skill at two standard endpoints:
+
+| Endpoint | URL |
+|---|---|
+| **Agent-skills 0.2.0** (recommended) | `https://buttons.mintlify.app/.well-known/agent-skills/index.json` |
+| **Individual skill** | `https://buttons.mintlify.app/.well-known/agent-skills/buttons/SKILL.md` |
+| **Legacy format** | `https://buttons.mintlify.app/.well-known/skills/index.json` |
+
+The agent-skills endpoint includes SHA256 integrity verification so tools can verify the skill hasn't been tampered with.
+
+## Manual installation
+
+If you prefer to install the skill manually instead of using `npx skills add`:
+
+<Tabs>
+  <Tab title="Claude Code">
+    The Buttons skill is already in the repo at `.agents/skills/buttons/SKILL.md`. Claude Code picks it up automatically when working in the Buttons repo.
+
+    For other repos, copy the skill:
+    ```bash
+    mkdir -p .agents/skills/buttons
+    curl -fsSL https://buttons.mintlify.app/.well-known/agent-skills/buttons/SKILL.md \
+      -o .agents/skills/buttons/SKILL.md
+    ```
+  </Tab>
+  <Tab title="Cursor / Windsurf">
+    Download the skill file and place it where your agent reads skills:
+    ```bash
+    curl -fsSL https://buttons.mintlify.app/.well-known/agent-skills/buttons/SKILL.md \
+      -o SKILL.md
+    ```
+    Then reference it in your agent's configuration.
+  </Tab>
+</Tabs>
+
+## What the skill contains
+
+The Buttons skill is auto-generated from the Cobra command tree via `go run ./internal/tools/skillgen`. It follows the [AgentSkills specification](https://agentskills.io/specification) and includes:
+
+- **YAML frontmatter** — name, description, license, compatibility, metadata
+- **Quick reference** — copy-paste examples for create, press, list, history, delete
+- **Full command reference** — every command and subcommand with flags table
+- **JSON output contract** — success/error shapes and all error codes
+- **Argument types** — string, int, bool with env var and template injection rules
+- **Button sources** — code, HTTP, file, agent with runtime details
+- **Common patterns** — lifecycle, agent context, local dev server examples
+- **Storage layout** — `~/.buttons/` directory structure
+
+## Keeping the skill current
+
+The skill auto-updates through two mechanisms:
+
+1. **In the repo** — the [docs-sync workflow](/.github/workflows/docs-sync.yml) regenerates `SKILL.md` whenever CLI code changes on main and opens a PR with updates
+2. **On Mintlify** — the hosted skill file updates whenever the docs deploy
+
+You never have to manually maintain the skill content. Change a command or flag in `cmd/*.go`, and the skill updates automatically.
+
+## skill.md vs llms.txt vs MCP
+
+| | skill.md | [llms.txt](/ai/llms-txt) | [MCP server](/ai/mcp-server) |
+|---|---|---|---|
+| **What it is** | Capability summary | Documentation index | Real-time search API |
+| **Agent loads it** | Once at session start | Once for discovery | On demand per query |
+| **Best for** | Teaching an agent how to use Buttons | RAG pipelines, embedding | Deep questions, page lookup |
+| **Size** | ~300 lines | ~50 lines (links only) | N/A (API) |
+| **Install** | `npx skills add <url>` | Fetch the URL | `claude mcp add` |

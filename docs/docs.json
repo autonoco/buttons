@@ -58,7 +58,8 @@
             "group": "Coding agent",
             "pages": [
               "ai/mcp-server",
-              "ai/llms-txt"
+              "ai/llms-txt",
+              "ai/skill-md"
             ]
           }
         ]
