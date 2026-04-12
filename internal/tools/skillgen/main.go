@@ -43,6 +43,23 @@ func main() {
 }
 
 func writeSkill(b *strings.Builder, root *cobra.Command) {
+	// YAML frontmatter per the AgentSkills specification
+	// (https://agentskills.io/specification).
+	b.WriteString("---\n")
+	b.WriteString("name: buttons\n")
+	b.WriteString("description: |\n")
+	b.WriteString("  Deterministic workflow engine for AI agents. Create and press\n")
+	b.WriteString("  reusable buttons (shell scripts, HTTP APIs, agent instructions)\n")
+	b.WriteString("  with typed inputs and structured JSON output. Use when wrapping\n")
+	b.WriteString("  repeatable actions, calling HTTP endpoints, or building multi-step\n")
+	b.WriteString("  workflows where each step is a named, typed, pressable button.\n")
+	b.WriteString("license: Apache-2.0\n")
+	b.WriteString("compatibility: Requires the buttons CLI binary installed (go install github.com/autonoco/buttons@latest or curl installer).\n")
+	b.WriteString("metadata:\n")
+	b.WriteString("  author: autonoco\n")
+	b.WriteString("  repository: https://github.com/autonoco/buttons\n")
+	b.WriteString("---\n\n")
+
 	b.WriteString("# Buttons CLI\n\n")
 	b.WriteString("Deterministic workflow engine for AI agents. Create reusable, composable actions with typed inputs and structured JSON output.\n\n")
 

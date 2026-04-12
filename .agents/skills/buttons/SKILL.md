@@ -1,3 +1,18 @@
+---
+name: buttons
+description: |
+  Deterministic workflow engine for AI agents. Create and press
+  reusable buttons (shell scripts, HTTP APIs, agent instructions)
+  with typed inputs and structured JSON output. Use when wrapping
+  repeatable actions, calling HTTP endpoints, or building multi-step
+  workflows where each step is a named, typed, pressable button.
+license: Apache-2.0
+compatibility: Requires the buttons CLI binary installed (go install github.com/autonoco/buttons@latest or curl installer).
+metadata:
+  author: autonoco
+  repository: https://github.com/autonoco/buttons
+---
+
 # Buttons CLI
 
 Deterministic workflow engine for AI agents. Create reusable, composable actions with typed inputs and structured JSON output.

@@ -15,6 +15,7 @@
         "groups": [
           {
             "group": "Getting started",
+            "public": true,
             "pages": [
               "index",
               "installation",
@@ -23,6 +24,7 @@
           },
           {
             "group": "Button types",
+            "public": true,
             "pages": [
               "buttons/code",
               "buttons/http-api",
@@ -32,6 +34,7 @@
           },
           {
             "group": "Concepts",
+            "public": true,
             "pages": [
               "concepts/arguments",
               "concepts/json-output",
@@ -41,6 +44,7 @@
           },
           {
             "group": "Deployment",
+            "public": true,
             "pages": [
               "deployment/docker",
               "deployment/install-script"
@@ -48,6 +52,7 @@
           },
           {
             "group": "Security",
+            "public": true,
             "pages": [
               "security/overview",
               "security/ssrf-protection",
@@ -56,9 +61,11 @@
           },
           {
             "group": "Coding agent",
+            "public": true,
             "pages": [
               "ai/mcp-server",
-              "ai/llms-txt"
+              "ai/llms-txt",
+              "ai/skill-md"
             ]
           }
         ]
@@ -68,6 +75,7 @@
         "groups": [
           {
             "group": "Core commands",
+            "public": true,
             "pages": [
               "cli/buttons",
               "cli/buttons_create",
@@ -80,6 +88,7 @@
           },
           {
             "group": "Workflow commands",
+            "public": true,
             "expanded": false,
             "pages": [
               "cli/buttons_drawer",
@@ -91,6 +100,7 @@
           },
           {
             "group": "Configuration commands",
+            "public": true,
             "expanded": false,
             "pages": [
               "cli/buttons_batteries",
@@ -101,6 +111,7 @@
           },
           {
             "group": "Other",
+            "public": true,
             "expanded": false,
             "pages": [
               "cli/buttons_board",
