@@ -1,0 +1,86 @@
+---
+title: "JSON output"
+description: "Every command supports structured JSON output for programmatic use."
+---
+
+Every Buttons command can emit structured JSON instead of human-readable text. This makes it straightforward to use Buttons inside scripts, pipelines, and agent loops.
+
+## Enabling JSON output
+
+Pass `--json` to any command:
+
+```bash
+buttons press weather --arg city=Miami --json
+buttons list --json
+buttons history deploy --json
+```
+
+**Auto-detection:** when stdout is not a TTY (e.g. inside a script, piped to another command, or running in a container), Buttons switches to JSON automatically. You do not need to pass `--json` explicitly in non-interactive contexts.
+
+## Output contract
+
+Every response is a JSON object with an `ok` boolean at the top level.
+
+**Success:**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "button": "weather",
+    "status": "ok",
+    "stdout": "{\"current_condition\": [...]}",
+    "stderr": "",
+    "exit_code": 0
+  }
+}
+```
+
+**Failure:**
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "button 'weather' does not exist"
+  }
+}
+```
+
+The shape of `data` varies by command, but `ok`, `error.code`, and `error.message` are always present and stable.
+
+## Error codes
+
+| Code | When it occurs |
+|---|---|
+| `NOT_FOUND` | The named button or drawer does not exist |
+| `MISSING_ARG` | A required argument was not supplied |
+| `VALIDATION_ERROR` | An argument value did not match its declared type |
+| `TIMEOUT` | The button execution exceeded its timeout |
+| `SCRIPT_ERROR` | The subprocess exited with a non-zero exit code |
+| `RUNTIME_MISSING` | The required interpreter (`python3`, `node`, etc.) is not on `$PATH` |
+| `INTERNAL_ERROR` | An unexpected error inside the Buttons runtime |
+| `NOT_IMPLEMENTED` | The command or feature is not yet available in this version |
+
+## Checking exit codes
+
+Buttons exits with code `0` on success and `1` on any error, regardless of `--json`. Use the exit code in shell scripts:
+
+```bash
+if buttons press deploy --arg env=production --json > result.json; then
+  echo "Deploy succeeded"
+else
+  code=$(jq -r '.error.code' result.json)
+  echo "Deploy failed: $code"
+fi
+```
+
+## Writing JSON in Go
+
+Inside the Buttons codebase, use `config.WriteJSON()` and `config.WriteJSONError()` — never `fmt.Println` with raw JSON strings. This ensures consistent formatting and respects the `--json` / non-TTY detection logic.
+
+## Related
+
+- [Arguments](/concepts/arguments) — `MISSING_ARG` and `VALIDATION_ERROR` details
+- [Quick start](/quickstart) — see JSON output in a real example

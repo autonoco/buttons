@@ -1,0 +1,89 @@
+---
+title: "SSRF protection"
+description: "How Buttons blocks HTTP requests to private network addresses."
+---
+
+Server-Side Request Forgery (SSRF) is a class of attack where an attacker tricks a service into making HTTP requests to internal addresses — cloud metadata endpoints, internal APIs, or localhost services — that should not be reachable from outside.
+
+HTTP buttons execute outbound HTTP requests. By default, Buttons blocks any request that resolves to a private network address.
+
+## Blocked address ranges
+
+The following ranges are blocked by default:
+
+| Range | Description |
+|---|---|
+| `127.0.0.0/8` | IPv4 loopback |
+| `10.0.0.0/8` | RFC 1918 private |
+| `172.16.0.0/12` | RFC 1918 private |
+| `192.168.0.0/16` | RFC 1918 private |
+| `169.254.0.0/16` | Link-local (includes AWS/GCP metadata: `169.254.169.254`) |
+| `::1/128` | IPv6 loopback |
+| `fc00::/7` | IPv6 unique local |
+| `fe80::/10` | IPv6 link-local |
+
+Attempting to press an HTTP button that resolves to one of these ranges returns a `SCRIPT_ERROR`:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "SCRIPT_ERROR",
+    "message": "request blocked: target address 169.254.169.254 is in a private network range"
+  }
+}
+```
+
+## DNS rebinding protection
+
+Validation happens after DNS resolution, not just on the literal URL. This prevents DNS rebinding attacks, where a public hostname resolves to a private IP.
+
+If the hostname `api.attacker.example` resolves to `10.0.0.1` at press time, the request is blocked even though the URL does not look like a private address.
+
+## Escape hatch 1: per-button flag
+
+To allow a specific button to target a private address, pass `--allow-private-networks` at create time:
+
+```bash
+buttons create local-health \
+  --url 'http://127.0.0.1:8080/health' \
+  --allow-private-networks \
+  -d "Check local service health"
+```
+
+This flag is stored in the button spec and applies every time that button is pressed.
+
+<Warning>
+Only use `--allow-private-networks` for buttons that target infrastructure you control. A button with this flag in a shared environment gives any agent that can press it a path to your internal network.
+</Warning>
+
+## Escape hatch 2: environment variable
+
+To allow all HTTP buttons to target private networks in a given environment, set:
+
+```bash
+BUTTONS_ALLOW_PRIVATE_NETWORKS=1 buttons press local-service --arg path=/metrics
+```
+
+This is useful in local development or in isolated container networks where all traffic is internal by design.
+
+## Example: internal service in a container network
+
+```bash
+# In a Docker network where services communicate over private IPs
+BUTTONS_ALLOW_PRIVATE_NETWORKS=1 buttons create fetch-metrics \
+  --url 'http://metrics-service:9090/metrics' \
+  -d "Scrape Prometheus metrics from the internal service"
+```
+
+Or set the env var once in your container:
+
+```dockerfile
+ENV BUTTONS_ALLOW_PRIVATE_NETWORKS=1
+```
+
+## Related
+
+- [HTTP API buttons](/buttons/http-api) — `--allow-private-networks` flag reference
+- [Security overview](/security/overview) — full threat model
+- [Template encoding](/security/template-encoding) — injection protection for URL and body values

@@ -1,0 +1,97 @@
+---
+title: "Button folder structure"
+description: "How buttons are stored on disk under ~/.buttons/."
+---
+
+Buttons stores all its data under `~/.buttons/`. Each button gets its own subdirectory with a spec file, an optional code file, optional agent context, and a run history folder.
+
+## Directory layout
+
+```
+~/.buttons/
+├── buttons/
+│   ├── deploy/
+│   │   ├── button.json       # button spec
+│   │   ├── main.sh           # script (code and file buttons)
+│   │   ├── AGENT.md          # agent instructions (agent buttons)
+│   │   └── pressed/
+│   │       ├── 2026-04-10T12-00-00Z.json
+│   │       └── 2026-04-10T14-32-11Z.json
+│   ├── get-user/
+│   │   ├── button.json
+│   │   └── pressed/
+│   └── summarize-pr/
+│       ├── button.json
+│       ├── AGENT.md
+│       └── pressed/
+├── drawers/
+│   └── release-flow/
+│       └── drawer.json
+└── state.db                  # SQLite run history (WAL mode)
+```
+
+## button.json
+
+The spec file for a button. It describes the button type, arguments, runtime, and all other configuration. Every spec includes `"schema_version": 1`.
+
+```json
+{
+  "schema_version": 1,
+  "name": "deploy",
+  "description": "Deploy a tagged release to an environment",
+  "runtime": "shell",
+  "args": [
+    { "name": "env", "type": "string", "required": true },
+    { "name": "version", "type": "string", "required": true }
+  ],
+  "created_at": "2026-04-10T11:00:00Z"
+}
+```
+
+## main.\*
+
+The script file for [code buttons](/buttons/code) and [file buttons](/buttons/file). The extension matches the runtime: `main.sh` for shell, `main.py` for Python, `main.js` for Node. HTTP and agent-only buttons do not have a `main.*` file.
+
+## AGENT.md
+
+Present on [agent buttons](/buttons/agent). Contains the raw instruction text stored at create time via `--agent`. When pressed, the contents are returned in the `agent_prompt` field of the JSON output.
+
+## pressed/
+
+One JSON file per run, named by timestamp. Each file records the input arguments, exit code, stdout, stderr, duration, and whether the run succeeded.
+
+```json
+{
+  "button": "deploy",
+  "pressed_at": "2026-04-10T14:32:11Z",
+  "args": { "env": "staging", "version": "v1.4.2" },
+  "exit_code": 0,
+  "stdout": "Deploying v1.4.2 to staging...\nDone.",
+  "stderr": "",
+  "duration_ms": 3241
+}
+```
+
+## state.db
+
+A SQLite database (WAL mode, `busy_timeout=5000`) that mirrors the run history for indexed queries. `buttons history` reads from this file. The JSON files in `pressed/` are the authoritative record; `state.db` is the query index.
+
+## Overriding the home directory
+
+Set `BUTTONS_HOME` to use a different base directory:
+
+```bash
+BUTTONS_HOME=/tmp/test-buttons buttons create test-btn --code 'echo ok' --runtime shell
+```
+
+This is useful in CI, tests, or container environments where you want an isolated state directory.
+
+<Note>
+The `~/.buttons/` directory and all files inside it are created with mode `0700` / `0600`. Other users on the same system cannot read button specs or run history.
+</Note>
+
+## Related
+
+- [Button folder structure](/concepts/folder-structure) — this page
+- [JSON output](/concepts/json-output) — the shape of history records
+- [File buttons](/buttons/file) — how `main.*` is populated from an imported script

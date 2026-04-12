@@ -1,0 +1,54 @@
+---
+title: "Introduction"
+description: "Buttons is a CLI workflow engine where AI agents are the primary users."
+---
+
+Buttons gives agents deterministic escape hatches. Instead of hoping an LLM follows a multi-step procedure correctly, agents press buttons — self-contained, composable actions with clear inputs, outputs, and status.
+
+Each button wraps a single action: a shell script, an HTTP API call, a Python/Node snippet, or an agent instruction. Create it once with typed arguments and a timeout, press it whenever you need it, get structured JSON output every time.
+
+## Get started
+
+<Columns cols={2}>
+  <Card title="Install" icon="download" href="/installation">
+    curl, Docker, Go, or Homebrew.
+  </Card>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Create and press your first button in 30 seconds.
+  </Card>
+</Columns>
+
+## Button types
+
+<Columns cols={2}>
+  <Card title="Code" icon="code" href="/buttons/code">
+    Inline shell, Python, or Node scripts.
+  </Card>
+  <Card title="HTTP API" icon="globe" href="/buttons/http-api">
+    GET/POST with URL templates and typed args.
+  </Card>
+  <Card title="File" icon="file" href="/buttons/file">
+    Import an existing script file.
+  </Card>
+  <Card title="Agent" icon="robot" href="/buttons/agent">
+    Attach an instruction for the consuming agent.
+  </Card>
+</Columns>
+
+## CLI reference
+
+Every command is auto-generated from the Cobra command tree. Flags, examples, and descriptions stay in sync with the binary.
+
+<Card title="CLI reference" icon="terminal" href="/cli/buttons" horizontal>
+  Full command reference: create, press, list, history, delete, version, and more.
+</Card>
+
+## For deployed agents
+
+Buttons ships as a static binary and a multi-arch Docker image. Bake it into your agent container with one line:
+
+```dockerfile
+COPY --from=ghcr.io/autonoco/buttons:v0.1.0 /usr/local/bin/buttons /usr/local/bin/buttons
+```
+
+Your agent calls `buttons press <name> --json` as a subprocess and gets structured output. No SDK, no library import, no runtime dependency.

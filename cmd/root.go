@@ -80,6 +80,9 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+// Root returns the root command for use by doc generators and tests.
+func Root() *cobra.Command { return rootCmd }
+
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		if !errors.Is(err, errSilent) {

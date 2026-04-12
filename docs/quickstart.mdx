@@ -1,0 +1,90 @@
+---
+title: "Quick start"
+description: "Create and press your first button in 30 seconds."
+icon: "rocket"
+---
+
+<Steps>
+
+<Step title="Install">
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh | sh
+```
+
+Or see [installation](/installation) for Docker, Go, and other options.
+
+</Step>
+
+<Step title="Create a button">
+
+Create an HTTP button that fetches weather data:
+
+```bash
+buttons create weather \
+  --url 'https://wttr.in/{{city}}?format=j1' \
+  --arg city:string:required \
+  -d "Get current weather for a city"
+```
+
+</Step>
+
+<Step title="Press it">
+
+```bash
+buttons press weather --arg city=Miami
+```
+
+The button calls the API, substitutes `city` into the URL template, and prints the response.
+
+</Step>
+
+<Step title="See the result">
+
+```bash
+buttons press weather --arg city=Miami --json
+```
+
+```json
+{
+  "ok": true,
+  "data": {
+    "status": "ok",
+    "stdout": "{\"current_condition\": [...]}",
+    "button": "weather"
+  }
+}
+```
+
+Every command supports `--json` for structured output. Piped output auto-detects non-TTY and switches to JSON automatically.
+
+</Step>
+
+<Step title="View history">
+
+```bash
+buttons history weather
+```
+
+Every press is recorded as a JSON file in the button's `pressed/` folder.
+
+</Step>
+
+</Steps>
+
+## What to try next
+
+<Columns cols={2}>
+  <Card title="Code buttons" icon="code" href="/buttons/code">
+    Run inline shell, Python, or Node scripts.
+  </Card>
+  <Card title="Agent buttons" icon="robot" href="/buttons/agent">
+    Attach instructions for the consuming agent.
+  </Card>
+  <Card title="Arguments" icon="list-check" href="/concepts/arguments">
+    Typed args with validation.
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/cli/buttons_create">
+    Full flag reference for create.
+  </Card>
+</Columns>

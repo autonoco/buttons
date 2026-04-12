@@ -7,3 +7,4 @@ dist/
 *.key
 AUDIT.md
 .DS_Store
+.crush/

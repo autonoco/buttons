@@ -1,0 +1,162 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "almond",
+  "name": "Buttons",
+  "colors": {
+    "primary": "#019edb",
+    "light": "#01b4fa",
+    "dark": "#0182b5"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Docs",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": [
+              "index",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Button types",
+            "pages": [
+              "buttons/code",
+              "buttons/http-api",
+              "buttons/file",
+              "buttons/agent"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/arguments",
+              "concepts/json-output",
+              "concepts/templates",
+              "concepts/folder-structure"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/install-script"
+            ]
+          },
+          {
+            "group": "Security",
+            "pages": [
+              "security/overview",
+              "security/ssrf-protection",
+              "security/template-encoding"
+            ]
+          },
+          {
+            "group": "Coding agent",
+            "pages": [
+              "ai/mcp-server",
+              "ai/llms-txt"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI reference",
+        "groups": [
+          {
+            "group": "Core commands",
+            "pages": [
+              "cli/buttons",
+              "cli/buttons_create",
+              "cli/buttons_press",
+              "cli/buttons_list",
+              "cli/buttons_history",
+              "cli/buttons_delete",
+              "cli/buttons_version"
+            ]
+          },
+          {
+            "group": "Workflow commands",
+            "expanded": false,
+            "pages": [
+              "cli/buttons_drawer",
+              "cli/buttons_drawer_create",
+              "cli/buttons_drawer_add",
+              "cli/buttons_drawer_list",
+              "cli/buttons_smash"
+            ]
+          },
+          {
+            "group": "Configuration commands",
+            "expanded": false,
+            "pages": [
+              "cli/buttons_batteries",
+              "cli/buttons_batteries_set",
+              "cli/buttons_batteries_list",
+              "cli/buttons_batteries_rm"
+            ]
+          },
+          {
+            "group": "Other",
+            "expanded": false,
+            "pages": [
+              "cli/buttons_board",
+              "cli/buttons_store"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/autonoco/buttons",
+          "icon": "github"
+        },
+        {
+          "anchor": "Releases",
+          "href": "https://github.com/autonoco/buttons/releases",
+          "icon": "rocket"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/autonoco/buttons"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Install",
+      "href": "/installation"
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "cursor",
+      "vscode",
+      "mcp",
+      "add-mcp"
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/autonoco/buttons"
+    }
+  }
+}

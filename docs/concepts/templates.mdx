@@ -1,0 +1,78 @@
+---
+title: "URL and body templates"
+description: "How {{arg}} placeholders work in HTTP buttons with context-aware encoding."
+---
+
+HTTP buttons use `{{name}}` placeholders in the URL, headers, and request body. When you press the button, each placeholder is replaced with the corresponding argument value. The substitution is context-aware: the encoding applied depends on where in the request the placeholder appears.
+
+## How substitution works
+
+At press time, Buttons walks the URL and body and replaces every `{{name}}` with the value of the `name` argument. The encoding is chosen based on position:
+
+| Location | Encoding |
+|---|---|
+| URL path segment (before `?`) | `url.PathEscape` |
+| URL query parameter (after `?`) | `url.QueryEscape` |
+| JSON body (`Content-Type: application/json`) | JSON string escape (`\"`, `\\`, control chars) |
+| Form body (`Content-Type: application/x-www-form-urlencoded`) | `url.QueryEscape` |
+| Other body types | Raw (no encoding) |
+
+## Examples
+
+### URL path injection
+
+A user passes `../../etc/passwd` as the `file_id` argument:
+
+```
+Template:   https://api.example.com/files/{{file_id}}/download
+Raw value:  ../../etc/passwd
+Result:     https://api.example.com/files/..%2F..%2Fetc%2Fpasswd/download
+```
+
+`PathEscape` encodes the slashes, so the traversal attempt becomes a literal (non-functional) path segment.
+
+### URL query injection
+
+A user passes `q=real&admin=true` as the `query` argument:
+
+```
+Template:   https://api.example.com/search?q={{query}}&limit=10
+Raw value:  real&admin=true
+Result:     https://api.example.com/search?q=real%26admin%3Dtrue&limit=10
+```
+
+`QueryEscape` encodes `&` and `=`, so the injected parameter never becomes a second query key.
+
+### JSON field injection
+
+A user passes `","role":"admin` as the `username` argument:
+
+```
+Template:   {"username": "{{username}}", "action": "read"}
+Raw value:  ","role":"admin
+Result:     {"username": "\",\"role\":\"admin", "action": "read"}
+```
+
+JSON string escaping turns the quotes and commas into escape sequences, preventing the injected text from breaking out of the string field.
+
+## Headers
+
+Header values also support `{{arg}}` substitution but are not encoded — they are passed as-is. This is appropriate for values like bearer tokens and API keys where encoding would break the value.
+
+<Note>
+If you need to pass a literal `{{` or `}}` in a URL or body, escape it as `\{{` and `\}}`.
+</Note>
+
+## Raw body types
+
+For bodies with a `Content-Type` other than `application/json` or `application/x-www-form-urlencoded`, Buttons inserts values without encoding. Use this only when you control the full body format and know the values are safe.
+
+<Warning>
+Raw substitution provides no injection protection. If the body format has its own injection risks (e.g. XML, LDAP query syntax), validate or sanitize argument values before they reach the button.
+</Warning>
+
+## Related
+
+- [HTTP API buttons](/buttons/http-api) — full flag reference for URL, method, headers, body
+- [Template encoding](/security/template-encoding) — detailed security analysis of each encoding context
+- [Security overview](/security/overview) — threat model and assumptions

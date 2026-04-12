@@ -1,0 +1,100 @@
+---
+title: "Install script"
+description: "How the install.sh script works and its configuration options."
+---
+
+`install.sh` is a POSIX-compatible shell script that fetches the correct Buttons binary for your platform, verifies its integrity, and installs it. It works on macOS, Linux, Alpine, and BusyBox-based environments — anywhere `/bin/sh` is available.
+
+## Basic usage
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh | sh
+```
+
+## Configuration via environment variables
+
+Pass variables before `sh` to control the install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh \
+  | BUTTONS_VERSION=v0.1.0 BUTTONS_INSTALL_DIR=$HOME/.local/bin sh
+```
+
+| Variable | Default | Description |
+|---|---|---|
+| `BUTTONS_VERSION` | Latest release | Pin to a specific version tag (e.g. `v0.1.0`) |
+| `BUTTONS_INSTALL_DIR` | `/usr/local/bin` | Directory to install the `buttons` binary |
+| `GITHUB_TOKEN` | _(none)_ | GitHub personal access token for private repos or to avoid rate limits |
+
+## What the script does
+
+<Steps>
+
+<Step title="Detect platform">
+The script identifies your OS (`darwin`, `linux`) and architecture (`amd64`, `arm64`) using `uname`. It exits with an error if the combination is unsupported.
+</Step>
+
+<Step title="Resolve version">
+If `BUTTONS_VERSION` is not set, the script calls the GitHub Releases API to find the latest release tag. It passes `GITHUB_TOKEN` in the `Authorization` header if set.
+</Step>
+
+<Step title="Download archive">
+Downloads the matching `.tar.gz` archive and its `.sha256` checksum file from the GitHub Release assets.
+</Step>
+
+<Step title="Verify SHA256">
+Computes the SHA256 of the downloaded archive and compares it to the published checksum. The script exits immediately if they do not match — no binary is installed.
+</Step>
+
+<Step title="Extract and install">
+Extracts the `buttons` binary and copies it to `BUTTONS_INSTALL_DIR`. Uses `sudo` only if the target directory exists but is not writable by the current user.
+</Step>
+
+</Steps>
+
+## Pinning a version
+
+For reproducible agent deployments, always pin a version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh \
+  | BUTTONS_VERSION=v0.1.0 sh
+```
+
+This prevents unintended upgrades when you rebuild your image or re-provision a machine.
+
+## Custom install directory
+
+To install without `sudo`, point the script at a user-writable directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh \
+  | BUTTONS_INSTALL_DIR=$HOME/.local/bin sh
+```
+
+Make sure that directory is on your `$PATH`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+## GitHub rate limits
+
+The unauthenticated GitHub API allows 60 requests per hour per IP. In CI environments where many jobs run on shared egress IPs, you may hit this limit. Pass a token to raise the rate limit:
+
+```bash
+| GITHUB_TOKEN=$GH_TOKEN sh
+```
+
+<Tip>
+In GitHub Actions, `GITHUB_TOKEN` is automatically available as a secret. Pass it directly: `GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}`.
+</Tip>
+
+## Alpine and BusyBox compatibility
+
+The script uses only POSIX `sh` builtins and a small set of standard utilities (`uname`, `curl` or `wget`, `sha256sum` or `shasum`, `tar`). It runs in Alpine and BusyBox environments without modification.
+
+## Related
+
+- [Installation](/installation) — full install options including Docker and Go
+- [Docker](/deployment/docker) — bake the binary into a container image

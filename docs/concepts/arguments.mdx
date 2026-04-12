@@ -1,0 +1,91 @@
+---
+title: "Arguments"
+description: "Define typed arguments on buttons and pass values at press time."
+---
+
+Arguments let a button accept input. You declare them at create time with a name, type, and whether they are required or optional. At press time you supply values with `--arg`.
+
+## Declaring arguments
+
+Pass `--arg` once per argument during `buttons create`:
+
+```bash
+buttons create send-alert \
+  --url 'https://hooks.example.com/alert' \
+  --method POST \
+  --body '{"channel": "{{channel}}", "message": "{{message}}", "urgent": {{urgent}}' \
+  --arg channel:string:required \
+  --arg message:string:required \
+  --arg urgent:bool:optional \
+  -d "Send a Slack-style alert"
+```
+
+The format is `name:type:required` or `name:type:optional`.
+
+## Supported types
+
+| Type | Accepted values |
+|---|---|
+| `string` | Any text |
+| `int` | Integer (e.g. `42`, `-7`) |
+| `bool` | `true` or `false` |
+
+Buttons validates types at press time and returns a `VALIDATION_ERROR` if the value does not match.
+
+## Passing values at press time
+
+Use `--arg key=value` for each argument:
+
+```bash
+buttons press send-alert \
+  --arg channel=ops \
+  --arg message="Deployment finished" \
+  --arg urgent=true
+```
+
+Pass multiple values by repeating `--arg`:
+
+```bash
+buttons press send-alert --arg channel=ops --arg message="Done"
+```
+
+## Required vs optional
+
+Required arguments cause a `MISSING_ARG` error if omitted. Optional arguments are silently absent — the button must handle their absence gracefully.
+
+```bash
+buttons press send-alert --arg channel=ops
+# error: missing required argument: message
+```
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "MISSING_ARG",
+    "message": "missing required argument: message"
+  }
+}
+```
+
+## How arguments reach code buttons
+
+For [code buttons](/buttons/code) and [file buttons](/buttons/file), each argument is injected as an environment variable named `BUTTONS_ARG_<NAME>` where `<NAME>` is the argument name uppercased:
+
+```bash
+# Declared as:  --arg region:string:required
+# In your script:
+echo "Deploying to $BUTTONS_ARG_REGION"
+```
+
+Values are never interpolated directly into the script body. This prevents shell injection regardless of what string is passed.
+
+## How arguments reach HTTP buttons
+
+For [HTTP buttons](/buttons/http-api), argument values are substituted into `{{name}}` placeholders in the URL, headers, and body. The substitution is context-aware — path segments, query parameters, JSON bodies, and form bodies each encode values differently. See [URL and body templates](/concepts/templates) for details.
+
+## Related
+
+- [URL and body templates](/concepts/templates) — `{{arg}}` substitution and encoding
+- [Code buttons](/buttons/code) — `BUTTONS_ARG_<NAME>` environment variable convention
+- [JSON output](/concepts/json-output) — `MISSING_ARG` and `VALIDATION_ERROR` error codes

@@ -1,0 +1,114 @@
+---
+title: "Template encoding"
+description: "How {{arg}} values are encoded to prevent injection attacks."
+---
+
+When an HTTP button is pressed, every `{{name}}` placeholder is replaced with the corresponding argument value. The encoding applied to that value depends on where in the request the placeholder appears.
+
+This page documents the encoding rules and shows what each one prevents.
+
+## Encoding rules by location
+
+| Location | Encoding | Go function |
+|---|---|---|
+| URL path segment (before `?`) | Percent-encode all characters not safe in a path | `url.PathEscape` |
+| URL query parameter value (after `?`) | Percent-encode all characters not safe in a query | `url.QueryEscape` |
+| JSON body (`Content-Type: application/json`) | Escape `"`, `\`, and control characters | `json.Marshal` string encoding |
+| Form body (`application/x-www-form-urlencoded`) | Same as query parameter | `url.QueryEscape` |
+| Header value | None — passed raw | — |
+
+## Attack scenario 1: URL query injection
+
+**Template:**
+
+```
+https://api.example.com/search?q={{query}}&limit=10
+```
+
+**Attack value:** `real&admin=true`
+
+**Without encoding:**
+
+```
+https://api.example.com/search?q=real&admin=true&limit=10
+```
+
+The injected `&admin=true` becomes a second query parameter that the server sees.
+
+**With `QueryEscape`:**
+
+```
+https://api.example.com/search?q=real%26admin%3Dtrue&limit=10
+```
+
+The `&` and `=` are percent-encoded. The server receives `q` = `real&admin=true` as a single value.
+
+## Attack scenario 2: URL path traversal
+
+**Template:**
+
+```
+https://api.example.com/files/{{file_id}}/download
+```
+
+**Attack value:** `../../etc/passwd`
+
+**Without encoding:**
+
+```
+https://api.example.com/files/../../etc/passwd/download
+```
+
+The path traversal may resolve to a different resource depending on the server.
+
+**With `PathEscape`:**
+
+```
+https://api.example.com/files/..%2F..%2Fetc%2Fpasswd/download
+```
+
+Slashes are encoded. The server treats the entire string as a single path segment.
+
+## Attack scenario 3: JSON field injection
+
+**Template:**
+
+```json
+{"username": "{{username}}", "role": "viewer"}
+```
+
+**Attack value:** `","role":"admin`
+
+**Without encoding:**
+
+```json
+{"username": "","role":"admin", "role": "viewer"}
+```
+
+The injected value breaks out of the string and introduces a duplicate key. Depending on the server's JSON parser, it may use the injected `role` value.
+
+**With JSON string escaping:**
+
+```json
+{"username": "\",\"role\":\"admin", "role": "viewer"}
+```
+
+The quotes and commas are escaped. The server receives the attack string as a literal username value.
+
+## Header values
+
+Header values are substituted without encoding. This is correct for tokens and API keys where encoding would break the value (e.g. a base64-encoded credential that contains `+` and `=`).
+
+<Warning>
+If a header value is user-controlled and the header has a structured format (e.g. a custom header that a downstream service parses as key=value pairs), you are responsible for validating the value before it reaches the button.
+</Warning>
+
+## Raw body types
+
+For bodies with a `Content-Type` other than `application/json` or `application/x-www-form-urlencoded`, substitution is raw — no encoding is applied. Use this only when you fully control the body format.
+
+## Related
+
+- [URL and body templates](/concepts/templates) — how templates work at a conceptual level
+- [HTTP API buttons](/buttons/http-api) — full flag reference
+- [Security overview](/security/overview) — threat model and assumptions
