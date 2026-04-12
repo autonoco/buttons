@@ -80,7 +80,15 @@ brew install autonoco/tap/buttons
 
 ## Updating
 
-Buttons does not ship a `buttons update` command — each install channel has its own upgrade path:
+```bash
+buttons update           # download and install the latest version
+buttons update --check   # just check, don't install
+buttons update --json    # structured output
+```
+
+The update command downloads the latest release from GitHub, verifies the SHA256 checksum, and atomically replaces the running binary. If the binary was installed via Homebrew, it tells you to use `brew upgrade` instead.
+
+For containerized and CI environments where `buttons update` isn't practical:
 
 | Installed via | Update with |
 |---|---|
