@@ -31,6 +31,7 @@ buttons [flags]
 * [buttons delete](buttons_delete.md)	 - Delete a button
 * [buttons drawer](buttons_drawer.md)	 - Manage button groups (drawers)
 * [buttons history](buttons_history.md)	 - Show run history
+* [buttons init](buttons_init.md)	 - Initialize a project-local .buttons directory
 * [buttons list](buttons_list.md)	 - List all buttons
 * [buttons press](buttons_press.md)	 - Run a button
 * [buttons smash](buttons_smash.md)	 - Run multiple buttons in parallel
