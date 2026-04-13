@@ -1,0 +1,16 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-13" description="Install via npm, pnpm, or bun">
+## Install via npm, pnpm, or bun
+
+You can now install Buttons from the npm registry using your preferred JavaScript package manager.
+
+### New features
+
+- **npm distribution** — Buttons is now published to the npm registry as `@autono/buttons`. Install globally with `npm install -g @autono/buttons`, `pnpm add -g @autono/buttons`, or `bun add -g @autono/buttons`. The package includes pre-built binaries for macOS and Linux (x64 and arm64), so there's nothing to compile. See [installation](/installation).
+
+- **SLSA provenance on every publish** — each npm release ships with a [SLSA provenance](https://slsa.dev) attestation that links the published package back to the exact GitHub Actions workflow run that built it. You can verify package integrity with `npm audit signatures`.
+</Update>
