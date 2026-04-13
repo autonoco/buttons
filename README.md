@@ -12,6 +12,18 @@ Each button is a self-contained, reusable action. Create it once, press it forev
 
 Buttons ships as a single static binary for **macOS** and **Linux** (amd64 + arm64). Windows support is tracked in [autonoco/autono#350](https://github.com/autonoco/autono/issues/350).
 
+### npm / pnpm / bun
+
+Easiest path if you already have a JavaScript toolchain:
+
+```bash
+npm install -g @autonoco/buttons
+pnpm add -g @autonoco/buttons
+bun add -g @autonoco/buttons
+```
+
+The npm package is a thin JS shim that resolves the matching platform binary via `optionalDependencies`. After install, `buttons` is on your `$PATH` just like any other install method.
+
 ### curl (macOS / Linux)
 
 The fastest path for a single machine:

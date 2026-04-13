@@ -1,0 +1,5 @@
+# npm publishes only what `files` in package.json includes (bin/),
+# plus package.json and README.md. This .npmignore is a belt-and-suspenders
+# guard in case future additions to this directory slip past `files`.
+.DS_Store
+*.tmp

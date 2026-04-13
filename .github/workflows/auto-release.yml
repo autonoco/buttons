@@ -85,3 +85,24 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publish to npm once goreleaser has written the platform binaries into
+      # dist/. setup-node writes an .npmrc that reads NODE_AUTH_TOKEN, so
+      # `npm publish` picks up auth with no extra wiring.
+      #
+      # Requires repo secret: NPM_TOKEN (an "Automation" token from npmjs.com
+      # with publish scope on @autonoco/*). If the secret is missing, the
+      # publish script detects it, logs a warning, and exits 0 — the rest of
+      # the release (GitHub + Docker) still ships.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish to npm
+        run: node scripts/publish-npm.mjs
+        env:
+          VERSION: ${{ steps.version.outputs.next }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
