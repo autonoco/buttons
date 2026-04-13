@@ -21,7 +21,7 @@ permissions:
   contents: write
   packages: write
   # Required for npm Trusted Publishing: the workflow exchanges this short-
-  # lived OIDC token for publish access on configured @autonoco/* packages.
+  # lived OIDC token for publish access on configured @autono/* packages.
   # No long-lived NPM_TOKEN secret is needed — npm validates the token
   # against the trusted-publisher config on npmjs.com.
   id-token: write
@@ -95,7 +95,7 @@ jobs:
       # dist/. Auth is via npm Trusted Publishing (OIDC) — the `id-token:
       # write` permission above lets the npm CLI exchange a GitHub-issued
       # JWT for short-lived publish credentials. Trusted publisher config
-      # lives on npmjs.com under the @autonoco org.
+      # lives on npmjs.com under the @autono org.
       #
       # If TP is not yet configured for a package on the npm side, this
       # step fails loudly with a clear error from npm. Fix by adding the

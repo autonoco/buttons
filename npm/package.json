@@ -1,5 +1,5 @@
 {
-  "name": "@autonoco/buttons",
+  "name": "@autono/buttons",
   "version": "0.0.0-PLACEHOLDER",
   "description": "n8n for agents. A deterministic workflow engine where AI agents build and run their own automations.",
   "license": "Apache-2.0",
@@ -22,10 +22,10 @@
     "node": ">=18"
   },
   "optionalDependencies": {
-    "@autonoco/buttons-darwin-arm64": "0.0.0-PLACEHOLDER",
-    "@autonoco/buttons-darwin-x64": "0.0.0-PLACEHOLDER",
-    "@autonoco/buttons-linux-arm64": "0.0.0-PLACEHOLDER",
-    "@autonoco/buttons-linux-x64": "0.0.0-PLACEHOLDER"
+    "@autono/buttons-darwin-arm64": "0.0.0-PLACEHOLDER",
+    "@autono/buttons-darwin-x64": "0.0.0-PLACEHOLDER",
+    "@autono/buttons-linux-arm64": "0.0.0-PLACEHOLDER",
+    "@autono/buttons-linux-x64": "0.0.0-PLACEHOLDER"
   },
   "keywords": [
     "cli",

@@ -117,7 +117,7 @@ function writePlatformPackage({ goos, goarch, version, binarySrc }) {
     const nodeArch = ARCH_MAP[goarch];
     if (!nodeArch) die(`no node arch mapping for goarch "${goarch}"`);
 
-    const pkgName = `@autonoco/buttons-${goos}-${nodeArch}`;
+    const pkgName = `@autono/buttons-${goos}-${nodeArch}`;
     const pkgDir = join(OUT_DIR, `buttons-${goos}-${nodeArch}`);
     mkdirSync(join(pkgDir, 'bin'), { recursive: true });
 
@@ -181,7 +181,7 @@ function writeMainPackage(version, platformPkgNames) {
     chmodSync(join(outDir, 'bin', 'buttons.js'), 0o755);
     copyFileSync(join(NPM_SRC_DIR, 'README.md'), join(outDir, 'README.md'));
 
-    log(`prepared @autonoco/buttons@${version} with ${platformPkgNames.length} optional deps`);
+    log(`prepared @autono/buttons@${version} with ${platformPkgNames.length} optional deps`);
     return outDir;
 }
 
@@ -238,7 +238,7 @@ function main() {
     if (DRY_RUN) {
         log(`dry-run complete. ${platformPkgNames.length + 1} tarballs packed in dist-npm/.`);
     } else {
-        log(`done. @autonoco/buttons@${version} is live on npm.`);
+        log(`done. @autono/buttons@${version} is live on npm.`);
     }
 }
 

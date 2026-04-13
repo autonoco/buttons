@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Buttons CLI launcher.
 //
-// This package (@autonoco/buttons) is a thin JS shim. The real CLI is a Go
+// This package (@autono/buttons) is a thin JS shim. The real CLI is a Go
 // binary shipped in per-platform optional dependencies. When npm / pnpm / bun
-// install @autonoco/buttons, they also install exactly one matching platform
-// package — e.g. @autonoco/buttons-darwin-arm64 on Apple Silicon — because
+// install @autono/buttons, they also install exactly one matching platform
+// package — e.g. @autono/buttons-darwin-arm64 on Apple Silicon — because
 // each platform package declares `os` and `cpu` fields. Unmatched platforms
 // are skipped silently (that's the whole point of `optionalDependencies`).
 //
@@ -17,7 +17,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const { platform, arch } = process;
-const pkgName = `@autonoco/buttons-${platform}-${arch}`;
+const pkgName = `@autono/buttons-${platform}-${arch}`;
 const binName = platform === 'win32' ? 'buttons.exe' : 'buttons';
 
 let binary;

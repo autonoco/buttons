@@ -1,4 +1,4 @@
-# @autonoco/buttons
+# @autono/buttons
 
 **n8n for agents.** A CLI workflow engine where AI agents build and run their own automations.
 
@@ -8,13 +8,13 @@ Each button is a self-contained, reusable action. Create it once, press it forev
 
 ```bash
 # npm
-npm install -g @autonoco/buttons
+npm install -g @autono/buttons
 
 # pnpm
-pnpm add -g @autonoco/buttons
+pnpm add -g @autono/buttons
 
 # bun
-bun add -g @autonoco/buttons
+bun add -g @autono/buttons
 ```
 
 After install, the `buttons` binary is on your `$PATH`.
@@ -43,10 +43,10 @@ This npm package is a thin JS shim. The real CLI is a Go binary — the same one
 
 Platform packages (installed automatically via `optionalDependencies`):
 
-- `@autonoco/buttons-darwin-arm64` — Apple Silicon
-- `@autonoco/buttons-darwin-x64` — Intel Mac
-- `@autonoco/buttons-linux-arm64` — ARM servers, Raspberry Pi 4+
-- `@autonoco/buttons-linux-x64` — most Linux + WSL
+- `@autono/buttons-darwin-arm64` — Apple Silicon
+- `@autono/buttons-darwin-x64` — Intel Mac
+- `@autono/buttons-linux-arm64` — ARM servers, Raspberry Pi 4+
+- `@autono/buttons-linux-x64` — most Linux + WSL
 
 Windows is tracked separately; see [autonoco/autono#350](https://github.com/autonoco/autono/issues/350).
 

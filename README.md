@@ -17,9 +17,9 @@ Buttons ships as a single static binary for **macOS** and **Linux** (amd64 + arm
 Easiest path if you already have a JavaScript toolchain:
 
 ```bash
-npm install -g @autonoco/buttons
-pnpm add -g @autonoco/buttons
-bun add -g @autonoco/buttons
+npm install -g @autono/buttons
+pnpm add -g @autono/buttons
+bun add -g @autono/buttons
 ```
 
 The npm package is a thin JS shim that resolves the matching platform binary via `optionalDependencies`. After install, `buttons` is on your `$PATH` just like any other install method.
