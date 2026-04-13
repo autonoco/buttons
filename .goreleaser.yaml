@@ -60,6 +60,61 @@ archives:
       - README.md
       - SECURITY.md
 
+# Auto-generate and push a Homebrew cask to autonoco/homebrew-tap on every
+# release. Users install via:
+#
+#   brew install autonoco/tap/buttons
+#
+# Goreleaser builds the cask from the archive list above — picking the right
+# tarball + sha per platform — and renders a single .rb file that dispatches
+# by OS/arch at install time.
+#
+# Why "homebrew_casks" and not "brews"? Goreleaser deprecated `brews` in
+# favor of `homebrew_casks` in v2.10. Casks now handle pre-built CLI
+# binaries (not just GUI apps); the install command is unchanged for users.
+#
+# Auth: HOMEBREW_TAP_TOKEN must be a PAT (or fine-grained token) with
+# `contents:write` on autonoco/homebrew-tap. Set as a repo secret in
+# autonoco/buttons. If the secret is unset, skip_upload templates to true
+# and the brew step is a silent no-op — keeps GitHub + Docker + npm
+# releases shipping even before the tap repo + secret are set up.
+homebrew_casks:
+  - name: buttons
+    binaries:
+      - buttons
+    repository:
+      owner: autonoco
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: "https://buttons.sh"
+    description: "Deterministic workflow engine for AI agents"
+    skip_upload: '{{ if eq .Env.HOMEBREW_TAP_TOKEN "" }}true{{ else }}false{{ end }}'
+    commit_author:
+      name: github-actions[bot]
+      email: github-actions[bot]@users.noreply.github.com
+    commit_msg_template: "chore: bump buttons cask to {{ .Tag }}"
+    # Strip macOS's quarantine xattr from the installed binary. Without
+    # this, Gatekeeper blocks the unsigned binary on first run with a
+    # "cannot be opened because Apple cannot check it for malicious
+    # software" dialog. Code-signing is the proper fix; tracked separately.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/buttons"]
+          end
+    caveats: |
+      Buttons stores its configuration and run history in ~/.buttons/.
+
+      Get started:
+        buttons --help
+        buttons create hello --code 'echo hello'
+        buttons press hello
+
+      Docs: https://buttons.sh
+
 dockers:
   # Build the linux/amd64 image from the prebuilt amd64 binary.
   # goreleaser copies the correct binary into the build context before

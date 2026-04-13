@@ -90,6 +90,12 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Required for the brews: block in .goreleaser.yaml. Must be a PAT
+          # with `contents:write` on autonoco/homebrew-tap. If the secret is
+          # not set, ${{ secrets.X }} evaluates to '' and goreleaser's
+          # skip_upload template kicks in — the brew step becomes a no-op
+          # rather than failing the release.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       # Publish to npm once goreleaser has written the platform binaries into
       # dist/. Auth is via npm Trusted Publishing (OIDC) — the `id-token:
