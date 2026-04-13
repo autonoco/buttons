@@ -5,8 +5,9 @@
 // ----------
 // - Goreleaser has already built binaries for darwin/linux × amd64/arm64 and
 //   written them into dist/ plus a dist/artifacts.json index.
-// - The host has `npm` on PATH and a valid auth token (NODE_AUTH_TOKEN or an
-//   .npmrc with //registry.npmjs.org/:_authToken=...).
+// - The host has `npm` on PATH. In CI, auth is via npm Trusted Publishing
+//   (OIDC) — the workflow sets `permissions: id-token: write` and the npm
+//   CLI handles the token exchange automatically. No NPM_TOKEN env needed.
 // - VERSION env var is the bare semver (e.g. "0.11.0", no leading "v").
 //
 // What this script does
@@ -74,16 +75,6 @@ function getVersion() {
         die(`VERSION does not look like semver: "${raw}"`);
     }
     return v;
-}
-
-// Skip the publish when no auth token is available (e.g. the NPM_TOKEN secret
-// hasn't been set up on the repo yet). We intentionally exit 0 so the first
-// release after this feature lands still ships to GitHub + Docker. Once the
-// secret is added, subsequent releases publish normally.
-function hasNpmAuth() {
-    return Boolean(
-        process.env.NODE_AUTH_TOKEN || process.env.NPM_TOKEN || process.env.NPM_AUTH_TOKEN
-    );
 }
 
 function loadArtifacts() {
@@ -202,20 +193,20 @@ function npmPublish(pkgDir) {
         return;
     }
     log(`publishing ${pkgDir}`);
-    execFileSync('npm', ['publish', '--access', 'public'], { cwd: pkgDir, stdio: 'inherit' });
+    // --provenance attaches a SLSA attestation that the package was built by
+    // this exact GitHub Actions workflow run. It's free when OIDC is already
+    // set up for Trusted Publishing and shows up as a "Provenance" badge on
+    // the package's npm page.
+    execFileSync('npm', ['publish', '--access', 'public', '--provenance'], {
+        cwd: pkgDir,
+        stdio: 'inherit',
+    });
 }
 
 function main() {
     const version = getVersion();
     log(`version: ${version}`);
     log(`dry run: ${DRY_RUN}`);
-
-    if (!DRY_RUN && !hasNpmAuth()) {
-        log('warning: no npm auth token found (NODE_AUTH_TOKEN / NPM_TOKEN).');
-        log('skipping npm publish — GitHub + Docker artifacts already shipped.');
-        log('to enable: add an "Automation" token from npmjs.com as a repo secret named NPM_TOKEN.');
-        return;
-    }
 
     // Clean slate — previous CI runs or local experiments may have left
     // stale output behind. dist-npm/ is not checked in and holds only
