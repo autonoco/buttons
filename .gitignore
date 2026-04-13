@@ -1,5 +1,7 @@
 /buttons
 dist/
+dist-npm/
+node_modules/
 .claude/
 .env
 .env.*

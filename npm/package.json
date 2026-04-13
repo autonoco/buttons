@@ -1,0 +1,39 @@
+{
+  "name": "@autono/buttons",
+  "version": "0.0.0-PLACEHOLDER",
+  "description": "n8n for agents. A deterministic workflow engine where AI agents build and run their own automations.",
+  "license": "Apache-2.0",
+  "homepage": "https://buttons.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/autonoco/buttons.git"
+  },
+  "bugs": {
+    "url": "https://github.com/autonoco/buttons/issues"
+  },
+  "author": "Autono",
+  "bin": {
+    "buttons": "bin/buttons.js"
+  },
+  "files": [
+    "bin/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@autono/buttons-darwin-arm64": "0.0.0-PLACEHOLDER",
+    "@autono/buttons-darwin-x64": "0.0.0-PLACEHOLDER",
+    "@autono/buttons-linux-arm64": "0.0.0-PLACEHOLDER",
+    "@autono/buttons-linux-x64": "0.0.0-PLACEHOLDER"
+  },
+  "keywords": [
+    "cli",
+    "agent",
+    "ai",
+    "automation",
+    "workflow",
+    "buttons",
+    "mcp"
+  ]
+}

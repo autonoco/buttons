@@ -20,6 +20,11 @@ on:
 permissions:
   contents: write
   packages: write
+  # Required for npm Trusted Publishing: the workflow exchanges this short-
+  # lived OIDC token for publish access on configured @autono/* packages.
+  # No long-lived NPM_TOKEN secret is needed — npm validates the token
+  # against the trusted-publisher config on npmjs.com.
+  id-token: write
 
 jobs:
   release:
@@ -85,3 +90,29 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publish to npm once goreleaser has written the platform binaries into
+      # dist/. Auth is via npm Trusted Publishing (OIDC) — the `id-token:
+      # write` permission above lets the npm CLI exchange a GitHub-issued
+      # JWT for short-lived publish credentials. Trusted publisher config
+      # lives on npmjs.com under the @autono org.
+      #
+      # If TP is not yet configured for a package on the npm side, this
+      # step fails loudly with a clear error from npm. Fix by adding the
+      # package to the org's trusted publishers and re-running the job.
+      # npm Trusted Publishing requires npm >= 11.5.1 and Node >= 22.14.0.
+      # Node 22 LTS + an explicit upgrade to npm 11 satisfies both and keeps
+      # us on a stable LTS track.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Upgrade npm to a Trusted Publishing-capable version
+        run: npm install -g npm@11
+
+      - name: Publish to npm
+        run: node scripts/publish-npm.mjs
+        env:
+          VERSION: ${{ steps.version.outputs.next }}
