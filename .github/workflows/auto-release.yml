@@ -100,11 +100,17 @@ jobs:
       # If TP is not yet configured for a package on the npm side, this
       # step fails loudly with a clear error from npm. Fix by adding the
       # package to the org's trusted publishers and re-running the job.
+      # npm Trusted Publishing requires npm >= 11.5.1 and Node >= 22.14.0.
+      # Node 22 LTS + an explicit upgrade to npm 11 satisfies both and keeps
+      # us on a stable LTS track.
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Upgrade npm to a Trusted Publishing-capable version
+        run: npm install -g npm@11
 
       - name: Publish to npm
         run: node scripts/publish-npm.mjs
