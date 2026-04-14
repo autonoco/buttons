@@ -17,8 +17,12 @@ type Button struct {
 	MaxResponseBytes     int64             `json:"max_response_bytes,omitempty"`
 	AllowPrivateNetworks bool              `json:"allow_private_networks,omitempty"`
 	MCPEnabled           bool              `json:"mcp_enabled"`
-	CreatedAt            time.Time         `json:"created_at"`
-	UpdatedAt            time.Time         `json:"updated_at"`
+	// Pinned buttons render as large, clickable cards at the top of the
+	// `buttons board` TUI. Omitted from JSON when false to avoid polluting
+	// every existing button.json — most buttons aren't pinned.
+	Pinned    bool      `json:"pinned,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type ArgDef struct {
