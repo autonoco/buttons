@@ -5,7 +5,15 @@ description: "CLI reference for buttons batteries list"
 
 ## buttons batteries list
 
-List all environment variables
+List every battery
+
+### Synopsis
+
+List batteries from every scope. Values are redacted by default —
+pass --reveal to print them in full.
+
+Local entries that shadow a global key are shown after the global entry;
+at press time the local value wins.
 
 ```
 buttons batteries list [flags]
@@ -14,7 +22,8 @@ buttons batteries list [flags]
 ### Options
 
 ```
-  -h, --help   help for list
+  -h, --help     help for list
+      --reveal   print values in full instead of redacted
 ```
 
 ### Options inherited from parent commands

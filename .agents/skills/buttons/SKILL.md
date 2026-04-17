@@ -73,29 +73,51 @@ Manage environment variables and secrets
 buttons batteries [command]
 ```
 
+#### `buttons batteries get`
+
+Print a battery value
+
+```
+buttons batteries get
+```
+
 #### `buttons batteries list`
 
-List all environment variables
+List every battery
 
 ```
-buttons batteries list
+buttons batteries list [flags]
 ```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--reveal` | bool | print values in full instead of redacted |
 
 #### `buttons batteries rm`
 
-Remove an environment variable
+Remove a battery
 
 ```
-buttons batteries rm
+buttons batteries rm [flags]
 ```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--global` | bool | target the global batteries file (~/.buttons/batteries.json) |
+| `--local` | bool | target the project-local batteries file (.buttons/batteries.json) |
 
 #### `buttons batteries set`
 
-Set an environment variable
+Set a battery
 
 ```
-buttons batteries set
+buttons batteries set [flags]
 ```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--global` | bool | target the global batteries file (~/.buttons/batteries.json) |
+| `--local` | bool | target the project-local batteries file (.buttons/batteries.json) |
 
 ### `buttons board`
 

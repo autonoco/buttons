@@ -5,16 +5,18 @@ description: "CLI reference for buttons batteries set"
 
 ## buttons batteries set
 
-Set an environment variable
+Set a battery
 
 ```
-buttons batteries set [key] [value] [flags]
+buttons batteries set KEY VALUE [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for set
+      --global   target the global batteries file (~/.buttons/batteries.json)
+  -h, --help     help for set
+      --local    target the project-local batteries file (.buttons/batteries.json)
 ```
 
 ### Options inherited from parent commands
