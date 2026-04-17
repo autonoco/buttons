@@ -1,0 +1,30 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-17" description="Interactive board dashboard">
+## Interactive board dashboard
+
+You can now browse and press your buttons from a terminal dashboard.
+
+### New features
+
+- **`buttons board` command** — run `buttons board` to open a full-screen TUI that lists every button in the current scope. Each entry shows its runtime, timeout, and URL metadata at a glance. Press `Enter` or click a button to fire it directly from the dashboard. The board adapts to light and dark terminal backgrounds automatically. See the [CLI reference](/cli/buttons_board).
+
+- **Pinned buttons** — mark a button as pinned to surface it in a dedicated row at the top of the board. Pinned buttons appear as large, clickable cards so your most-used workflows are always one keystroke away.
+</Update>
+
+<Update label="2026-04-17" description="Agent skill picker in buttons init">
+## Agent skill picker in `buttons init`
+
+`buttons init` now sets up your project for AI agents out of the box.
+
+### New features
+
+- **AGENT.md auto-generated** — running `buttons init` now writes a `.buttons/AGENT.md` file that teaches coding agents what Buttons is and how to use it. The file is kept up to date on every init.
+
+- **Interactive skill picker** — on an interactive terminal, `buttons init` prompts you to install skill files for your preferred coding agent. Supported agents include Cursor, Claude Code, Cline, GitHub Copilot, and AGENTS.md. Pick one or more, and the matching config file is created in your project. Use `buttons init --agent cursor,claude` to skip the prompt, or `--agent none` to opt out entirely. See [folder structure](/concepts/folder-structure).
+
+- **Idempotent updates** — re-running `buttons init` replaces only the Buttons section in shared config files (like `CLAUDE.md`) without touching the rest of the file.
+</Update>
