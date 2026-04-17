@@ -190,8 +190,12 @@ buttons history [flags]
 Initialize a project-local .buttons directory
 
 ```
-buttons init
+buttons init [flags]
 ```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--agent` | stringSlice | agent integrations to install (cursor,claude,cline,copilot,agents-md); 'none' skips |
 
 ### `buttons list`
 
