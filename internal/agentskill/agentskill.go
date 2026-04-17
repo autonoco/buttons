@@ -221,8 +221,11 @@ func Install(opts InstallOpts) ([]WriteResult, error) {
 }
 
 func writeTarget(projectRoot string, t Target) (WriteResult, error) {
-	path := filepath.Join(projectRoot, t.Path)
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	path, err := safeProjectPath(projectRoot, t.Path)
+	if err != nil {
+		return WriteResult{}, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return WriteResult{}, fmt.Errorf("create parent of %s: %w", path, err)
 	}
 
@@ -232,7 +235,7 @@ func writeTarget(projectRoot string, t Target) (WriteResult, error) {
 		// entirely. If the user hand-edits, the next `buttons init`
 		// will reset their changes; that's acceptable for a managed rule.
 		existed := fileExists(path)
-		if err := os.WriteFile(path, []byte(cursorRule), 0600); err != nil {
+		if err := os.WriteFile(path, []byte(cursorRule), 0o600); err != nil { // #nosec G306 -- 0600 is intended
 			return WriteResult{}, fmt.Errorf("write %s: %w", path, err)
 		}
 		action := "created"
@@ -257,10 +260,10 @@ func writeTarget(projectRoot string, t Target) (WriteResult, error) {
 func writeMarkdownSection(path, targetID string) (WriteResult, error) {
 	section := markerStart + "\n" + Body + "\n" + markerEnd + "\n"
 
-	existing, err := os.ReadFile(path)
+	existing, err := os.ReadFile(path) // #nosec G304 -- path validated by safeProjectPath in writeTarget
 	if err != nil {
 		if os.IsNotExist(err) {
-			if err := os.WriteFile(path, []byte(section), 0600); err != nil {
+			if err := os.WriteFile(path, []byte(section), 0o600); err != nil {
 				return WriteResult{}, fmt.Errorf("write %s: %w", path, err)
 			}
 			return WriteResult{TargetID: targetID, Path: path, Action: "created"}, nil
@@ -278,7 +281,7 @@ func writeMarkdownSection(path, targetID string) (WriteResult, error) {
 		// rather than producing garbage.
 		if endIdx > startIdx {
 			updated := content[:startIdx] + strings.TrimSuffix(section, "\n") + content[endIdx:]
-			if err := os.WriteFile(path, []byte(updated), 0600); err != nil {
+			if err := os.WriteFile(path, []byte(updated), 0o600); err != nil { // #nosec G304 G703 -- path validated by safeProjectPath in writeTarget
 				return WriteResult{}, fmt.Errorf("write %s: %w", path, err)
 			}
 			return WriteResult{TargetID: targetID, Path: path, Action: "updated"}, nil
@@ -298,7 +301,7 @@ func writeMarkdownSection(path, targetID string) (WriteResult, error) {
 	}
 	b.WriteString(section)
 
-	if err := os.WriteFile(path, []byte(b.String()), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil { // #nosec G304 G703 -- path validated by safeProjectPath in writeTarget
 		return WriteResult{}, fmt.Errorf("write %s: %w", path, err)
 	}
 	return WriteResult{TargetID: targetID, Path: path, Action: "appended"}, nil
@@ -307,4 +310,22 @@ func writeMarkdownSection(path, targetID string) (WriteResult, error) {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// safeProjectPath joins rel under projectRoot and verifies the result
+// stays inside the root. It rejects absolute rel paths and any that
+// escape via "..". Returned path is suitable for os.{Read,Write}File.
+func safeProjectPath(projectRoot, rel string) (string, error) {
+	if filepath.IsAbs(rel) {
+		return "", fmt.Errorf("target path must be relative: %q", rel)
+	}
+	path := filepath.Join(projectRoot, rel)
+	relBack, err := filepath.Rel(projectRoot, path)
+	if err != nil {
+		return "", fmt.Errorf("resolve target path %q: %w", rel, err)
+	}
+	if relBack == ".." || strings.HasPrefix(relBack, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("target path escapes project root: %q", rel)
+	}
+	return path, nil
 }

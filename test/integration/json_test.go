@@ -4,20 +4,22 @@ import (
 	"testing"
 )
 
-func TestStub_BoardReturnsJSON(t *testing.T) {
+func TestBoard_JSONNotApplicable(t *testing.T) {
 	env := newTestEnv(t)
 
+	// `board` is an interactive TUI — invoking it with --json should refuse
+	// cleanly with NOT_APPLICABLE rather than attempting to render.
 	res := env.run("board", "--json")
 	if res.ExitCode == 0 {
-		t.Fatal("expected non-zero exit for stub command")
+		t.Fatal("expected non-zero exit for board --json")
 	}
 
 	resp := parseJSON(t, res.Stdout)
 	if resp.OK {
 		t.Fatal("expected ok: false")
 	}
-	if resp.Error.Code != "NOT_IMPLEMENTED" {
-		t.Errorf("code = %q, want NOT_IMPLEMENTED", resp.Error.Code)
+	if resp.Error.Code != "NOT_APPLICABLE" {
+		t.Errorf("code = %q, want NOT_APPLICABLE", resp.Error.Code)
 	}
 }
 
