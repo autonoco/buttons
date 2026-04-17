@@ -81,6 +81,7 @@
             "group": "Changelog",
             "public": true,
             "pages": [
+              "changelog/2026-04-17",
               "changelog/2026-04-14",
               "changelog/2026-04-13",
               "changelog/2026-04-12"
