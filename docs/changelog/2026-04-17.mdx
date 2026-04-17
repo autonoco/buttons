@@ -3,6 +3,18 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-17" description="Ambient board dashboard">
+## Ambient board dashboard
+
+The board is now an always-on dashboard you leave open in a spare terminal.
+
+### Updates
+
+- **Auto-refresh** — the board now polls for changes every two seconds. Buttons created or removed in another terminal appear automatically without closing and reopening the board. A press already in flight keeps its spinner during the refresh.
+
+- **No visible quit** — the board no longer shows a quit button, `q` keybind, or "press q to quit" hint. Close the board by closing the terminal window, the same way you'd close any app. `Ctrl+C` still works as an emergency escape. See the [CLI reference](/cli/buttons_board).
+</Update>
+
 <Update label="2026-04-17" description="Batteries and board dashboard polish">
 ## Batteries and board dashboard polish
 
