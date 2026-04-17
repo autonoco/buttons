@@ -17,4 +17,8 @@ description: "New features and improvements to Buttons."
 - **Non-interactive agent flag** — pass `--agent cursor,claude` to install specific skill files without a prompt, or `--agent none` to skip the picker entirely. Useful for CI and scripted setups.
 
 - **Idempotent updates** — re-running `buttons init` updates existing skill files in place rather than duplicating content, so you can safely re-run it after upgrading Buttons.
+
+### Bug fixes
+
+- **Agent picker no longer skips silently** — the interactive agent skill picker in `buttons init` now uses a single-select list instead of a multi-select. Previously, pressing Enter without first pressing Space to toggle a choice would submit an empty selection with no warning. The picker also adds an explicit "None (skip)" option so opting out is intentional. You can still install multiple agent skills in one go with the `--agent` flag (e.g. `--agent cursor,claude`).
 </Update>
