@@ -4,12 +4,45 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/autonoco/buttons/internal/button"
 )
+
+// TestExecute_BatteriesInjectedAsEnv verifies the caller-provided
+// batteries map lands on the child process as BUTTONS_BAT_<KEY>. This
+// is the core contract of the batteries feature — a shell button has
+// to be able to read a battery with no ceremony.
+func TestExecute_BatteriesInjectedAsEnv(t *testing.T) {
+	dir := t.TempDir()
+	codePath := filepath.Join(dir, "main.sh")
+	script := "#!/bin/sh\nprintf %s \"$BUTTONS_BAT_APIFY_TOKEN\"\n"
+	if err := os.WriteFile(codePath, []byte(script), 0o700); err != nil { // #nosec G306 -- script must be executable
+		t.Fatal(err)
+	}
+
+	btn := &button.Button{
+		Name:           "echo-token",
+		Runtime:        "shell",
+		TimeoutSeconds: 5,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result := Execute(ctx, btn, nil, map[string]string{"APIFY_TOKEN": "secret123"}, codePath)
+
+	if result.Status != "ok" {
+		t.Fatalf("status=%q stderr=%q", result.Status, result.Stderr)
+	}
+	if result.Stdout != "secret123" {
+		t.Errorf("stdout = %q, want secret123", result.Stdout)
+	}
+}
 
 // streamingServer returns an httptest server that streams `total`
 // bytes of 'a' characters in 64 KB chunks with explicit flushes.
@@ -57,7 +90,7 @@ func TestExecuteHTTP_ResponseBodyLimit_Default(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result := Execute(ctx, btn, map[string]string{}, "")
+	result := Execute(ctx, btn, map[string]string{}, nil, "")
 
 	if result.Status != "ok" {
 		t.Fatalf("unexpected status %q; stderr=%q", result.Status, result.Stderr)
@@ -92,7 +125,7 @@ func TestExecuteHTTP_ResponseBodyLimit_Custom(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		result := Execute(ctx, btn, map[string]string{}, "")
+		result := Execute(ctx, btn, map[string]string{}, nil, "")
 		if result.Status != "ok" {
 			t.Fatalf("unexpected status %q; stderr=%q", result.Status, result.Stderr)
 		}
@@ -119,7 +152,7 @@ func TestExecuteHTTP_ResponseBodyLimit_Custom(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		result := Execute(ctx, btn, map[string]string{}, "")
+		result := Execute(ctx, btn, map[string]string{}, nil, "")
 		if result.Status != "ok" {
 			t.Fatalf("unexpected status %q; stderr=%q", result.Status, result.Stderr)
 		}
@@ -156,7 +189,7 @@ func TestExecuteHTTP_SSRFBlocksLocalhostByDefault(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result := Execute(ctx, btn, map[string]string{}, "")
+	result := Execute(ctx, btn, map[string]string{}, nil, "")
 
 	if result.Status != "error" {
 		t.Fatalf("expected status 'error' for SSRF-blocked request, got %q", result.Status)
@@ -191,7 +224,7 @@ func TestExecuteHTTP_SSRFPerButtonOverride(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result := Execute(ctx, btn, map[string]string{}, "")
+	result := Execute(ctx, btn, map[string]string{}, nil, "")
 
 	if result.Status != "ok" {
 		t.Fatalf("expected status 'ok' with per-button override, got %q; stderr=%q", result.Status, result.Stderr)
@@ -224,7 +257,7 @@ func TestExecuteHTTP_SSRFEnvVarOverride(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result := Execute(ctx, btn, map[string]string{}, "")
+	result := Execute(ctx, btn, map[string]string{}, nil, "")
 
 	if result.Status != "ok" {
 		t.Fatalf("expected status 'ok' with env var override, got %q; stderr=%q", result.Status, result.Stderr)
@@ -254,7 +287,7 @@ func TestExecuteHTTP_SmallResponseUnaffected(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result := Execute(ctx, btn, map[string]string{}, "")
+	result := Execute(ctx, btn, map[string]string{}, nil, "")
 
 	if result.Status != "ok" {
 		t.Fatalf("unexpected status %q; stderr=%q", result.Status, result.Stderr)
