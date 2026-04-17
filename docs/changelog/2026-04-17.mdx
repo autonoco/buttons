@@ -3,6 +3,28 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-17" description="Batteries and board dashboard polish">
+## Batteries and board dashboard polish
+
+Batteries are now fully functional, and the board dashboard gets a design refresh.
+
+### New features
+
+- **Batteries store** — `buttons batteries set`, `get`, `list`, and `rm` are now fully implemented. Store API tokens, secrets, and environment variables once, and every button press automatically receives them as environment variables. Values are scoped to a project by default, or use `--global` to share across all projects. See the [CLI reference](/cli/buttons_batteries).
+
+- **Automatic injection** — batteries are injected into every button press as environment variables. You can reference them in your scripts without any extra flags or configuration. Per-press arguments take priority over batteries on key collision, so you can always override a stored value.
+
+- **Redacted listing** — `buttons batteries list` redacts values by default so you can safely check what's stored without exposing secrets. Pass `--reveal` to see full values.
+
+### Updates
+
+- **Board empty state** — opening `buttons board` with no buttons now shows a helpful getting-started screen with example commands instead of a blank page.
+
+- **Board press feedback** — pressing a button from the board now shows a spinner while it runs and a success or failure indicator when it finishes. List rows display check and cross glyphs so you can see session results at a glance.
+
+- **Board footer** — the footer now shows clickable action buttons and keyboard hints (`↑↓ nav · ↵ press · q quit`) so you can discover controls without a help overlay.
+</Update>
+
 <Update label="2026-04-17" description="Agent skill picker in buttons init">
 ## Agent skill picker in buttons init
 
