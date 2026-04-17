@@ -68,7 +68,15 @@ type pressDoneMsg struct {
 // button is in statusRunning, so idle boards don't spin needlessly.
 type tickMsg time.Time
 
-const tickInterval = 90 * time.Millisecond
+// refreshMsg fires at a low cadence to re-list buttons from disk so a
+// board left open sees buttons created (or deleted) in another terminal
+// without the user having to close and reopen the window.
+type refreshMsg time.Time
+
+const (
+	tickInterval    = 90 * time.Millisecond
+	refreshInterval = 2 * time.Second
+)
 
 // ------------------------------------------------------------------
 // Model lifecycle
@@ -96,7 +104,7 @@ func New(svc *button.Service, initial string) (*Model, error) {
 	return m, nil
 }
 
-func (m Model) Init() tea.Cmd { return nil }
+func (m Model) Init() tea.Cmd { return refreshCmd() }
 
 // ------------------------------------------------------------------
 // Update
@@ -128,6 +136,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.ticking = false
 		return m, nil
+
+	case refreshMsg:
+		// Re-list from disk. Errors are swallowed: a transient read
+		// error during a CRUD race shouldn't empty the board; the next
+		// tick will try again. The running status map stays as-is so a
+		// press in flight keeps its spinner.
+		if buttons, err := m.svc.List(); err == nil {
+			m.buttons = buttons
+			// Keep the cursor in bounds if the list shrank.
+			if m.cursorList >= len(m.buttons) && len(m.buttons) > 0 {
+				m.cursorList = len(m.buttons) - 1
+			}
+		}
+		return m, refreshCmd()
 	}
 
 	return m, nil
@@ -137,9 +159,19 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(tickInterval, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
+func refreshCmd() tea.Cmd {
+	return tea.Tick(refreshInterval, func(t time.Time) tea.Msg { return refreshMsg(t) })
+}
+
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "q", "ctrl+c":
+	// Ctrl+C is kept as an unadvertised emergency escape so the user
+	// is never truly stuck if something goes wrong — but the board
+	// otherwise reads as an ambient dashboard (no visible "quit"
+	// affordance, no q keybind, no hint). It's UI for a human; agents
+	// invoke the CLI. "Quit" in the way a prompt has quit is the wrong
+	// mental model for this view.
+	case "ctrl+c":
 		return m, tea.Quit
 
 	case "up", "k":
@@ -212,17 +244,13 @@ func (m Model) moveListCursor(delta int) tea.Model {
 
 // handleLeftClick routes a terminal click to the right action using the
 // layout map computed the same way View() composes the screen. Click
-// targets (in order of priority): pinned cards, list rows, footer quit,
-// footer press.
+// targets (in order of priority): pinned cards, list rows, footer press.
+// Footer has no quit hitbox — board is an ambient dashboard, not a
+// prompt you dismiss.
 func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 	l := m.computeLayout()
 
-	// Footer action hitboxes — take priority over content so clicks at
-	// the bottom of the screen never accidentally press a list row.
 	if y >= l.footerY0 && y <= l.footerY1 {
-		if x >= l.quitX0 && x < l.quitX1 {
-			return m, tea.Quit
-		}
 		if l.pressEnabled && x >= l.pressX0 && x < l.pressX1 {
 			name := m.currentButtonName()
 			if name == "" {
@@ -374,7 +402,6 @@ type layout struct {
 	pinnedY0, pinnedY1 int
 	listY0, listY1     int
 	footerY0, footerY1 int
-	quitX0, quitX1     int
 	pressX0, pressX1   int
 	pressEnabled       bool
 }
@@ -413,13 +440,11 @@ func (m Model) computeLayout() layout {
 	l.footerY0 = y
 	l.footerY1 = y + footerHeight - 1
 
-	// Footer action X ranges. Action pills are bordered boxes:
-	// width = padding(2) + label + padding(2) + border(2) = label + 6.
-	quitW := len("quit") + 6
+	// Footer has only the primary press action — quit is not a UI
+	// concept on the board. Action pill width = padding(2) + label +
+	// padding(2) + border(2) = label + 6.
 	pressW := len("press") + 6
-	l.quitX0 = leftPad
-	l.quitX1 = l.quitX0 + quitW
-	l.pressX0 = l.quitX1 + actionGap
+	l.pressX0 = leftPad
 	l.pressX1 = l.pressX0 + pressW
 
 	l.pressEnabled = m.currentButtonName() != ""
@@ -594,62 +619,51 @@ func (m Model) renderEmptyHero() string {
 		line("a shell one-liner:", `buttons create hello --code 'echo hi'`),
 		line("a URL:           ", `buttons create weather --url wttr.in/NYC`),
 		"",
-		m.styles.Muted.Render("press q to quit, or open a new terminal and run the commands above."),
+		m.styles.Muted.Render("run the commands above in another terminal — this board updates automatically."),
 	}
 
 	hero := strings.Join(lines, "\n")
 	return indentBlock(hero, leftPad*2)
 }
 
-// renderFooter composes the bordered action pills and the keybind hint
-// row. Uses lipgloss.JoinHorizontal so multi-line bordered boxes
-// align, then indentBlock to shift every rendered line by leftPad.
+// renderFooter shows only the primary press action and a minimal
+// nav / press hint line. The board is ambient UI — it has no "quit"
+// concept. Uses lipgloss.JoinHorizontal so the multi-line bordered
+// press box aligns with the hints placed on its middle baseline.
 func (m Model) renderFooter() string {
-	quit := m.styles.ActionSecondary.Render("quit")
-
 	pressStyle := m.styles.ActionPrimary
 	if !m.pressIsEnabled() {
 		pressStyle = m.styles.ActionPrimaryDisabled
 	}
 	press := pressStyle.Render("press")
 
-	actions := lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		quit,
-		strings.Repeat(" ", actionGap),
-		press,
-	)
-
-	// Compose the hint line separately and tuck it into the middle row
-	// of the action block using Place — visually the hints sit on the
-	// same baseline as the pill labels.
 	hints := m.composeHints()
 
 	w := m.width
 	if w <= 0 {
 		w = 80
 	}
-	actionsW := lipgloss.Width(actions)
+	pressW := lipgloss.Width(press)
 	hintsW := lipgloss.Width(hints)
-	gap := w - actionsW - hintsW - leftPad*2
+	gap := w - pressW - hintsW - leftPad*2
 	if gap < 2 {
 		gap = 2
 	}
 
-	hintBlock := lipgloss.Place(hintsW, lipgloss.Height(actions), lipgloss.Left, lipgloss.Center, hints)
-	row := lipgloss.JoinHorizontal(lipgloss.Top, actions, strings.Repeat(" ", gap), hintBlock)
+	hintBlock := lipgloss.Place(hintsW, lipgloss.Height(press), lipgloss.Left, lipgloss.Center, hints)
+	row := lipgloss.JoinHorizontal(lipgloss.Top, press, strings.Repeat(" ", gap), hintBlock)
 
 	return indentBlock(row, leftPad)
 }
 
-// composeHints renders a compact keybind legend. Each key gets a subtle
-// chip so the affordance is visible without the noise of a full help box.
+// composeHints renders a minimal keybind legend — nav and press only.
+// No quit hint; the board doesn't advertise an exit.
 func (m Model) composeHints() string {
 	pair := func(key, label string) string {
 		return m.styles.KeyChip.Render(key) + m.styles.Muted.Render(" "+label)
 	}
 	sep := m.styles.Muted.Render("  ·  ")
-	return pair("↑↓", "nav") + sep + pair("↵", "press") + sep + pair("q", "quit")
+	return pair("↑↓", "nav") + sep + pair("↵", "press")
 }
 
 // renderStatus returns the single-line status/toast below the footer,
