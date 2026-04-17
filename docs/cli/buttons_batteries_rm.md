@@ -5,16 +5,18 @@ description: "CLI reference for buttons batteries rm"
 
 ## buttons batteries rm
 
-Remove an environment variable
+Remove a battery
 
 ```
-buttons batteries rm [key] [flags]
+buttons batteries rm KEY [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for rm
+      --global   target the global batteries file (~/.buttons/batteries.json)
+  -h, --help     help for rm
+      --local    target the project-local batteries file (.buttons/batteries.json)
 ```
 
 ### Options inherited from parent commands
