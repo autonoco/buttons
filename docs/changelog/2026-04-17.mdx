@@ -1,0 +1,20 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-17" description="Agent skill picker in buttons init">
+## Agent skill picker in buttons init
+
+`buttons init` now sets up your coding agent to use Buttons automatically.
+
+### New features
+
+- **Agent skill picker** — when you run `buttons init` on an interactive terminal, a picker asks which coding-agent skill files to install. Supported agents: Cursor, Claude Code, Cline, GitHub Copilot, and AGENTS.md. Nothing is installed unless you explicitly select it. Use `--agent cursor,claude` to skip the picker, or `--agent none` to opt out entirely. See the [CLI reference](/cli/buttons_init).
+
+- **`.buttons/AGENT.md` reference file** — `buttons init` now writes a short reference doc at `.buttons/AGENT.md` that teaches any coding agent what Buttons is and how to use it. The file is always kept up to date on re-runs. See [folder structure](/concepts/folder-structure).
+
+### Updates
+
+- **Idempotent skill updates** — re-running `buttons init` on a project that already has skill files replaces the Buttons section in place (using start/end markers) instead of duplicating content.
+</Update>
