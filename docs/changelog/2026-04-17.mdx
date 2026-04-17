@@ -3,6 +3,20 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-17" description="Board opens in its own terminal window">
+## Board opens in its own terminal window
+
+`buttons board` now launches in a dedicated terminal window so your current shell stays free.
+
+### New features
+
+- **Own-window by default** — running `buttons board` opens the dashboard in a new OS-native terminal window and immediately returns your shell prompt. No more dedicating a tab to the dashboard — it lives in its own window that you can close whenever you're done. Works on macOS, Linux, and Windows.
+
+- **`--inline` flag** — pass `--inline` to render the board in the current terminal, the way it worked before. Useful over SSH, inside tmux, or in headless environments. See the [CLI reference](/cli/buttons_board).
+
+- **Automatic fallback** — if your system can't open a new window (e.g. no display server), the board falls back to inline mode automatically so the command never silently fails.
+</Update>
+
 <Update label="2026-04-17" description="Ambient board dashboard">
 ## Ambient board dashboard
 
