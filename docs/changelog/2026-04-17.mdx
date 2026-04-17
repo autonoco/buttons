@@ -17,4 +17,8 @@ description: "New features and improvements to Buttons."
 ### Updates
 
 - **Idempotent skill updates** — re-running `buttons init` on a project that already has skill files replaces the Buttons section in place (using start/end markers) instead of duplicating content.
+
+### Bug fixes
+
+- **Agent picker defaults to single-select** — the interactive agent picker now uses a single-select list instead of a multi-select. Previously, pressing Enter without first pressing Space submitted an empty selection, which silently skipped installation. The picker also includes an explicit "None (skip)" option so opting out is a clear, intentional choice. You can still install multiple agent skills at once with `--agent cursor,claude`. See the [CLI reference](/cli/buttons_init).
 </Update>
