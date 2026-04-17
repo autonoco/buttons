@@ -121,11 +121,15 @@ buttons batteries set [flags]
 
 ### `buttons board`
 
-Show the button board (TUI dashboard)
+Open the button board in a new terminal window
 
 ```
-buttons board
+buttons board [flags]
 ```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--inline` | bool | render the board in the current terminal instead of spawning a new window |
 
 ### `buttons create`
 
