@@ -6,15 +6,15 @@ description: "New features and improvements to Buttons."
 <Update label="2026-04-17" description="Agent skill picker in buttons init">
 ## Agent skill picker in buttons init
 
-`buttons init` now sets up your coding agent to use Buttons automatically.
+`buttons init` now sets up your coding agents alongside your project.
 
 ### New features
 
-- **Agent skill picker** — when you run `buttons init` on an interactive terminal, a picker asks which coding-agent skill files to install. Supported agents: Cursor, Claude Code, Cline, GitHub Copilot, and AGENTS.md. Nothing is installed unless you explicitly select it. Use `--agent cursor,claude` to skip the picker, or `--agent none` to opt out entirely. See the [CLI reference](/cli/buttons_init).
+- **AGENT.md auto-generated** — running `buttons init` now writes a `.buttons/AGENT.md` file that gives AI agents a quick reference for how Buttons works. The file is updated automatically on each run, so it always matches your installed version.
 
-- **`.buttons/AGENT.md` reference file** — `buttons init` now writes a short reference doc at `.buttons/AGENT.md` that teaches any coding agent what Buttons is and how to use it. The file is always kept up to date on re-runs. See [folder structure](/concepts/folder-structure).
+- **Agent skill picker** — on interactive terminals, `buttons init` prompts you to install Buttons skill files for your coding agents. Supported targets include Cursor (`.cursor/rules/buttons.mdc`), Claude Code (`CLAUDE.md`), Cline (`.clinerules`), GitHub Copilot (`.github/copilot-instructions.md`), and AGENTS.md. Select the agents you use and the right config files are created for you. See [skill.md](/ai/skill-md) for more on agent skills.
 
-### Updates
+- **Non-interactive mode** — pass `--agent cursor,claude` to install specific skill files without the picker, or `--agent none` to skip it entirely. JSON output and `--no-input` mode skip the picker by default.
 
-- **Idempotent skill updates** — re-running `buttons init` on a project that already has skill files replaces the Buttons section in place (using start/end markers) instead of duplicating content.
+- **Idempotent updates** — re-running `buttons init` replaces existing Buttons sections in place using start/end markers, so your other config in files like `CLAUDE.md` stays untouched.
 </Update>
