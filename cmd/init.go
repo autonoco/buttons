@@ -161,23 +161,26 @@ func resolveAgentTargets(cmd *cobra.Command) ([]string, error) {
 	return pickAgentsInteractive()
 }
 
-// pickAgentsInteractive shows the Huh multi-select picker. Returns the
-// set of selected target IDs, or an empty slice if the user submits
-// with nothing picked (implicit "none").
+// pickAgentsInteractive shows the Huh single-select picker. Users who
+// need multiple agents can pass them via `--agent cursor,claude` — most
+// people use one, and a single-select avoids the classic multi-select
+// trap of hitting enter without first pressing space to toggle.
 func pickAgentsInteractive() ([]string, error) {
-	options := make([]huh.Option[string], 0, len(agentskill.Targets))
+	const skipID = "__none__"
+	options := make([]huh.Option[string], 0, len(agentskill.Targets)+1)
 	for _, t := range agentskill.Targets {
 		options = append(options,
 			huh.NewOption(fmt.Sprintf("%s  — %s", t.Label, t.Description), t.ID),
 		)
 	}
+	options = append(options, huh.NewOption("None (skip)", skipID))
 
-	var selected []string
+	var selected string
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewMultiSelect[string]().
+			huh.NewSelect[string]().
 				Title("Install a Buttons skill file for your coding agent?").
-				Description("Space toggles, enter confirms. Select none to skip.").
+				Description("Arrow keys to move, enter to confirm.").
 				Options(options...).
 				Value(&selected),
 		),
@@ -190,7 +193,10 @@ func pickAgentsInteractive() ([]string, error) {
 		}
 		return nil, fmt.Errorf("agent picker: %w", err)
 	}
-	return selected, nil
+	if selected == "" || selected == skipID {
+		return nil, nil
+	}
+	return []string{selected}, nil
 }
 
 func validAgentIDs() string {
