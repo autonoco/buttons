@@ -47,10 +47,18 @@ type Styles struct {
 	ActionPrimary         lipgloss.Style
 	ActionSecondary       lipgloss.Style
 	ActionPrimaryDisabled lipgloss.Style
+	KeyChip               lipgloss.Style
 
 	PinnedIdle     lipgloss.Style
 	PinnedSelected lipgloss.Style
 	PinnedActive   lipgloss.Style
+
+	HeroTitle lipgloss.Style
+	HeroBody  lipgloss.Style
+	HeroCode  lipgloss.Style
+
+	StatusError lipgloss.Style
+	StatusOK    lipgloss.Style
 }
 
 // BuildStyles detects the terminal's background (light vs dark) and
@@ -58,9 +66,6 @@ type Styles struct {
 // roles on dark terminals — the wordmark is the "foreground" in either
 // theme, it just changes hex code.
 func BuildStyles() Styles {
-	// Background detection has to query the terminal; if it fails for
-	// any reason (non-TTY, unsupported terminal), default to dark since
-	// that's the majority case for developer terminals.
 	hasDark := lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
 	ld := lipgloss.LightDark(hasDark)
 
@@ -69,24 +74,24 @@ func BuildStyles() Styles {
 	colorMuted := ld(lipgloss.Color(hexAluminum), lipgloss.Color("#3A3A38"))
 	colorIndicator := lipgloss.Color(hexIndicator)
 	colorOnIndicator := lipgloss.Color(hexPaper)
-	// Action-primary always reads the same: dark fill, light text. On a
-	// light terminal that's ink/paper; on a dark terminal it's still a
-	// near-black block against the terminal bg (slight contrast, but the
-	// bordered style reads fine).
+	// Action-primary: dark fill, light text. Light terminal → ink/paper;
+	// dark terminal → still a near-black block with paper text (high-contrast
+	// pill that reads as "the default action").
 	colorActionFill := lipgloss.Color(hexInk)
 	colorActionText := lipgloss.Color(hexPaper)
+	// Key chip: subtle box around a single-key glyph so the user can see
+	// at a glance what key fires an action.
+	colorChipBg := ld(lipgloss.Color("#E8E8E3"), lipgloss.Color("#1E1E1C"))
 
 	return Styles{
-		Wordmark:  lipgloss.NewStyle().Foreground(colorPrimary),
+		Wordmark:  lipgloss.NewStyle().Foreground(colorPrimary).Bold(true),
 		Label:     lipgloss.NewStyle().Foreground(colorSecondary),
 		Divider:   lipgloss.NewStyle().Foreground(colorMuted),
 		Secondary: lipgloss.NewStyle().Foreground(colorSecondary),
 		Muted:     lipgloss.NewStyle().Foreground(colorMuted),
 		Indicator: lipgloss.NewStyle().Foreground(colorIndicator),
 
-		ButtonName: lipgloss.NewStyle().Foreground(colorPrimary),
-		// Bold makes the selected row pop without reaching for orange
-		// (which is reserved for active/running, not mere selection).
+		ButtonName:         lipgloss.NewStyle().Foreground(colorPrimary),
 		ButtonNameSelected: lipgloss.NewStyle().Foreground(colorPrimary).Bold(true),
 		ButtonNameActive:   lipgloss.NewStyle().Foreground(colorIndicator).Bold(true),
 
@@ -99,6 +104,8 @@ func BuildStyles() Styles {
 		ActionPrimary: lipgloss.NewStyle().
 			Foreground(colorActionText).
 			Background(colorActionFill).
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(colorActionFill).
 			Padding(0, 2),
 
 		ActionSecondary: lipgloss.NewStyle().
@@ -109,8 +116,15 @@ func BuildStyles() Styles {
 
 		ActionPrimaryDisabled: lipgloss.NewStyle().
 			Foreground(colorSecondary).
-			Background(colorMuted).
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(colorMuted).
 			Padding(0, 2),
+
+		KeyChip: lipgloss.NewStyle().
+			Foreground(colorPrimary).
+			Background(colorChipBg).
+			Padding(0, 1).
+			Bold(true),
 
 		PinnedIdle: lipgloss.NewStyle().
 			Foreground(colorPrimary).
@@ -134,14 +148,29 @@ func BuildStyles() Styles {
 			BorderForeground(colorIndicator).
 			Padding(1, 3).
 			Align(lipgloss.Center),
+
+		HeroTitle: lipgloss.NewStyle().Foreground(colorPrimary).Bold(true),
+		HeroBody:  lipgloss.NewStyle().Foreground(colorSecondary),
+		HeroCode:  lipgloss.NewStyle().Foreground(colorPrimary).Background(colorChipBg).Padding(0, 1),
+
+		StatusError: lipgloss.NewStyle().Foreground(colorIndicator),
+		StatusOK:    lipgloss.NewStyle().Foreground(colorSecondary),
 	}
 }
 
 // indicator returns the unicode glyph placed to the left of each list
-// row: filled square for active (running), empty square otherwise.
-func (s Styles) indicator(active bool) string {
+// row: filled square for active (running), empty square otherwise. When
+// `frame` is non-negative and active is true, returns a spinner frame
+// instead so the running state reads as "something's happening."
+func (s Styles) indicator(active bool, frame int) string {
 	if active {
+		if frame >= 0 {
+			return s.Indicator.Render(string(spinnerFrames[frame%len(spinnerFrames)]))
+		}
 		return s.Indicator.Render("■")
 	}
 	return s.Muted.Render("□")
 }
+
+// spinnerFrames cycles a braille-spinner. Standard Charm convention.
+var spinnerFrames = []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
