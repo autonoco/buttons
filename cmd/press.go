@@ -95,7 +95,20 @@ Examples:
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 		defer cancel()
 
-		result := engine.Execute(ctx, btn, parsedArgs, codePath)
+		// Load batteries so secrets can reach the press as BUTTONS_BAT_<KEY>
+		// without the user hardcoding them in the script. A resolution error
+		// (e.g. unreadable batteries.json) should not silently skip; surface
+		// it with the rest of the press's structured-error handling.
+		batSvc, err := newBatteryService()
+		if err != nil {
+			return handleServiceError(err)
+		}
+		batteries, err := batSvc.Env()
+		if err != nil {
+			return handleServiceError(err)
+		}
+
+		result := engine.Execute(ctx, btn, parsedArgs, batteries, codePath)
 
 		// Attach prompt if AGENT.md has custom content (not the default template)
 		if promptMD := readPrompt(btn.Name); promptMD != "" {

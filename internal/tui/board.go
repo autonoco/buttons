@@ -9,7 +9,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/autonoco/buttons/internal/battery"
 	"github.com/autonoco/buttons/internal/button"
+	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/engine"
 )
 
@@ -291,7 +293,20 @@ func (m Model) pressButton(name string) (tea.Model, tea.Cmd) {
 	m.status[name] = statusRunning
 
 	codePath, _ := m.svc.CodePath(name)
-	pressCmd := runPress(btn, codePath)
+
+	// Load batteries on each press so a battery added in another shell
+	// shows up without restarting the TUI. Silent fallback to empty env
+	// if resolution fails — the TUI can't usefully surface a batteries
+	// read error mid-press, and the user can always hit the CLI for a
+	// full error report.
+	batteries := map[string]string{}
+	if batSvc, err := battery.NewServiceFromEnv(tuiBatteryDiscoverer); err == nil {
+		if env, err := batSvc.Env(); err == nil {
+			batteries = env
+		}
+	}
+
+	pressCmd := runPress(btn, codePath, batteries)
 
 	// Start the spinner only if not already ticking — avoids tick storm.
 	if !m.ticking {
@@ -301,15 +316,29 @@ func (m Model) pressButton(name string) (tea.Model, tea.Cmd) {
 	return m, pressCmd
 }
 
-func runPress(btn *button.Button, codePath string) tea.Cmd {
+func runPress(btn *button.Button, codePath string, batteries map[string]string) tea.Cmd {
 	name := btn.Name
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(btn.TimeoutSeconds)*time.Second)
 		defer cancel()
 
-		result := engine.Execute(ctx, btn, nil, codePath)
+		result := engine.Execute(ctx, btn, nil, batteries, codePath)
 		return pressDoneMsg{name: name, result: result}
 	}
+}
+
+// tuiBatteryDiscoverer is the project-dir discoverer passed to
+// battery.NewServiceFromEnv — shared shape with the CLI helper but
+// defined here so the tui package doesn't reach into cmd.
+func tuiBatteryDiscoverer() (string, bool) {
+	if !config.IsProjectLocal() {
+		return "", false
+	}
+	dir, err := config.DataDir()
+	if err != nil {
+		return "", false
+	}
+	return dir, true
 }
 
 func (m Model) handlePressDone(msg pressDoneMsg) Model {

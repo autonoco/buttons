@@ -20,7 +20,10 @@ const sigTermGrace = 5 * time.Second
 
 // Execute runs a button with the given args and returns a Result.
 // For code/file buttons, codePath is the path to the code file in the button folder.
-func Execute(ctx context.Context, btn *button.Button, args map[string]string, codePath string) *Result {
+// batteries is the caller-provided map of battery KEY → VALUE; each entry is
+// injected into the child process as BUTTONS_BAT_<KEY> so shell / code buttons
+// can read secrets without baking them into the script file. Pass nil to skip.
+func Execute(ctx context.Context, btn *button.Button, args, batteries map[string]string, codePath string) *Result {
 	start := time.Now()
 	result := &Result{
 		Button:    btn.Name,
@@ -68,8 +71,17 @@ func Execute(ctx context.Context, btn *button.Button, args map[string]string, co
 	cmd := exec.Command(interpreter, codePath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	// Build environment: inherit current + button env + args as BUTTONS_ARG_<NAME>
+	// Build environment: inherit current + batteries + button env + args.
+	// Order matters: batteries precede button env which precede args, so a
+	// button-defined Env can override a battery and a per-press arg can
+	// override either (matches the specificity users expect — most specific
+	// wins). Keys exposed to the child process:
+	//   BUTTONS_BAT_<KEY>  battery value
+	//   BUTTONS_ARG_<NAME> arg value
 	env := os.Environ()
+	for k, v := range batteries {
+		env = append(env, "BUTTONS_BAT_"+k+"="+v)
+	}
 	for k, v := range btn.Env {
 		env = append(env, k+"="+v)
 	}
