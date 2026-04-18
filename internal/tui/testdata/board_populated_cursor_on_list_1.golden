@@ -1,0 +1,12 @@
+  buttons                                                       btn—03 · board
+────────────────────────────────────────────────────────────────────────────────
+
+  □   deploy   shell · 300s · 1 arg
+  □ › weather http · 60s · GET wttr.in/NYC
+  □   notify   http · 60s · POST hooks.example.com/webhook
+
+────────────────────────────────────────────────────────────────────────────────
+
+  ┌─────────┐                                                                 
+  │  press  │                               ↑↓  nav  ·   ↵  press  ·   L  logs
+  └─────────┘                                                                 

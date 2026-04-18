@@ -1,0 +1,15 @@
+  buttons                                                       btn—01 · board
+────────────────────────────────────────────────────────────────────────────────
+
+    press deploy  ·  2 args · 1 required
+    
+    › env  string · required   ▎ 
+      verbose  bool · optional  —
+    
+    ↵ run · ⇥ next field · ⎋ cancel
+
+────────────────────────────────────────────────────────────────────────────────
+
+  ┌─────────┐                                                                 
+  │  press  │                               ↑↓  nav  ·   ↵  press  ·   L  logs
+  └─────────┘                                                                 
