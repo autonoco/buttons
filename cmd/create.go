@@ -142,7 +142,11 @@ func init() {
 	createCmd.Flags().StringVar(&createBody, "body", "", "HTTP request body (supports {{arg}} templates)")
 	createCmd.Flags().StringVar(&createPrompt, "prompt", "", "prompt/instruction for the consuming agent (written to AGENT.md)")
 	createCmd.Flags().StringVarP(&createDescription, "description", "d", "", "button description")
-	createCmd.Flags().IntVar(&createTimeout, "timeout", 60, "execution timeout in seconds")
+	// 300s default: the old 60s cap bit real agent workloads — ETL jobs,
+	// long curls waiting on third-party APIs, DB migrations. Safety still
+	// comes from *having* a timeout, not from it being tight; users can
+	// shorten at create time or override per-press with --timeout.
+	createCmd.Flags().IntVar(&createTimeout, "timeout", 300, "execution timeout in seconds")
 	createCmd.Flags().StringVar(&createMaxResponseSize, "max-response-size", "", "max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M")
 	createCmd.Flags().BoolVar(&createAllowPrivateNetworks, "allow-private-networks", false, "allow --url buttons to reach private network addresses (localhost, 10/8, 172.16/12, 192.168/16, 169.254/16, IPv6 private ranges). Required for local dev targets.")
 	createCmd.Flags().StringArrayVar(&createArgs, "arg", nil, "argument definition (name:type:required|optional)")

@@ -31,8 +31,8 @@ func TestCreate_Basic(t *testing.T) {
 	if btn.Runtime != "shell" {
 		t.Errorf("runtime = %q, want %q", btn.Runtime, "shell")
 	}
-	if btn.TimeoutSeconds != 60 {
-		t.Errorf("timeout = %d, want 60", btn.TimeoutSeconds)
+	if btn.TimeoutSeconds != 300 {
+		t.Errorf("timeout = %d, want 300 (default)", btn.TimeoutSeconds)
 	}
 	if btn.MCPEnabled {
 		t.Error("mcp_enabled should be false")
