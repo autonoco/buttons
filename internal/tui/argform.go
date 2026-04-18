@@ -29,9 +29,12 @@ import (
 // happens when the submitted values run through button.ParsePressArgs
 // — the same code path the CLI uses. One validator, one error shape.
 type argForm struct {
-	btnName string
-	fields  []argField
-	cursor  int
+	btnName    string
+	btnDesc    string // description shown above the field list (spec station 04)
+	btnRuntime string // surfaced in the "will run" meta line
+	btnTimeout int    // ditto
+	fields     []argField
+	cursor     int
 	// lastErr surfaces validation errors from ParsePressArgs after
 	// the user presses Enter — rendered below the fields so the form
 	// doesn't dismiss on a typo.
@@ -74,7 +77,13 @@ func newArgForm(btn *button.Button) *argForm {
 		}
 		fields[i] = f
 	}
-	f := &argForm{btnName: btn.Name, fields: fields}
+	f := &argForm{
+		btnName:    btn.Name,
+		btnDesc:    btn.Description,
+		btnRuntime: btn.Runtime,
+		btnTimeout: btn.TimeoutSeconds,
+		fields:     fields,
+	}
 	f.cursor = f.firstRequiredIndex()
 	return f
 }
@@ -222,13 +231,20 @@ func (f *argForm) render(styles Styles, width int) string {
 		subtitle = styles.Muted.Render(fmt.Sprintf("  ·  %d args · %d required", len(f.fields), reqCount))
 	}
 
-	lines := []string{
-		title + subtitle,
-		"",
+	lines := []string{title + subtitle}
+	// Spec station 04: button description directly under the title.
+	if f.btnDesc != "" {
+		lines = append(lines, styles.HeroBody.Render("— "+f.btnDesc))
 	}
+	lines = append(lines, "")
+
 	for i, fld := range f.fields {
 		lines = append(lines, f.renderField(styles, i, fld))
 	}
+
+	// "will run:" preview line — exact CLI the form will execute.
+	lines = append(lines, "", f.renderWillRun(styles))
+
 	if f.lastErr != "" {
 		lines = append(lines, "", styles.StatusError.Render("!  "+f.lastErr))
 	} else {
@@ -256,8 +272,12 @@ func (f *argForm) renderField(styles Styles, idx int, fld argField) string {
 	if fld.typ == "enum" {
 		value = f.renderEnumValue(styles, fld, focused)
 	} else if focused {
-		// Block cursor at the end of the buffer.
-		value = styles.HeroCode.Render(fld.value + "▎")
+		// Focused field: primary-color value + orange block caret at
+		// the end. The caret alone reads as "active input here" —
+		// tried layering an underline too but the multi-line value
+		// broke the tabular alignment without adding clarity.
+		caret := styles.OrangeCaret.Render(" ")
+		value = styles.ButtonName.Render(fld.value) + caret
 	} else if fld.value != "" {
 		value = styles.HeroCode.Render(fld.value)
 	} else {
@@ -265,6 +285,23 @@ func (f *argForm) renderField(styles Styles, idx int, fld argField) string {
 	}
 
 	return fmt.Sprintf("%-22s  %-20s  %s", name, typTag, value)
+}
+
+// renderWillRun composes the exact `buttons press ...` line the form
+// will execute on submit. Orange keyword + orange flag tokens + primary
+// name/value — matches the detail page's usage block.
+func (f *argForm) renderWillRun(styles Styles) string {
+	cmd := styles.CommandKeyword.Render("buttons press") + " " + styles.ButtonName.Render(f.btnName)
+	for _, fld := range f.fields {
+		if fld.value == "" {
+			continue
+		}
+		cmd += " " + styles.FlagToken.Render("--arg") + " " +
+			styles.ButtonName.Render(fld.name+"="+fld.value)
+	}
+	meta := fmt.Sprintf("timeout %ds · runtime %s · exec ~/.buttons/buttons/%s/main.sh",
+		f.btnTimeout, f.btnRuntime, f.btnName)
+	return styles.Muted.Render("will run: ") + cmd + "\n" + styles.Muted.Render(meta)
 }
 
 // renderEnumValue draws a horizontal choice strip for an enum field.

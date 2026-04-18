@@ -204,9 +204,47 @@ type Styles struct {
 	HeroBody  lipgloss.Style
 	HeroCode  lipgloss.Style
 
-	StatusError lipgloss.Style
-	StatusOK    lipgloss.Style
-	StatusWarn  lipgloss.Style
+	StatusError   lipgloss.Style
+	StatusOK      lipgloss.Style
+	StatusWarn    lipgloss.Style
+	StatusRunning lipgloss.Style // orange toast during active press
+
+	// BrandDot renders a filled orange circle ("●") always to the
+	// left of the "buttons" wordmark. It's the identity mark — even
+	// when nothing is running it stays, because it's the logo, not a
+	// per-state indicator.
+	BrandDot lipgloss.Style
+
+	// OrangeCaret is the block cursor used inside the arg form on the
+	// currently-focused field. Indicator-orange foreground reads as
+	// "this is where the press is committed from."
+	OrangeCaret lipgloss.Style
+
+	// FocusedFieldUnderline is the thin orange rule rendered under a
+	// focused arg-form value; together with OrangeCaret it makes the
+	// active input unmistakable at a glance.
+	FocusedFieldUnderline lipgloss.Style
+
+	// CommandKeyword / FlagToken / TemplateVar colorize the structured
+	// bits of a usage-example line ("buttons press weather --arg
+	// city=Miami") — spec prints the command keyword + flags in orange
+	// while values stay primary.
+	CommandKeyword lipgloss.Style
+	FlagToken      lipgloss.Style
+	TemplateVar    lipgloss.Style
+
+	// RequiredTag renders the word "required" in orange next to an arg
+	// declaration. Spec treats required args as an active concern, not
+	// muted metadata.
+	RequiredTag lipgloss.Style
+
+	// Chrome is the tiny muted text used in the bottom status strip:
+	// "TTY 1 · UTF-8 · 256-COLOR · ● REC" and context-specific badges.
+	Chrome lipgloss.Style
+
+	// ChromeActiveBadge is the orange-text chrome variant for badges
+	// that signal an active state (● ACTIVE, ● REC, ● FOLLOW).
+	ChromeActiveBadge lipgloss.Style
 }
 
 // BuildStyles assembles the full style graph from whatever palette the
@@ -259,11 +297,15 @@ func BuildStyles() Styles {
 			Padding(0, 1).
 			Bold(true),
 
+		// Pinned cards: spec is 3 lines tall (top border + text line +
+		// bottom border) with horizontal padding only. Used to be
+		// Padding(1, 3) — 5 lines with vertical padding — which made
+		// cards feel puffy compared to the reference mockup.
 		PinnedIdle: lipgloss.NewStyle().
 			Foreground(c.primary).
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(c.muted).
-			Padding(1, 3).
+			Padding(0, 2).
 			Align(lipgloss.Center),
 
 		PinnedSelected: lipgloss.NewStyle().
@@ -271,7 +313,7 @@ func BuildStyles() Styles {
 			Bold(true).
 			Border(lipgloss.ThickBorder()).
 			BorderForeground(c.primary).
-			Padding(1, 3).
+			Padding(0, 2).
 			Align(lipgloss.Center),
 
 		PinnedActive: lipgloss.NewStyle().
@@ -279,16 +321,30 @@ func BuildStyles() Styles {
 			Bold(true).
 			Border(lipgloss.ThickBorder()).
 			BorderForeground(c.indicator).
-			Padding(1, 3).
+			Padding(0, 2).
 			Align(lipgloss.Center),
 
 		HeroTitle: lipgloss.NewStyle().Foreground(c.primary).Bold(true),
 		HeroBody:  lipgloss.NewStyle().Foreground(c.secondary),
 		HeroCode:  lipgloss.NewStyle().Foreground(c.primary).Background(c.chipBg).Padding(0, 1),
 
-		StatusError: lipgloss.NewStyle().Foreground(c.indicator),
-		StatusOK:    lipgloss.NewStyle().Foreground(c.secondary),
-		StatusWarn:  lipgloss.NewStyle().Foreground(c.warn),
+		StatusError:   lipgloss.NewStyle().Foreground(c.indicator),
+		StatusOK:      lipgloss.NewStyle().Foreground(c.secondary),
+		StatusWarn:    lipgloss.NewStyle().Foreground(c.warn),
+		StatusRunning: lipgloss.NewStyle().Foreground(c.indicator).Bold(true),
+
+		BrandDot: lipgloss.NewStyle().Foreground(c.indicator),
+
+		OrangeCaret:           lipgloss.NewStyle().Foreground(c.onIndicator).Background(c.indicator),
+		FocusedFieldUnderline: lipgloss.NewStyle().Foreground(c.indicator),
+
+		CommandKeyword: lipgloss.NewStyle().Foreground(c.indicator).Bold(true),
+		FlagToken:      lipgloss.NewStyle().Foreground(c.indicator),
+		TemplateVar:    lipgloss.NewStyle().Foreground(c.indicator),
+		RequiredTag:    lipgloss.NewStyle().Foreground(c.indicator),
+
+		Chrome:            lipgloss.NewStyle().Foreground(c.muted),
+		ChromeActiveBadge: lipgloss.NewStyle().Foreground(c.indicator).Bold(true),
 	}
 }
 
