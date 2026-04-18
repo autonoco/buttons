@@ -11,6 +11,8 @@ You can now customize the look of the board with built-in color themes.
 ### New features
 
 - **`BUTTONS_THEME` environment variable** — set `BUTTONS_THEME` to switch the board's color palette. Four themes are available out of the box: `default` (adapts to your terminal's light or dark background), `paper` (light palette), `phosphor` (green-on-black CRT look), and `amber` (warm VT220-style terminal). Unknown values fall back to `default`, so a typo won't break anything. See the [CLI reference](/cli/buttons_board).
+
+- **Persistent theme choice** — run `buttons config set theme amber` to save your preferred theme so it applies every time you open the board. The resolution order is: `BUTTONS_THEME` environment variable first, then your saved setting, then the default adaptive palette. Use `buttons config unset theme` to revert to the default. Invalid theme names are rejected at set time so your config stays valid.
 </Update>
 
 <Update label="2026-04-18" description="Docker release fix">
@@ -57,6 +59,8 @@ You can now store personal preferences that apply across all your projects.
 - **`buttons config` command** — read and write per-user defaults stored in `~/.buttons/settings.json`. Run `buttons config` to see current values, `buttons config set` to change them, and `buttons config unset` to revert to built-in defaults. Settings are global by design — personal preferences stay out of your project repos.
 
 - **Configurable default timeout** — set `default-timeout` to change the timeout used when `buttons create` doesn't include an explicit `--timeout` flag. The resolution order is: explicit `--timeout` flag first, then your `default-timeout` setting, then the built-in 300 seconds. Useful if your workloads consistently need more (or less) time than the default.
+
+- **Configurable board theme** — set `theme` to persist your preferred board color palette across sessions. Run `buttons config set theme phosphor` to save it, or `buttons config unset theme` to revert to the adaptive default. See [board themes](#board-themes) above for the full list of available themes.
 </Update>
 
 <Update label="2026-04-18" description="Next-step hints and CLI polish">
