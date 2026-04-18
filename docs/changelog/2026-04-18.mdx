@@ -3,6 +3,24 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-18" description="Per-user settings, CLI polish, and auto-pruning">
+## Per-user settings, CLI polish, and auto-pruning
+
+Buttons now remembers your preferences across projects, guides you to the next step after every command, and keeps run history tidy automatically.
+
+### New features
+
+- **Per-user settings** — a new `buttons config` command lets you set preferences that apply globally. Your first setting is `default-timeout`, which overrides the built-in 300-second timeout for every button you create. Run `buttons config set default-timeout 600` to save, `buttons config unset default-timeout` to clear, or just `buttons config` to see what's active. Settings are stored in `~/.buttons/settings.json` and never leak into project repos.
+
+### Updates
+
+- **"Next:" hints after commands** — successful commands now print a contextual "Next:" hint so you always know the natural follow-up. For example, `buttons create hello` suggests `buttons press hello`, and `buttons press hello` suggests `buttons history hello`. Hints are stderr-only and hidden when `--json` is set or stdout is piped, so they never interfere with scripts or automation.
+
+- **Auto-pruning run history** — Buttons now automatically keeps only the last 100 runs per button. Previously, run history grew without limit, which could accumulate disk usage over time for frequently pressed buttons like crons or automated workflows. Pruning happens silently after each press and never blocks the command you asked for.
+
+- **Improved CLI help text** — the most-used flags for [create](/cli/buttons_create) and [press](/cli/buttons_press) are now surfaced at the top of their help output, so you can spot `--timeout`, `--arg`, `--dry-run`, and other common options without scrolling through the full flag list.
+</Update>
+
 <Update label="2026-04-18" description="Logs pane in the board dashboard">
 ## Logs pane in the board dashboard
 
