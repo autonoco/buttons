@@ -59,6 +59,7 @@ type Styles struct {
 
 	StatusError lipgloss.Style
 	StatusOK    lipgloss.Style
+	StatusWarn  lipgloss.Style
 }
 
 // BuildStyles detects the terminal's background (light vs dark) and
@@ -74,6 +75,13 @@ func BuildStyles() Styles {
 	colorMuted := ld(lipgloss.Color(hexAluminum), lipgloss.Color("#3A3A38"))
 	colorIndicator := lipgloss.Color(hexIndicator)
 	colorOnIndicator := lipgloss.Color(hexPaper)
+	// Warn is the "something's off but not broken" signal — used for
+	// the `warn` severity in the streaming log viewer. Amber was chosen
+	// to sit between the (ok) dust-green and the (error) indicator
+	// orange without bleeding into either semantic. Not used for
+	// decoration — the orange-is-active-only rule bends but doesn't
+	// break here: warn is an active concern, just quieter.
+	colorWarn := lipgloss.Color("#F0C060")
 	// Action-primary: dark fill, light text. Light terminal → ink/paper;
 	// dark terminal → still a near-black block with paper text (high-contrast
 	// pill that reads as "the default action").
@@ -155,6 +163,7 @@ func BuildStyles() Styles {
 
 		StatusError: lipgloss.NewStyle().Foreground(colorIndicator),
 		StatusOK:    lipgloss.NewStyle().Foreground(colorSecondary),
+		StatusWarn:  lipgloss.NewStyle().Foreground(colorWarn),
 	}
 }
 
