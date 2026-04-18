@@ -29,6 +29,11 @@ type ArgDef struct {
 	Name     string `json:"name"`
 	Type     string `json:"type"`
 	Required bool   `json:"required"`
+
+	// Values is the allowed value set for Type == "enum". Empty for
+	// other types. Stored in JSON as `values` (omitempty so existing
+	// non-enum buttons don't grow a noisy empty-array field).
+	Values []string `json:"values,omitempty"`
 }
 
 // ExtForRuntime returns the code file extension for a given runtime.
