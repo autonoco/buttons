@@ -8,8 +8,15 @@ import (
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
+	"github.com/autonoco/buttons/internal/settings"
 	"github.com/spf13/cobra"
 )
+
+// builtinCreateTimeoutDefault is the fallback timeout when the user
+// hasn't set one via 'buttons config set default-timeout' and didn't
+// pass --timeout explicitly. Kept close to the flag so the resolution
+// chain is readable in one place.
+const builtinCreateTimeoutDefault = 300
 
 var createFile string
 var createCode string
@@ -69,6 +76,13 @@ Examples:
 			return handleServiceError(err)
 		}
 
+		// Resolve effective timeout: explicit --timeout flag > user
+		// setting > built-in. cmd.Flags().Changed() is how we tell
+		// "user passed --timeout" apart from "user accepted the
+		// flag's default value" — matters because the flag's default
+		// is itself a fallback we want settings to override.
+		timeout := resolveCreateTimeout(cmd)
+
 		var maxResponseBytes int64
 		if createMaxResponseSize != "" {
 			maxResponseBytes, err = button.ParseSize(createMaxResponseSize)
@@ -99,7 +113,7 @@ Examples:
 			Body:                 createBody,
 			Prompt:               createPrompt,
 			Description:          createDescription,
-			TimeoutSeconds:       createTimeout,
+			TimeoutSeconds:       timeout,
 			MaxResponseBytes:     maxResponseBytes,
 			AllowPrivateNetworks: createAllowPrivateNetworks,
 			Args:                 argDefs,
@@ -147,6 +161,29 @@ Examples:
 		printNextHint(pressExample)
 		return nil
 	},
+}
+
+// resolveCreateTimeout picks the effective --timeout for this press:
+//
+//  1. Explicit --timeout flag on the command line.
+//  2. 'default-timeout' from ~/.buttons/settings.json.
+//  3. builtinCreateTimeoutDefault (300).
+//
+// Settings-read errors fall through silently to the built-in default
+// rather than failing the command — a bad settings file should never
+// block `buttons create`.
+func resolveCreateTimeout(cmd *cobra.Command) int {
+	if cmd.Flags().Changed("timeout") {
+		return createTimeout
+	}
+	if svc, err := settings.NewServiceFromEnv(); err == nil {
+		if st, err := svc.Load(); err == nil {
+			if v, ok := st.DefaultTimeout(); ok {
+				return v
+			}
+		}
+	}
+	return builtinCreateTimeoutDefault
 }
 
 func init() {
