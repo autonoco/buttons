@@ -34,7 +34,7 @@ func TestExecute_BatteriesInjectedAsEnv(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result := Execute(ctx, btn, nil, map[string]string{"APIFY_TOKEN": "secret123"}, codePath)
+	result := Execute(ctx, btn, nil, map[string]string{"APIFY_TOKEN": "secret123"}, nil, codePath)
 
 	if result.Status != "ok" {
 		t.Fatalf("status=%q stderr=%q", result.Status, result.Stderr)
@@ -42,6 +42,74 @@ func TestExecute_BatteriesInjectedAsEnv(t *testing.T) {
 	if result.Stdout != "secret123" {
 		t.Errorf("stdout = %q, want secret123", result.Stdout)
 	}
+}
+
+// TestExecute_SinkReceivesStreamedLines verifies the caller-provided
+// LineSink gets every line the child writes in real time, tagged with
+// the right severity, while the final Result.Stdout/Stderr still
+// contain the complete buffered output. This is the C1 contract.
+func TestExecute_SinkReceivesStreamedLines(t *testing.T) {
+	dir := t.TempDir()
+	codePath := filepath.Join(dir, "main.sh")
+	script := "#!/bin/sh\necho first\necho second\necho oops >&2\nprintf trailing\n"
+	if err := os.WriteFile(codePath, []byte(script), 0o700); err != nil { // #nosec G306
+		t.Fatal(err)
+	}
+
+	btn := &button.Button{
+		Name:           "stream-test",
+		Runtime:        "shell",
+		TimeoutSeconds: 5,
+	}
+
+	sink := make(chan LogLine, 16)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result := Execute(ctx, btn, nil, nil, sink, codePath)
+	close(sink)
+
+	if result.Status != "ok" {
+		t.Fatalf("status=%q stderr=%q", result.Status, result.Stderr)
+	}
+
+	var stdoutLines, stderrLines []string
+	for l := range sink {
+		switch l.Sev {
+		case SeverityStdout:
+			stdoutLines = append(stdoutLines, l.Text)
+		case SeverityStderr:
+			stderrLines = append(stderrLines, l.Text)
+		}
+	}
+
+	wantStdout := []string{"first", "second", "trailing"}
+	if !equalStringSlices(stdoutLines, wantStdout) {
+		t.Errorf("stdout lines = %v, want %v", stdoutLines, wantStdout)
+	}
+	if !equalStringSlices(stderrLines, []string{"oops"}) {
+		t.Errorf("stderr lines = %v, want [oops]", stderrLines)
+	}
+
+	// Primary capture must be complete including trailing partial.
+	if result.Stdout != "first\nsecond\ntrailing" {
+		t.Errorf("Result.Stdout = %q", result.Stdout)
+	}
+	if result.Stderr != "oops\n" {
+		t.Errorf("Result.Stderr = %q", result.Stderr)
+	}
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // streamingServer returns an httptest server that streams `total`
@@ -90,7 +158,7 @@ func TestExecuteHTTP_ResponseBodyLimit_Default(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result := Execute(ctx, btn, map[string]string{}, nil, "")
+	result := Execute(ctx, btn, map[string]string{}, nil, nil, "")
 
 	if result.Status != "ok" {
 		t.Fatalf("unexpected status %q; stderr=%q", result.Status, result.Stderr)
@@ -125,7 +193,7 @@ func TestExecuteHTTP_ResponseBodyLimit_Custom(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		result := Execute(ctx, btn, map[string]string{}, nil, "")
+		result := Execute(ctx, btn, map[string]string{}, nil, nil, "")
 		if result.Status != "ok" {
 			t.Fatalf("unexpected status %q; stderr=%q", result.Status, result.Stderr)
 		}
@@ -152,7 +220,7 @@ func TestExecuteHTTP_ResponseBodyLimit_Custom(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		result := Execute(ctx, btn, map[string]string{}, nil, "")
+		result := Execute(ctx, btn, map[string]string{}, nil, nil, "")
 		if result.Status != "ok" {
 			t.Fatalf("unexpected status %q; stderr=%q", result.Status, result.Stderr)
 		}
@@ -189,7 +257,7 @@ func TestExecuteHTTP_SSRFBlocksLocalhostByDefault(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result := Execute(ctx, btn, map[string]string{}, nil, "")
+	result := Execute(ctx, btn, map[string]string{}, nil, nil, "")
 
 	if result.Status != "error" {
 		t.Fatalf("expected status 'error' for SSRF-blocked request, got %q", result.Status)
@@ -224,7 +292,7 @@ func TestExecuteHTTP_SSRFPerButtonOverride(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result := Execute(ctx, btn, map[string]string{}, nil, "")
+	result := Execute(ctx, btn, map[string]string{}, nil, nil, "")
 
 	if result.Status != "ok" {
 		t.Fatalf("expected status 'ok' with per-button override, got %q; stderr=%q", result.Status, result.Stderr)
@@ -257,7 +325,7 @@ func TestExecuteHTTP_SSRFEnvVarOverride(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result := Execute(ctx, btn, map[string]string{}, nil, "")
+	result := Execute(ctx, btn, map[string]string{}, nil, nil, "")
 
 	if result.Status != "ok" {
 		t.Fatalf("expected status 'ok' with env var override, got %q; stderr=%q", result.Status, result.Stderr)
@@ -287,7 +355,7 @@ func TestExecuteHTTP_SmallResponseUnaffected(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result := Execute(ctx, btn, map[string]string{}, nil, "")
+	result := Execute(ctx, btn, map[string]string{}, nil, nil, "")
 
 	if result.Status != "ok" {
 		t.Fatalf("unexpected status %q; stderr=%q", result.Status, result.Stderr)

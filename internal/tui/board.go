@@ -430,7 +430,9 @@ func runPress(btn *button.Button, codePath string, batteries map[string]string) 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(btn.TimeoutSeconds)*time.Second)
 		defer cancel()
 
-		result := engine.Execute(ctx, btn, nil, batteries, codePath)
+		// Board presses don't stream yet — the dedicated `buttons logs`
+		// viewer (C2) will pass a sink for live tailing.
+		result := engine.Execute(ctx, btn, nil, batteries, nil, codePath)
 		return pressDoneMsg{name: name, result: result}
 	}
 }

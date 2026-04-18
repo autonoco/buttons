@@ -23,7 +23,11 @@ const sigTermGrace = 5 * time.Second
 // batteries is the caller-provided map of battery KEY → VALUE; each entry is
 // injected into the child process as BUTTONS_BAT_<KEY> so shell / code buttons
 // can read secrets without baking them into the script file. Pass nil to skip.
-func Execute(ctx context.Context, btn *button.Button, args, batteries map[string]string, codePath string) *Result {
+// sink, when non-nil, receives every line the child writes to stdout / stderr
+// in real time as LogLine values — used by the TUI log viewer. The buffered
+// Result.Stdout / Result.Stderr remain authoritative; the sink is best-effort
+// (see stream.go for the back-pressure policy).
+func Execute(ctx context.Context, btn *button.Button, args, batteries map[string]string, sink LineSink, codePath string) *Result {
 	start := time.Now()
 	result := &Result{
 		Button:    btn.Name,
@@ -91,9 +95,15 @@ func Execute(ctx context.Context, btn *button.Button, args, batteries map[string
 	}
 	cmd.Env = env
 
+	// Capture everything into buffers (authoritative for Result) and,
+	// if a sink was provided, tee every completed line to it tagged
+	// with the right severity. Partial trailing lines are emitted on
+	// Flush after the child exits.
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stdoutTee := newLineTee(&stdout, sink, SeverityStdout)
+	stderrTee := newLineTee(&stderr, sink, SeverityStderr)
+	cmd.Stdout = stdoutTee
+	cmd.Stderr = stderrTee
 
 	if err := cmd.Start(); err != nil {
 		result.Status = "error"
@@ -112,6 +122,12 @@ func Execute(ctx context.Context, btn *button.Button, args, batteries map[string
 	select {
 	case err := <-done:
 		result.DurationMs = time.Since(start).Milliseconds()
+		// Emit any trailing partial lines before the consumer sees the
+		// final Result — ensures the last message on a script that
+		// didn't terminate its output with \n still appears in the
+		// stream.
+		stdoutTee.Flush()
+		stderrTee.Flush()
 		result.Stdout = stdout.String()
 		result.Stderr = stderr.String()
 
@@ -137,6 +153,8 @@ func Execute(ctx context.Context, btn *button.Button, args, batteries map[string
 	case <-ctx.Done():
 		killProcessGroup(cmd, done)
 		result.DurationMs = time.Since(start).Milliseconds()
+		stdoutTee.Flush()
+		stderrTee.Flush()
 		result.Stdout = stdout.String()
 		result.Stderr = stderr.String()
 		result.Status = "timeout"
