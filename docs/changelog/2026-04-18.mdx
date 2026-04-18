@@ -3,6 +3,26 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-18" description="Per-user settings, press animation, and CLI polish">
+## Per-user settings, press animation, and CLI polish
+
+New config command, a tactile press animation in the board, and several CLI quality-of-life improvements.
+
+### New features
+
+- **`buttons config` command** — you can now store personal preferences that apply across every project. Run `buttons config set default-timeout 600` to change your default timeout, or `buttons config` to see your current settings. Values are stored per-user and never leak into project repos. Pass `--json` for machine-readable output.
+
+- **Press animation in the board** — pressing a button in the board now plays a quick four-frame pulse animation that mimics a physical button press. The animation runs on both keyboard and mouse presses, giving you instant visual feedback that your press registered.
+
+### Updates
+
+- **"Next:" hints after commands** — successful CLI commands now print a suggested next step. For example, `buttons create` shows `Next: buttons press <name>`, and `buttons press` shows `Next: buttons history <name>`. Hints are hidden in JSON mode and when piping output, so they never interfere with scripts.
+
+- **Auto-prune run history** — Buttons now automatically keeps only the last 100 runs per button in your history. Older runs are cleaned up after each press, so the history folder stays bounded without any manual maintenance.
+
+- **Improved help text** — `buttons create --help` and `buttons press --help` now surface the most common flags at the top, making it easier to discover options like `--timeout`, `--arg`, and `--dry-run` without scrolling.
+</Update>
+
 <Update label="2026-04-18" description="Logs pane in the board dashboard">
 ## Logs pane in the board dashboard
 
