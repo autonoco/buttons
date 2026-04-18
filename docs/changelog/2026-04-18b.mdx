@@ -1,0 +1,22 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-18" description="Per-user settings, guided CLI, and automatic history cleanup">
+## Per-user settings, guided CLI, and automatic history cleanup
+
+A new `buttons config` command, contextual hints after every action, and automatic run-history pruning.
+
+### New features
+
+- **`buttons config` command** — store personal preferences in `~/.buttons/settings.json` so they apply across every project without leaking into version control. The first supported key is `default-timeout` — set it once and every new button picks it up automatically. Run `buttons config` to see current values, `buttons config set default-timeout 600` to save, or `buttons config unset default-timeout` to revert to the built-in 300-second default. Timeout resolution order is: explicit `--timeout` flag, then your setting, then the built-in default. See [create](/cli/buttons_create) and [press](/cli/buttons_press) for how timeouts apply.
+
+### Updates
+
+- **"Next:" hints after commands** — successful commands now print a suggested next step so you don't have to remember the workflow. For example, `buttons create` suggests `buttons press`, and `buttons press` suggests `buttons history`. Hints are suppressed in `--json` mode and when stdout is piped, so they never interfere with scripts.
+
+- **Common flags in help text** — `buttons create --help` and `buttons press --help` now show the most-used flags at the top, before the full auto-generated list. No new flags — same information, easier to find. See the [create](/cli/buttons_create) and [press](/cli/buttons_press) CLI reference.
+
+- **Automatic history pruning** — run history is now capped at the last 100 runs per button. Older entries are removed automatically after each press, so the `pressed/` directory no longer grows without limit.
+</Update>
