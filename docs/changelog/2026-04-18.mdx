@@ -3,6 +3,28 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-18" description="Per-user settings, smarter CLI hints, and automatic history pruning">
+## Per-user settings, smarter CLI hints, and automatic history pruning
+
+Buttons now remembers your preferences across projects and guides you through common workflows with contextual hints.
+
+### New features
+
+- **`buttons config` command** — you can now store personal preferences in a global settings file that applies to every project. Run `buttons config set default-timeout 600` to change how long buttons wait before timing out, or `buttons config` to see your current settings. Use `buttons config unset` to clear a value and fall back to the built-in default. All three subcommands support `--json` for scripting.
+
+- **Per-user default timeout** — set a default timeout once and every new button picks it up automatically. Explicit `--timeout` on `buttons create` still wins, followed by your saved default, followed by the built-in 300 seconds. No more passing `--timeout` on every create if your workloads consistently need more time.
+
+- **"Next:" hints after commands** — successful commands now print a contextual follow-up suggestion. `buttons create` shows `Next: buttons press <name>`, `buttons press` suggests `Next: buttons history <name>`, and so on. Hints include pre-filled argument stubs for buttons with required args. Hints are stderr-only and hidden automatically in `--json` mode or when piping output.
+
+- **Automatic history pruning** — run history is now capped at the 100 most recent runs per button. Older entries are cleaned up automatically after each press, so the `pressed/` directory stays bounded even for long-running automations and cron-like workflows.
+
+### Updates
+
+- **Default timeout raised to 300 seconds** — the default press timeout is now 300 seconds (up from 60). The previous limit was too tight for real-world workloads like ETL jobs, database migrations, and slow API calls. You can still shorten it with `--timeout` at create time or override per-press.
+
+- **Common flags surfaced in help** — `buttons create --help` and `buttons press --help` now show the most-used flags at the top, so you can find `--timeout`, `--arg`, `--dry-run`, and others without scrolling through the full flag list.
+</Update>
+
 <Update label="2026-04-18" description="Logs pane in the board dashboard">
 ## Logs pane in the board dashboard
 
