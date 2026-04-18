@@ -65,6 +65,12 @@ type Model struct {
 	// footer. Pane shows recent run history for the focused button.
 	logsOpen bool
 
+	// argForm, when non-nil, is the inline press-with-args prompt
+	// replacing the board's content area. Opened automatically when
+	// the user presses a button with required args; dismissed on
+	// submit (press fires) or esc (no press).
+	argForm *argForm
+
 	// pressPulse is the name of the button currently showing the
 	// keydown / fire frames of the mechanical-press animation. Empty
 	// when no press is mid-choreography. Distinct from status because
@@ -228,6 +234,16 @@ func refreshCmd() tea.Cmd {
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// When the arg form is open, every non-emergency key is its
+	// property. Ctrl+C keeps its board-level meaning (quit) so there's
+	// always an escape hatch even from inside a modal state.
+	if m.argForm != nil {
+		if msg.String() == "ctrl+c" {
+			return m, tea.Quit
+		}
+		return m.handleArgFormKey(msg)
+	}
+
 	switch msg.String() {
 	// Ctrl+C is kept as an unadvertised emergency escape so the user
 	// is never truly stuck if something goes wrong — but the board
@@ -284,6 +300,58 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// handleArgFormKey dispatches a key to the inline form and, on
+// submit, validates through button.ParsePressArgs and fires the
+// press using the CLI's exact validation path. On cancel, the form
+// clears and the board returns to normal.
+func (m Model) handleArgFormKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	res, values := m.argForm.handleKey(msg)
+	switch res {
+	case argFormCancel:
+		m.argForm = nil
+		return m, nil
+
+	case argFormSubmit:
+		target := m.argForm.btnName
+		// Find the button (it might have been deleted between form
+		// open and submit — unlikely, but an auto-refresh in another
+		// terminal is possible).
+		var btn *button.Button
+		for i := range m.buttons {
+			if m.buttons[i].Name == target {
+				btn = &m.buttons[i]
+				break
+			}
+		}
+		if btn == nil {
+			m.argForm = nil
+			m.lastErr = fmt.Sprintf("%s is no longer available", target)
+			return m, nil
+		}
+		parsed, err := button.ParsePressArgs(toArgList(values), btn.Args)
+		if err != nil {
+			// Stay on the form; surface the validation error inline.
+			m.argForm.lastErr = err.Error()
+			return m, nil
+		}
+		// Dismiss the form, fire the press with the typed args.
+		m.argForm = nil
+		return m.pressButtonWithArgs(target, parsed)
+	}
+	return m, nil
+}
+
+// toArgList flattens map[name]value into the key=value slice shape
+// button.ParsePressArgs expects — letting us reuse the same
+// validator the CLI uses.
+func toArgList(values map[string]string) []string {
+	out := make([]string, 0, len(values))
+	for k, v := range values {
+		out = append(out, fmt.Sprintf("%s=%s", k, v))
+	}
+	return out
 }
 
 func (m Model) moveCursor(delta int) tea.Model {
@@ -379,12 +447,47 @@ func (m Model) pressButton(name string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Any required args without values → open the inline form and
+	// return to let the user fill them in. The press fires when the
+	// form submits (see handlePressFormSubmit).
+	hasRequired := false
 	for _, a := range btn.Args {
 		if a.Required {
-			m.lastErr = fmt.Sprintf("%s requires --arg %s; press from the CLI for now", name, a.Name)
-			m.lastOK = ""
+			hasRequired = true
+			break
+		}
+	}
+	if hasRequired {
+		m.argForm = newArgForm(btn)
+		m.lastErr = ""
+		m.lastOK = ""
+		return m, nil
+	}
+
+	return m.pressButtonWithArgs(name, nil)
+}
+
+// pressButtonWithArgs dispatches a press with pre-resolved args (or
+// nil for "no args"). Callers are expected to have already verified
+// required-arg validation — either because there are none, or because
+// the form just finished collecting values.
+func (m Model) pressButtonWithArgs(name string, args map[string]string) (tea.Model, tea.Cmd) {
+	// Repeat the running-check here so direct calls are safe too.
+	for _, s := range m.status {
+		if s == statusRunning {
 			return m, nil
 		}
+	}
+
+	var btn *button.Button
+	for i := range m.buttons {
+		if m.buttons[i].Name == name {
+			btn = &m.buttons[i]
+			break
+		}
+	}
+	if btn == nil {
+		return m, nil
 	}
 
 	m.lastErr = ""
@@ -406,7 +509,7 @@ func (m Model) pressButton(name string) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	pressCmd := runPress(btn, codePath, batteries)
+	pressCmd := runPress(btn, codePath, batteries, args)
 
 	// Four-frame choreography: rest → keydown (now) → fire (+40ms) →
 	// release (+180ms). pressPulse is set synchronously so the very
@@ -424,7 +527,7 @@ func (m Model) pressButton(name string) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(pressCmd, fireCmd, releaseCmd)
 }
 
-func runPress(btn *button.Button, codePath string, batteries map[string]string) tea.Cmd {
+func runPress(btn *button.Button, codePath string, batteries, args map[string]string) tea.Cmd {
 	name := btn.Name
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(btn.TimeoutSeconds)*time.Second)
@@ -432,7 +535,7 @@ func runPress(btn *button.Button, codePath string, batteries map[string]string) 
 
 		// Board presses don't stream yet — the dedicated `buttons logs`
 		// viewer (C2) will pass a sink for live tailing.
-		result := engine.Execute(ctx, btn, nil, batteries, nil, codePath)
+		result := engine.Execute(ctx, btn, args, batteries, nil, codePath)
 		return pressDoneMsg{name: name, result: result}
 	}
 }
@@ -549,7 +652,12 @@ func (m Model) View() tea.View {
 	parts = append(parts, m.renderDivider())
 	parts = append(parts, "") // blank before content
 
-	if len(m.buttons) == 0 {
+	if m.argForm != nil {
+		// Modal-ish content: form replaces the list / hero block but
+		// the board's header + divider + footer scaffold stays so the
+		// user never loses their visual orientation.
+		parts = append(parts, m.argForm.render(m.styles, m.width))
+	} else if len(m.buttons) == 0 {
 		parts = append(parts, m.renderEmptyHero())
 	} else {
 		if m.hasPinned() {
@@ -561,7 +669,7 @@ func (m Model) View() tea.View {
 		parts = append(parts, m.renderList())
 	}
 
-	if m.logsOpen && len(m.buttons) > 0 {
+	if m.argForm == nil && m.logsOpen && len(m.buttons) > 0 {
 		parts = append(parts, "")
 		parts = append(parts, m.renderDivider())
 		parts = append(parts, "")
