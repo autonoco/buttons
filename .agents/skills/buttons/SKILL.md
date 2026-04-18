@@ -131,6 +131,30 @@ buttons board [flags]
 |------|------|-------------|
 | `--inline` | bool | render the board in the current terminal instead of spawning a new window |
 
+### `buttons config`
+
+Read and write per-user settings
+
+```
+buttons config [command]
+```
+
+#### `buttons config set`
+
+Set a setting
+
+```
+buttons config set
+```
+
+#### `buttons config unset`
+
+Clear a setting (revert to built-in default)
+
+```
+buttons config unset
+```
+
 ### `buttons create`
 
 Create a new button

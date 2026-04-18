@@ -27,6 +27,7 @@ buttons [flags]
 
 * [buttons batteries](buttons_batteries.md)	 - Manage environment variables and secrets
 * [buttons board](buttons_board.md)	 - Open the button board in a new terminal window
+* [buttons config](buttons_config.md)	 - Read and write per-user settings
 * [buttons create](buttons_create.md)	 - Create a new button
 * [buttons delete](buttons_delete.md)	 - Delete a button
 * [buttons drawer](buttons_drawer.md)	 - Manage button groups (drawers)
