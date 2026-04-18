@@ -60,6 +60,7 @@ Examples:
 		}
 
 		fmt.Fprintf(os.Stderr, "Deleted button: %s\n", name)
+		printNextHint("buttons list")
 		return nil
 	},
 }

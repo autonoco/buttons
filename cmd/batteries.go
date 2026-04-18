@@ -75,6 +75,7 @@ var batteriesSetCmd = &cobra.Command{
 			})
 		}
 		fmt.Fprintf(os.Stderr, "set %s (%s)\n", key, scope)
+		printNextHint("use $BUTTONS_BAT_%s in any shell/code button", key)
 		return nil
 	},
 }

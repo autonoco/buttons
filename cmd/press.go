@@ -135,6 +135,7 @@ Examples:
 			if result.Stdout != "" {
 				fmt.Fprint(os.Stdout, result.Stdout)
 			}
+			printNextHint("buttons history %s", btn.Name)
 			return nil
 		case "error":
 			fmt.Fprintf(os.Stderr, "✗ %s failed (exit %d) in %dms\n", btn.Name, result.ExitCode, result.DurationMs)
