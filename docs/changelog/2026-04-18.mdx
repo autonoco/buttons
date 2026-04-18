@@ -3,6 +3,26 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-18" description="Detail view, enum args, and board upgrades">
+## Detail view, enum args, and board upgrades
+
+The board gets a visual refresh, buttons gain a dedicated detail page, and arguments now support a fixed set of choices.
+
+### New features
+
+- **Button detail view** — run `buttons <name>` to open a rich detail page in your terminal. It shows the button's runtime, timeout, arguments, last run status, and a ready-to-copy press command. Press `e` to open the button's script in your editor. Non-TTY and `--json` output are unchanged. See the [CLI reference](/cli/buttons_board).
+
+- **Enum arg type** — declare an argument with a fixed set of valid values using the new `enum` type. For example, `--arg env:enum:required:staging|prod|canary` restricts the `env` argument to exactly those three choices. Invalid values are rejected at press time with a clear error. On the board, enum args render as a horizontal picker you navigate with arrow keys. See [arguments](/concepts/arguments).
+
+- **Live log streaming** — run `buttons logs <name>` to open a full-screen viewer that streams every line of stdout and stderr in real time as your button runs. Lines are color-coded by severity. Press `f` to toggle follow mode, `g` to jump to the top, and `G` to jump back to the tail. The viewer stays open after the press finishes so you can scroll through the output.
+
+- **Press with args from the board** — buttons with required arguments no longer send you back to the CLI. The board opens an inline form where you fill in each argument, then press Enter to fire. Validation runs through the same path as `buttons press`, so error messages are identical.
+
+### Updates
+
+- **Board visual polish** — the board now displays an orange brand dot in the header, a bottom chrome strip with contextual status badges, right-aligned metadata on each row, and a double-chevron cursor on the focused button. Pinned cards are more compact, the arg form shows a "will run" preview of the exact command, and active buttons display a `[↵ LOGS]` badge when selected.
+</Update>
+
 <Update label="2026-04-18" description="Board themes">
 ## Board themes
 
