@@ -42,6 +42,15 @@ Arguments are defined with --arg in name:type:required|optional format.
 Supported types: string, int, bool. Args are injected as env vars for
 scripts or substituted into URL templates for API buttons.
 
+Common flags:
+  -f, --file PATH       copy an existing script file as this button's code
+      --code STRING     inline script body (shortcut for one-liners)
+      --url URL         turn this into an HTTP button
+      --arg SPEC        define an arg (name:type:required|optional, repeatable)
+      --timeout SECS    execution timeout (default: 300)
+  -d, --description S   human-readable description for 'buttons list'
+      --runtime NAME    shell | python | node  (default: shell)
+
 Examples:
   buttons create deploy                                  # scaffold, then edit main.sh
   buttons create etl --runtime python                    # scaffold, then edit main.py
