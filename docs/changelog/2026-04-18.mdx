@@ -3,6 +3,32 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-18" description="Per-user settings with buttons config">
+## Per-user settings with `buttons config`
+
+You can now save personal preferences that apply across all your projects.
+
+### New features
+
+- **`buttons config` command** — a new `buttons config` command lets you view, set, and clear personal preferences. Settings are stored per-user and never committed to project repos. Run `buttons config` to see current values, `buttons config set` to save a preference, and `buttons config unset` to clear one. Supports `--json` for machine-readable output.
+
+- **Configurable default timeout** — the first available setting is `default-timeout`. Set it once with `buttons config set default-timeout 600` and every new button you create will use that timeout instead of the built-in 300 seconds. You can still override per-button with `--timeout` on [create](/cli/buttons_create) or per-press on [press](/cli/buttons_press).
+</Update>
+
+<Update label="2026-04-18" description="CLI quality-of-life improvements">
+## CLI quality-of-life improvements
+
+Small polish to make the CLI easier to learn and use day-to-day.
+
+### Updates
+
+- **"Next:" hints after commands** — after a successful command, the CLI now prints a suggested next step. For example, `buttons create` suggests `buttons press`, and `buttons press` suggests `buttons history`. Hints only appear in interactive terminals and are suppressed when using `--json` or piping output.
+
+- **Common flags surfaced in help text** — `buttons create --help` and `buttons press --help` now show the most-used flags (like `--timeout`, `--arg`, and `--dry-run`) at the top, before the full flag list. No flags were added or removed — they're just easier to find. See the [create](/cli/buttons_create) and [press](/cli/buttons_press) CLI reference.
+
+- **Automatic run history pruning** — run history in the `pressed/` directory is now automatically capped at 100 runs per button. Older runs are cleaned up after each press, so disk usage stays bounded without any manual maintenance.
+</Update>
+
 <Update label="2026-04-18" description="Logs pane in the board dashboard">
 ## Logs pane in the board dashboard
 
