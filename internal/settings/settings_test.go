@@ -50,6 +50,40 @@ func TestService_Set_InvalidTimeout(t *testing.T) {
 	}
 }
 
+func TestService_Set_Theme(t *testing.T) {
+	svc := NewService(t.TempDir())
+
+	if err := svc.Set(KeyTheme, "amber"); err != nil {
+		t.Fatalf("set amber: %v", err)
+	}
+	st, err := svc.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, ok := st.Theme()
+	if !ok || v != "amber" {
+		t.Errorf("theme = %q/%v, want amber/true", v, ok)
+	}
+
+	if err := svc.Set(KeyTheme, "unknown-theme"); err == nil {
+		t.Error("set unknown theme should fail")
+	}
+}
+
+func TestService_Unset_Theme(t *testing.T) {
+	svc := NewService(t.TempDir())
+	if err := svc.Set(KeyTheme, "phosphor"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Unset(KeyTheme); err != nil {
+		t.Fatalf("unset: %v", err)
+	}
+	st, _ := svc.Load()
+	if _, ok := st.Theme(); ok {
+		t.Error("theme should be unset")
+	}
+}
+
 func TestService_Unset(t *testing.T) {
 	svc := NewService(t.TempDir())
 	if err := svc.Set(KeyDefaultTimeout, "600"); err != nil {
