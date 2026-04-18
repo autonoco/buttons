@@ -12,7 +12,7 @@ You can now customize the look of the board with built-in color themes.
 
 - **`BUTTONS_THEME` environment variable** — set `BUTTONS_THEME` to switch the board's color palette. Four themes are available out of the box: `default` (adapts to your terminal's light or dark background), `paper` (light palette), `phosphor` (green-on-black CRT look), and `amber` (warm VT220-style terminal). Unknown values fall back to `default`, so a typo won't break anything. See the [CLI reference](/cli/buttons_board).
 
-- **Persistent theme choice** — run `buttons config set theme amber` to save your preferred theme so it applies every time you open the board. The resolution order is: `BUTTONS_THEME` environment variable first, then your saved setting, then the default adaptive palette. Use `buttons config unset theme` to revert to the default. Invalid theme names are rejected at set time so your config always stays valid.
+- **Persistent theme choice** — run `buttons config set theme amber` to save your preferred theme so it applies every time you open the board. The resolution order is: `BUTTONS_THEME` environment variable first, then your saved setting, then the default adaptive palette. Use `buttons config unset theme` to revert to the default. Invalid theme names are rejected at set time so your config stays valid.
 </Update>
 
 <Update label="2026-04-18" description="Docker release fix">
