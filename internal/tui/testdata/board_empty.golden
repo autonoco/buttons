@@ -1,0 +1,17 @@
+  buttons                                                       btn—00 · board
+────────────────────────────────────────────────────────────────────────────────
+
+    no buttons yet
+    
+    buttons are reusable actions with typed args and structured output.
+    
+    a shell one-liner:   buttons create hello --code 'echo hi' 
+    a URL:              buttons create weather --url wttr.in/NYC 
+    
+    run the commands above in another terminal — this board updates automatically.
+
+────────────────────────────────────────────────────────────────────────────────
+
+  ┌─────────┐                                                                 
+  │  press  │                               ↑↓  nav  ·   ↵  press  ·   L  logs
+  └─────────┘                                                                 
