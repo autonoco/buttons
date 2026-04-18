@@ -114,7 +114,10 @@ Examples:
 			return handleServiceError(err)
 		}
 
-		result := engine.Execute(ctx, btn, parsedArgs, batteries, codePath)
+		// No streaming sink for CLI presses — the final Result is the
+		// only thing the caller needs. The TUI log viewer (C2) passes
+		// a real sink to see lines as they happen.
+		result := engine.Execute(ctx, btn, parsedArgs, batteries, nil, codePath)
 
 		// Attach prompt if AGENT.md has custom content (not the default template)
 		if promptMD := readPrompt(btn.Name); promptMD != "" {
