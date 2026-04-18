@@ -3,6 +3,50 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-18" description="Enum arguments">
+## Enum arguments
+
+You can now restrict a button argument to a fixed set of valid values.
+
+### New features
+
+- **`enum` arg type** — declare an argument with `name:enum:required:value1|value2|value3` to limit input to a known set. Useful for environments (`staging|prod|canary`), log levels, regions, or anything with a closed list of options. Invalid values are rejected at press time with a clear error. See [arguments](/concepts/arguments).
+
+- **Enum picker in the board** — when you press a button with enum arguments from the board, the inline form shows a horizontal choice strip instead of a free-text field. Use the left and right arrow keys to pick a value. See the [CLI reference](/cli/buttons_board).
+</Update>
+
+<Update label="2026-04-18" description="Button detail view">
+## Button detail view
+
+Running `buttons <name>` in a terminal now opens a structured detail page.
+
+### New features
+
+- **Detail page** — `buttons <name>` displays the button's runtime, timeout, arguments, usage examples, and last run result in a scannable TUI layout. Press `e` to open the button's script in your editor (`$EDITOR`), or press `Enter` / `Esc` to dismiss. Non-interactive contexts (`--json`, piped output) are unchanged.
+</Update>
+
+<Update label="2026-04-18" description="Live log streaming">
+## Live log streaming
+
+You can now watch a button's output in real time as it runs.
+
+### New features
+
+- **`buttons logs <name>` command** — press a button and stream every line of stdout and stderr into a full-screen viewer. The viewer stays open after the press finishes so you can scroll through the output. Press `f` to toggle follow mode, `g` to jump to the top, `G` to jump to the bottom, and `Esc` or `q` to close. `Ctrl+C` cancels an in-flight press.
+
+- **Severity coloring** — stdout and stderr lines are color-coded so you can distinguish normal output from errors at a glance.
+</Update>
+
+<Update label="2026-04-18" description="Press with arguments from the board">
+## Press with arguments from the board
+
+Buttons that require arguments can now be pressed directly from the board.
+
+### New features
+
+- **Inline argument form** — pressing a button that has required arguments from the board now opens an inline form instead of sending you back to the CLI. Fill in each field, press `Enter` to submit, or `Esc` to cancel. Validation runs through the same path as `buttons press`, so type errors and missing values are caught before the press fires. See the [CLI reference](/cli/buttons_board).
+</Update>
+
 <Update label="2026-04-18" description="Board themes">
 ## Board themes
 
