@@ -33,7 +33,8 @@ type Settings struct {
 // zero-valued keys — we never want to apply a 0-second timeout
 // silently because someone set the key and then blanked the value.
 type Defaults struct {
-	TimeoutSeconds *int `json:"timeout_seconds,omitempty"`
+	TimeoutSeconds *int    `json:"timeout_seconds,omitempty"`
+	Theme          *string `json:"theme,omitempty"`
 }
 
 // Service is the file-backed settings store. One file, one instance.
@@ -72,7 +73,19 @@ var ErrUnknownKey = errors.New("unknown settings key")
 // on what exists.
 const (
 	KeyDefaultTimeout = "default-timeout"
+	KeyTheme          = "theme"
 )
+
+// validThemes lists accepted theme names. Kept in settings (not tui)
+// so config validation doesn't depend on the TUI build — the set of
+// valid strings is intentionally small and shouldn't change per-theme
+// implementation detail.
+var validThemes = map[string]bool{
+	"default":  true,
+	"paper":    true,
+	"phosphor": true,
+	"amber":    true,
+}
 
 // Load reads the settings file. A missing file returns a zero-value
 // Settings (with schema_version set) so callers don't have to
@@ -131,6 +144,12 @@ func (s *Service) Set(key, value string) error {
 			return fmt.Errorf("%s must be > 0, got %d", key, n)
 		}
 		st.Defaults.TimeoutSeconds = &n
+	case KeyTheme:
+		if !validThemes[value] {
+			return fmt.Errorf("%s must be one of default, paper, phosphor, amber; got %q", key, value)
+		}
+		v := value
+		st.Defaults.Theme = &v
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownKey, key)
 	}
@@ -146,6 +165,8 @@ func (s *Service) Unset(key string) error {
 	switch key {
 	case KeyDefaultTimeout:
 		st.Defaults.TimeoutSeconds = nil
+	case KeyTheme:
+		st.Defaults.Theme = nil
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownKey, key)
 	}
@@ -160,4 +181,14 @@ func (st *Settings) DefaultTimeout() (int, bool) {
 		return 0, false
 	}
 	return *st.Defaults.TimeoutSeconds, true
+}
+
+// Theme returns the user's persisted theme choice, if any. Callers
+// should treat an unset value as "no preference — fall back to env
+// var, then default-detect" (the TUI does this).
+func (st *Settings) Theme() (string, bool) {
+	if st == nil || st.Defaults.Theme == nil {
+		return "", false
+	}
+	return *st.Defaults.Theme, true
 }

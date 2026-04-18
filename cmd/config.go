@@ -23,13 +23,19 @@ specifically).
 Known keys:
   default-timeout   seconds used when 'buttons create' is run without
                     an explicit --timeout flag (fallback: 300)
+  theme             board TUI theme: default | paper | phosphor | amber
+                    (fallback: default — adapts to terminal background)
 
 Running ` + "`buttons config`" + ` with no subcommand prints the current values.
+
+Resolution order for theme at TUI startup: $BUTTONS_THEME env var wins,
+then settings, then default. Env override keeps A/B comparison easy.
 
 Examples:
   buttons config
   buttons config set default-timeout 600
-  buttons config unset default-timeout`,
+  buttons config set theme amber
+  buttons config unset theme`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return showConfig()
 	},
@@ -93,6 +99,9 @@ func showConfig() error {
 		if v, ok := st.DefaultTimeout(); ok {
 			payload[settings.KeyDefaultTimeout] = v
 		}
+		if v, ok := st.Theme(); ok {
+			payload[settings.KeyTheme] = v
+		}
 		return config.WriteJSON(payload)
 	}
 
@@ -107,6 +116,11 @@ func showConfig() error {
 		render(settings.KeyDefaultTimeout, v, "")
 	} else {
 		render(settings.KeyDefaultTimeout, nil, "300s")
+	}
+	if v, ok := st.Theme(); ok {
+		render(settings.KeyTheme, v, "")
+	} else {
+		render(settings.KeyTheme, nil, "default (adaptive)")
 	}
 	return nil
 }

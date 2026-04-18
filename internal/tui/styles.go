@@ -27,6 +27,8 @@ import (
 	"os"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/autonoco/buttons/internal/settings"
 )
 
 // Brand palette. Exact hex values from the identity spec.
@@ -54,20 +56,52 @@ type themeColors struct {
 	chipBg      color.Color
 }
 
-// resolveTheme inspects $BUTTONS_THEME and returns the palette to use.
-// Unknown / unset values fall through to the adaptive default, so a
-// typo can't suddenly make the board illegible.
+// resolveTheme picks a palette by precedence:
+//
+//  1. $BUTTONS_THEME env var — wins, always. Same pattern as batteries
+//     and default-timeout: an explicit env override beats saved
+//     preference so flipping themes for A/B comparison stays easy.
+//  2. `theme` key in ~/.buttons/settings.json — the persistent choice
+//     the user made via `buttons config set theme NAME`.
+//  3. Default adaptive palette (ld(ink/paper)).
+//
+// Unknown values at any level fall through to the next step; a typo
+// can't make the board illegible.
 func resolveTheme() themeColors {
-	switch os.Getenv("BUTTONS_THEME") {
-	case "paper":
-		return paperTheme()
-	case "phosphor":
-		return phosphorTheme()
-	case "amber":
-		return amberTheme()
-	default:
-		return defaultTheme()
+	if t := os.Getenv("BUTTONS_THEME"); t != "" {
+		if colors, ok := themeByName(t); ok {
+			return colors
+		}
 	}
+	// Settings lookup. Errors fall through silently — a garbled
+	// settings file should never block the TUI.
+	if svc, err := settings.NewServiceFromEnv(); err == nil {
+		if st, err := svc.Load(); err == nil {
+			if name, ok := st.Theme(); ok {
+				if colors, ok := themeByName(name); ok {
+					return colors
+				}
+			}
+		}
+	}
+	return defaultTheme()
+}
+
+// themeByName maps a theme name to its palette. Returns (_, false) for
+// unknown names so the resolver can fall to the next step in its
+// precedence chain.
+func themeByName(name string) (themeColors, bool) {
+	switch name {
+	case "paper":
+		return paperTheme(), true
+	case "phosphor":
+		return phosphorTheme(), true
+	case "amber":
+		return amberTheme(), true
+	case "default":
+		return defaultTheme(), true
+	}
+	return themeColors{}, false
 }
 
 // defaultTheme preserves the pre-theming behavior: ink on paper, or
