@@ -26,3 +26,29 @@ The default timeout for button presses has been raised from 60 seconds to 300 se
 
 - **Default timeout raised to 300s** — the previous 60-second default was too tight for realistic workloads like ETL jobs, migrations, and long-running API calls. If your first press on a real pipeline hit the timeout, it looked like the tool was broken. The new 300-second default gives scripts room to finish while still protecting against runaways. You can still shorten it per-button with `--timeout` on [create](/cli/buttons_create) or override per-press with `--timeout` on [press](/cli/buttons_press).
 </Update>
+
+<Update label="2026-04-18" description="Per-user settings with buttons config">
+## Per-user settings with buttons config
+
+You can now save default preferences that apply across all your projects.
+
+### New features
+
+- **`buttons config` command** — a new `config` subcommand lets you view and manage user-level settings stored outside any project directory. Run `buttons config` to see your current settings, `buttons config set` to save a preference, or `buttons config unset` to clear one and fall back to the built-in default. Settings are scoped to your user account, so they never leak into project repos.
+
+- **Configurable default timeout** — the first supported setting is `default-timeout`. Run `buttons config set default-timeout 600` to change the default press timeout for every button you create. The resolution order is: explicit `--timeout` flag first, then your personal `default-timeout`, then the built-in 300s. See the [CLI reference](/cli/buttons_create) for more on timeout behavior.
+</Update>
+
+<Update label="2026-04-18" description="CLI polish and quality-of-life improvements">
+## CLI polish and quality-of-life improvements
+
+Several small improvements make the CLI faster to learn and easier to navigate.
+
+### Updates
+
+- **"Next:" hints after commands** — successful commands now print a suggested next step. For example, after `buttons create hello`, you'll see `Next: buttons press hello`. After `buttons press hello`, you'll see `Next: buttons history hello`. Hints are only shown in interactive terminals and are suppressed when using `--json` or piping output.
+
+- **Common flags in help text** — `buttons create --help` and `buttons press --help` now show the most-used flags (`--timeout`, `--arg`, `--dry-run`, etc.) at the top, before the full auto-generated list. No new flags were added — existing flags are just easier to discover.
+
+- **Automatic run history pruning** — run history is now capped at the last 100 runs per button. Older runs are cleaned up automatically after each press, so the history directory stays bounded without any manual maintenance.
+</Update>
