@@ -91,9 +91,12 @@ func openInEditor(path string) error {
 	if editor == "" {
 		editor = "vi"
 	}
-	// #nosec G204 -- editor binary is user-configured via $EDITOR /
-	// $VISUAL (their own env); path is resolved via svc.CodePath or
-	// config.ButtonDir which reject escapes. No shell interpolation.
+	// #nosec G204 G702 -- editor binary is user-configured via $EDITOR
+	// / $VISUAL / falls to vi; path is resolved via svc.CodePath or
+	// config.ButtonDir which reject escapes. exec.Command takes the
+	// binary + one positional argument — no shell involved, so the
+	// user's own EDITOR setting is the only way to influence what
+	// runs, which is the whole point of honoring EDITOR.
 	c := exec.Command(editor, path)
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
