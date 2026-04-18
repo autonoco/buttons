@@ -113,7 +113,12 @@ func defaultTheme() themeColors {
 	return themeColors{
 		primary:     ld(lipgloss.Color(hexInk), lipgloss.Color(hexPaper)),
 		secondary:   ld(lipgloss.Color(hexDust), lipgloss.Color("#A8A8A0")),
-		muted:       ld(lipgloss.Color(hexAluminum), lipgloss.Color("#3A3A38")),
+		// Muted (divider + border foreground) needs to stay visible
+		// on dark terminals. The previous #3A3A38 was near-black on
+		// a typical dark terminal bg and dividers rendered almost
+		// invisible. #555550 gives a readable grey without competing
+		// with primary text.
+		muted:       ld(lipgloss.Color(hexAluminum), lipgloss.Color("#555550")),
 		indicator:   lipgloss.Color(hexIndicator),
 		onIndicator: lipgloss.Color(hexPaper),
 		warn:        lipgloss.Color("#F0C060"),

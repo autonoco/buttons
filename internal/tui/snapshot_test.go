@@ -113,6 +113,22 @@ func TestSnapshot_BoardLogsOpen(t *testing.T) {
 	assertSnapshot(t, "board_logs_pane_empty", m.View().Content)
 }
 
+func TestSnapshot_BoardPinnedActive(t *testing.T) {
+	// Pinned button mid-press: spec shows thick orange border, two-line
+	// interior (name + "● ACTIVE · <elapsed>"), and a "↵ TAIL" badge
+	// floating above the card's top-right corner.
+	m := fixtureModel([]button.Button{
+		{Name: "deploy", Runtime: "shell", TimeoutSeconds: 300, Pinned: true},
+		{Name: "weather", Runtime: "http", URL: "https://wttr.in/NYC", TimeoutSeconds: 60},
+	})
+	m.section = sectionPinned
+	m.cursorPinned = 0
+	m.status["deploy"] = statusRunning
+	// Freeze elapsed at a known instant so the golden is deterministic.
+	m.pressStartedAt["deploy"] = time.Now().Add(-3*time.Second - 200*time.Millisecond)
+	assertSnapshot(t, "board_pinned_active", m.View().Content)
+}
+
 func TestSnapshot_BoardArgFormOpen(t *testing.T) {
 	btn := button.Button{
 		Name:           "deploy",

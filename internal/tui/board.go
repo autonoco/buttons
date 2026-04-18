@@ -771,15 +771,26 @@ func (m Model) renderPinnedCard(btn button.Button, selected bool) string {
 	if len(label) < 10 {
 		label = fmt.Sprintf("%-10s", label)
 	}
-	// While running, render a second line inside the card showing a
-	// live elapsed counter ("● active · 3.2s"). Lip Gloss handles
-	// multi-line content inside a bordered box; the card grows by one
-	// row only while active, so idle-state layout is unchanged.
-	if m.status[btn.Name] == statusRunning {
-		sub := "● active · " + formatElapsed(m.elapsedFor(btn.Name))
-		return style.Render(label + "\n" + sub)
+	// Idle cards: single-line label inside the bordered box.
+	if m.status[btn.Name] != statusRunning {
+		return style.Render(label)
 	}
-	return style.Render(label)
+
+	// Active cards: two-line interior (label + elapsed toast) and a
+	// right-aligned "↵ TAIL" badge pinned to the line ABOVE the card's
+	// top border — matches spec station 02 where a running pinned card
+	// gets the badge floating just outside its top-right corner, hinting
+	// that pressing ↵ on the selected row opens the live log stream.
+	sub := m.styles.Indicator.Render("● ACTIVE") + m.styles.Muted.Render(" · "+formatElapsed(m.elapsedFor(btn.Name)))
+	card := style.Render(label + "\n" + sub)
+
+	cardWidth := lipgloss.Width(card)
+	badge := m.styles.BadgeActive.Render("↵ TAIL")
+	badgeOffset := cardWidth - lipgloss.Width(badge)
+	if badgeOffset < 0 {
+		badgeOffset = 0
+	}
+	return strings.Repeat(" ", badgeOffset) + badge + "\n" + card
 }
 
 func (m Model) renderList() string {
