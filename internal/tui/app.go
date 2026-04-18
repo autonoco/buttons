@@ -28,3 +28,19 @@ func Run(svc *button.Service, initial string) error {
 	_, err = p.Run()
 	return err
 }
+
+// RunLogs launches the full-screen logs view for one press. Caller
+// pre-resolves args / batteries / codePath so this layer stays
+// ignorant of button.Service / config discovery — same handoff shape
+// as cmd/press, so the CLI and board-integration paths both work.
+//
+// Blocks until the user dismisses the view (esc / q) or the process
+// is killed. Returns any Bubble Tea runtime error. A cancelled press
+// (ctrl+c) exits cleanly with nil, because canceling is a user action
+// not a program error.
+func RunLogs(btn *button.Button, args, batteries map[string]string, codePath string) error {
+	m := NewLogs(btn, args, batteries, codePath)
+	p := tea.NewProgram(m)
+	_, err := p.Run()
+	return err
+}
