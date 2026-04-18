@@ -3,14 +3,22 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/history"
+	"github.com/autonoco/buttons/internal/tui"
 )
 
 // showButtonDetail displays the detail view for a single button.
+//
+// Three paths:
+//
+//   --json          structured detail dict (agents, pipes)
+//   non-TTY         plain stderr printout (legacy / piped workflows)
+//   TTY + human     full-screen Bubble Tea detail page (internal/tui)
 func showButtonDetail(name string) error {
 	svc := button.NewService()
 	btn, err := svc.Get(name)
@@ -32,7 +40,72 @@ func showButtonDetail(name string) error {
 		return config.WriteJSON(detail)
 	}
 
-	// Human-readable detail view
+	if config.IsNonTTY() {
+		return renderDetailPlain(btn)
+	}
+
+	return renderDetailTUI(svc, btn)
+}
+
+// renderDetailTUI drops into the Bubble Tea detail page. On exit, if
+// the user pressed `e`, shells out to $EDITOR on the resolved code
+// path. Defers the exec until after Bubble Tea has restored the
+// terminal so $EDITOR gets a clean TTY.
+func renderDetailTUI(svc *button.Service, btn *button.Button) error {
+	var lastRun *history.Run
+	if runs, err := history.List(btn.Name, 1); err == nil && len(runs) > 0 {
+		lastRun = &runs[0]
+	}
+	agentMD := readAgentMD(btn.Name)
+
+	var codePath string
+	if btn.URL == "" && btn.Runtime != "prompt" {
+		if p, err := svc.CodePath(btn.Name); err == nil {
+			codePath = p
+		}
+	} else if btn.Runtime == "prompt" {
+		if dir, err := config.ButtonDir(btn.Name); err == nil {
+			codePath = filepath.Join(dir, "AGENT.md")
+		}
+	}
+
+	model := tui.NewDetail(btn, lastRun, agentMD, codePath)
+	final, err := tui.RunDetail(model)
+	if err != nil {
+		return err
+	}
+	if final != nil && final.EditRequested() && codePath != "" {
+		return openInEditor(codePath)
+	}
+	return nil
+}
+
+// openInEditor exec's $EDITOR (falls back to vi) against path. Runs
+// inline — we inherit stdin/stdout/stderr so the editor gets a real
+// TTY after Bubble Tea restored it.
+func openInEditor(path string) error {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = os.Getenv("VISUAL")
+	}
+	if editor == "" {
+		editor = "vi"
+	}
+	// #nosec G204 -- editor binary is user-configured via $EDITOR /
+	// $VISUAL (their own env); path is resolved via svc.CodePath or
+	// config.ButtonDir which reject escapes. No shell interpolation.
+	c := exec.Command(editor, path)
+	c.Stdin = os.Stdin
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	return c.Run()
+}
+
+// renderDetailPlain is the pre-TUI stderr printout. Kept for non-TTY
+// (piped / CI) contexts where spinning up Bubble Tea would fail or
+// look broken. Matches the exact shape of the output the CLI had
+// before the TUI existed so scripts parsing it keep working.
+func renderDetailPlain(btn *button.Button) error {
 	fmt.Fprintf(os.Stderr, "%s", btn.Name)
 	if btn.Description != "" {
 		fmt.Fprintf(os.Stderr, " -- %s", btn.Description)
@@ -65,7 +138,6 @@ func showButtonDetail(name string) error {
 		}
 	}
 
-	// Usage examples (to stdout so agents can pipe)
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "  Usage:")
 	pressLine := fmt.Sprintf("buttons press %s", btn.Name)
@@ -79,7 +151,6 @@ func showButtonDetail(name string) error {
 	fmt.Fprintln(os.Stdout, pressLine)
 	fmt.Fprintln(os.Stdout, pressLine+" --json")
 
-	// Last run
 	runs, err := history.List(btn.Name, 1)
 	if err == nil && len(runs) > 0 {
 		r := runs[0]

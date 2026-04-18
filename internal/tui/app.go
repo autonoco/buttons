@@ -44,3 +44,18 @@ func RunLogs(btn *button.Button, args, batteries map[string]string, codePath str
 	_, err := p.Run()
 	return err
 }
+
+// RunDetail launches the structured detail page for one button and
+// returns the exited model. Callers can inspect the returned model's
+// EditRequested() to decide whether to shell out to $EDITOR on the
+// code path — pulling the exec out of the TUI keeps the model pure.
+// Returns (nil, err) on Bubble Tea runtime errors.
+func RunDetail(m *DetailModel) (*DetailModel, error) {
+	p := tea.NewProgram(m)
+	final, err := p.Run()
+	if err != nil {
+		return nil, err
+	}
+	exited, _ := final.(DetailModel)
+	return &exited, nil
+}
