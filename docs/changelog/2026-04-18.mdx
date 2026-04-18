@@ -16,3 +16,23 @@ You can now see recent run history for any button without leaving the board.
 
 - **Helpful empty states** — if no button is focused, the pane tells you to focus one. If the focused button has no runs yet, it prompts you to press it to record one.
 </Update>
+
+<Update label="2026-04-18" description="Per-user settings, CLI polish, and auto-pruning">
+## Per-user settings, CLI polish, and auto-pruning
+
+Quality-of-life improvements across the CLI based on dogfood feedback.
+
+### New features
+
+- **`buttons config` command** — you can now store per-user preferences in a global settings file that applies across all projects. The first supported setting is `default-timeout`, which lets you raise or lower the default timeout for all new buttons without passing `--timeout` every time. Run `buttons config set default-timeout 600` to save, or `buttons config unset default-timeout` to clear it. Explicit `--timeout` flags still take priority.
+
+- **Next-step hints** — after a successful command, the CLI now prints a `Next:` hint suggesting a logical follow-up. For example, `buttons create` suggests `buttons press`, and `buttons press` suggests `buttons history`. Hints only appear in interactive terminals and are hidden when using `--json` or piping output.
+
+- **Auto-pruning of run history** — the `pressed/` directory now automatically prunes to the last 100 runs per button, so long-running automations and cron buttons no longer accumulate unbounded history files.
+
+### Updates
+
+- **Improved help text** — `buttons create` and `buttons press` now surface the most common flags at the top of their help output, so you can find `--timeout`, `--arg`, `--dry-run`, and other frequently used flags without scrolling.
+
+- **Default timeout raised to 300 seconds** — the default press timeout has been increased from 60 seconds to 300 seconds. The previous default was too tight for realistic workloads like ETL jobs or long API calls. You can still shorten it per-button with `--timeout` or set a global default with `buttons config`.
+</Update>
