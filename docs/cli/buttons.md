@@ -26,7 +26,7 @@ buttons [flags]
 ### SEE ALSO
 
 * [buttons batteries](buttons_batteries.md)	 - Manage environment variables and secrets
-* [buttons board](buttons_board.md)	 - Show the button board (TUI dashboard)
+* [buttons board](buttons_board.md)	 - Open the button board in a new terminal window
 * [buttons create](buttons_create.md)	 - Create a new button
 * [buttons delete](buttons_delete.md)	 - Delete a button
 * [buttons drawer](buttons_drawer.md)	 - Manage button groups (drawers)
