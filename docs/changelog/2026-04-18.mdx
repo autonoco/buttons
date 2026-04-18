@@ -3,6 +3,24 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-18" description="Board themes">
+## Board themes
+
+You can now customize the look of the board with built-in color themes.
+
+### New features
+
+- **`BUTTONS_THEME` environment variable** — set `BUTTONS_THEME` to switch the board's color palette. Four themes are available out of the box: `default` (adapts to your terminal's light or dark background), `paper` (light palette), `phosphor` (green-on-black CRT look), and `amber` (warm VT220-style terminal). Unknown values fall back to `default`, so a typo won't break anything. See the [CLI reference](/cli/buttons_board).
+</Update>
+
+<Update label="2026-04-18" description="Docker release fix">
+## Docker release fix
+
+### Bug fixes
+
+- **Multi-arch Docker images publish correctly again** — a change in the build toolchain caused multi-architecture Docker image pushes to fail with a manifest verification error. This has been fixed, and Docker images for all supported platforms are publishing as expected.
+</Update>
+
 <Update label="2026-04-18" description="Press animation and live elapsed timer">
 ## Press animation and live elapsed timer
 
