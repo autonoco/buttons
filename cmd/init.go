@@ -226,7 +226,7 @@ func printInitSummary(cwd string, alreadyExisted bool, agentMDPath string, insta
 	}
 
 	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "  Try: buttons create hello --code 'echo \"Hello from %s\"'\n", filepath.Base(cwd))
+	printNextHint("buttons create hello --code 'echo \"Hello from %s\"'", filepath.Base(cwd))
 	return nil
 }
 

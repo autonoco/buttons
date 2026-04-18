@@ -109,6 +109,22 @@ func handleServiceError(err error) error {
 	return fmt.Errorf("%s: %s", se.Code, se.Message)
 }
 
+// printNextHint emits a single muted "Next: ..." line to stderr so a
+// human in the terminal sees the common follow-up after a successful
+// command — the idea is: don't make users re-`--help` to find the
+// next move.
+//
+// Skipped in --json mode (machines don't need prose hints) and when
+// stdout is piped (if you're feeding output into a pipeline you
+// probably don't want chatter either). Using Fprintln keeps the line
+// on stderr so stdout stays clean for piping.
+func printNextHint(format string, args ...any) {
+	if jsonOutput || config.IsNonTTY() {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "  Next: "+format+"\n", args...)
+}
+
 // exactArgs returns a PositionalArgs validator like cobra.ExactArgs but with
 // a human-friendly error message that includes usage hints.
 func exactArgs(n int) cobra.PositionalArgs {

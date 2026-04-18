@@ -136,7 +136,15 @@ Examples:
 		} else if btn.Runtime == "prompt" {
 			fmt.Fprintf(os.Stderr, "  Edit:  %s\n", filepath.Join(btnDir, "AGENT.md"))
 		}
-		fmt.Fprintf(os.Stderr, "  Press: buttons press %s\n", btn.Name)
+		// Build a press hint that's actually runnable — if the button
+		// has required args, stub them so the user can fill in values.
+		pressExample := "buttons press " + btn.Name
+		for _, a := range btn.Args {
+			if a.Required {
+				pressExample += fmt.Sprintf(" --arg %s=<%s>", a.Name, a.Type)
+			}
+		}
+		printNextHint(pressExample)
 		return nil
 	},
 }
