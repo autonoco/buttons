@@ -46,19 +46,29 @@ inline script, --file to copy an existing script, --url for an HTTP
 endpoint, or --prompt for a standalone instruction.
 
 Arguments are defined with --arg in name:type:required|optional format.
-Supported types: string, int, bool. Args are injected as env vars for
-scripts or substituted into URL templates for API buttons.
+Supported types: string, int, bool, enum.
+
+Enum args accept a 4th pipe-separated segment listing the allowed
+values — the TUI press form renders them as a horizontal choice row,
+and the CLI validates the supplied value is in the set:
+
+  --arg env:enum:required:staging|prod|canary
+
+Args are injected as env vars for scripts or substituted into URL
+templates for API buttons.
 
 Common flags:
   -f, --file PATH       copy an existing script file as this button's code
       --code STRING     inline script body (shortcut for one-liners)
       --url URL         turn this into an HTTP button
-      --arg SPEC        define an arg (name:type:required|optional, repeatable)
+      --arg SPEC        define an arg (name:type:required|optional,
+                        or name:enum:required:a|b|c; repeatable)
       --timeout SECS    execution timeout (default: 300)
   -d, --description S   human-readable description for 'buttons list'
       --runtime NAME    shell | python | node  (default: shell)
 
 Examples:
+  buttons create deploy --arg env:enum:required:staging|prod|canary   # enum arg
   buttons create deploy                                  # scaffold, then edit main.sh
   buttons create etl --runtime python                    # scaffold, then edit main.py
   buttons create greet --code 'echo "Hello, $BUTTONS_ARG_NAME"' --arg name:string:required

@@ -60,3 +60,67 @@ func TestParseArgDefs_Valid(t *testing.T) {
 		t.Fatalf("expected 2 defs, got %d", len(defs))
 	}
 }
+
+func TestParseArgDef_EnumValid(t *testing.T) {
+	def, err := ParseArgDef("env:enum:required:staging|prod|canary")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if def.Type != "enum" {
+		t.Errorf("type = %q, want enum", def.Type)
+	}
+	if !def.Required {
+		t.Error("required should be true")
+	}
+	if len(def.Values) != 3 {
+		t.Fatalf("values = %v, want 3 entries", def.Values)
+	}
+	for i, want := range []string{"staging", "prod", "canary"} {
+		if def.Values[i] != want {
+			t.Errorf("values[%d] = %q, want %q", i, def.Values[i], want)
+		}
+	}
+}
+
+func TestParseArgDef_EnumRejectsBadShapes(t *testing.T) {
+	cases := []struct {
+		raw    string
+		reason string
+	}{
+		{"env:enum:required", "missing values segment"},
+		{"env:enum:required:only-one", "single-value enum is useless"},
+		{"env:enum:required:a||b", "empty entry in the list"},
+		{"env:enum:required:a|a", "duplicate enum value"},
+		{"name:string:required:a|b", "non-enum types don't accept a 4th segment"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.reason, func(t *testing.T) {
+			if _, err := ParseArgDef(tc.raw); err == nil {
+				t.Errorf("ParseArgDef(%q) should fail: %s", tc.raw, tc.reason)
+			}
+		})
+	}
+}
+
+func TestParsePressArgs_EnumMembership(t *testing.T) {
+	defs := []ArgDef{{
+		Name:     "env",
+		Type:     "enum",
+		Required: true,
+		Values:   []string{"staging", "prod", "canary"},
+	}}
+
+	// Valid value — passes.
+	out, err := ParsePressArgs([]string{"env=staging"}, defs)
+	if err != nil {
+		t.Fatalf("staging should be accepted: %v", err)
+	}
+	if out["env"] != "staging" {
+		t.Errorf("value = %q, want staging", out["env"])
+	}
+
+	// Invalid value — rejected with a helpful message listing the set.
+	if _, err := ParsePressArgs([]string{"env=dev"}, defs); err == nil {
+		t.Error("dev should be rejected (not in enum)")
+	}
+}
