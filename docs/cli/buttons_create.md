@@ -23,6 +23,15 @@ Arguments are defined with --arg in name:type:required|optional format.
 Supported types: string, int, bool. Args are injected as env vars for
 scripts or substituted into URL templates for API buttons.
 
+Common flags:
+  -f, --file PATH       copy an existing script file as this button's code
+      --code STRING     inline script body (shortcut for one-liners)
+      --url URL         turn this into an HTTP button
+      --arg SPEC        define an arg (name:type:required|optional, repeatable)
+      --timeout SECS    execution timeout (default: 300)
+  -d, --description S   human-readable description for 'buttons list'
+      --runtime NAME    shell | python | node  (default: shell)
+
 **Examples:**
 
 ```bash
@@ -55,7 +64,7 @@ buttons create [name] [flags]
       --method string              HTTP method for --url (default: GET)
       --prompt string              prompt/instruction for the consuming agent (written to AGENT.md)
       --runtime string             code runtime: shell, python, node (default: shell)
-      --timeout int                execution timeout in seconds (default 60)
+      --timeout int                execution timeout in seconds (default 300)
       --url string                 HTTP API endpoint URL (supports {{arg}} templates)
 ```
 
