@@ -3,6 +3,28 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-18" description="Per-user config, press animations, and quality-of-life improvements">
+## Per-user config, press animations, and quality-of-life improvements
+
+A new `buttons config` command, smoother press feedback in the board, and several usability improvements across the CLI.
+
+### New features
+
+- **Per-user settings** — `buttons config set default-timeout 600` saves a default timeout that applies to every project on your machine. Settings live in `~/.buttons/settings.json` and are resolved in order: explicit `--timeout` flag first, then your config value, then the built-in 300-second default. Run `buttons config` with no arguments to see current values. See the [CLI reference](/cli/buttons_config).
+
+- **Live elapsed counter** — buttons that are currently running now show a live clock in the board. Pinned cards display the elapsed time below the button name; list rows show it next to the "active" badge. Short presses read as `3.2s`, longer ones switch to `2:07` or `1:04:22`.
+
+- **Press animation** — pressing a button in the board now plays a quick four-frame pulse that mimics a physical button press. The animation runs in under 200 milliseconds and gives immediate tactile feedback before the spinner takes over.
+
+### Updates
+
+- **"Next:" hints** — successful commands now print a suggested next step. For example, `buttons create` suggests `buttons press`, and `buttons press` suggests `buttons history`. Hints are suppressed in JSON mode and when piping output, so they never interfere with scripts.
+
+- **Common flags in help text** — `buttons create --help` and `buttons press --help` now surface the most-used flags at the top of the output, before the full auto-generated list. No new flags — just easier discovery.
+
+- **Automatic history pruning** — run history is now capped at the 100 most recent runs per button. Older runs are removed automatically after each press. This keeps the `pressed/` directory bounded without any manual cleanup.
+</Update>
+
 <Update label="2026-04-18" description="Logs pane in the board dashboard">
 ## Logs pane in the board dashboard
 
