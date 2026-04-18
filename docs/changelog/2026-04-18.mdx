@@ -17,6 +17,42 @@ You can now see recent run history for any button without leaving the board.
 - **Helpful empty states** — if no button is focused, the pane tells you to focus one. If the focused button has no runs yet, it prompts you to press it to record one.
 </Update>
 
+<Update label="2026-04-18" description="Per-user settings with buttons config">
+## Per-user settings with `buttons config`
+
+You can now store personal preferences that apply across all your projects.
+
+### New features
+
+- **`buttons config` command** — read and write per-user defaults stored in `~/.buttons/settings.json`. Run `buttons config` to see current values, `buttons config set` to change them, and `buttons config unset` to revert to built-in defaults. Settings are global by design — personal preferences stay out of your project repos.
+
+- **Configurable default timeout** — set `default-timeout` to change the timeout used when `buttons create` doesn't include an explicit `--timeout` flag. The resolution order is: explicit `--timeout` flag first, then your `default-timeout` setting, then the built-in 300 seconds. Useful if your workloads consistently need more (or less) time than the default.
+</Update>
+
+<Update label="2026-04-18" description="Next-step hints and CLI polish">
+## Next-step hints and CLI polish
+
+The CLI now tells you what to do next after every successful command.
+
+### New features
+
+- **"Next:" hints** — after a successful command, the CLI prints a suggested follow-up. `buttons create` shows the press command, `buttons press` points to history, and `buttons batteries set` reminds you how to reference the variable. Hints appear only in interactive terminals and are suppressed with `--json` or when piping output.
+
+### Updates
+
+- **Common flags in help text** — `buttons create --help` and `buttons press --help` now surface the most-used flags (`--timeout`, `--arg`, `--dry-run`, etc.) at the top, before the full auto-generated list. No new flags — just easier discovery.
+</Update>
+
+<Update label="2026-04-18" description="Automatic run history pruning">
+## Automatic run history pruning
+
+Run history is now automatically capped so it doesn't grow without limit.
+
+### Updates
+
+- **Auto-prune to 100 runs** — each button's `pressed/` directory is pruned to the most recent 100 runs after every press. Oldest runs are removed first. Non-JSON files and subdirectories are left alone. If pruning fails for any reason, the press still succeeds — cleanup catches up on the next run.
+</Update>
+
 <Update label="2026-04-18" description="Higher default press timeout">
 ## Higher default press timeout
 
