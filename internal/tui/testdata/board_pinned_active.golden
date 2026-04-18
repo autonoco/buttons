@@ -1,0 +1,23 @@
+  ● buttons                                                     btn—02 · board
+────────────────────────────────────────────────────────────────────────────────
+
+                ↵ TAIL 
+  ┏━━━━━━━━━━━━━━━━━━━┓
+  ┃    deploy         ┃
+  ┃  ● ACTIVE · 3.2s  ┃
+  ┗━━━━━━━━━━━━━━━━━━━┛
+
+────────────────────────────────────────────────────────────────────────────────
+
+  ⠋   deploy                                      shell · 300s  3.2s   ACTIVE 
+  □   weather                                     http · 60s · GET wttr.in/NYC
+
+────────────────────────────────────────────────────────────────────────────────
+
+  ┌─────────┐                                                                 
+  │  press  │                  ↑↓  nav  ·   ↵  press  ·   L  logs  ·   ?  help
+  └─────────┘                                                                 
+
+  ● deploy running… stdout streaming to ~/.buttons/buttons/deploy/pressed/
+
+  TTY 1 · UTF-8 · 256-COLOR                                  ● ACTIVE · deploy
