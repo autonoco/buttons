@@ -3,6 +3,32 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-18" description="Press buttons with arguments from the board">
+## Press buttons with arguments from the board
+
+Buttons that require arguments can now be pressed directly from the board — no need to switch back to the CLI.
+
+### New features
+
+- **Inline argument form** — pressing a button that has required arguments now opens a form right inside the board. Each argument gets its own input field with its name, type, and a required badge. Fill in the values and hit Enter to fire the press. The form validates through the same path as `buttons press`, so error messages are identical. Press Esc to cancel and return to the button list. See the [CLI reference](/cli/buttons_board).
+
+- **Keyboard-friendly navigation** — move between fields with Tab or arrow keys, type values directly, and submit with Enter. If a required field is missing, the form highlights it and bounces the cursor there instead of submitting.
+</Update>
+
+<Update label="2026-04-18" description="Live log streaming">
+## Live log streaming
+
+You can now watch a button's output in real time as it runs.
+
+### New features
+
+- **`buttons logs` command** — run `buttons logs <name>` to open a full-screen viewer that streams every line of stdout and stderr as the child process writes it. The viewer stays open after the press finishes so you can scroll through the output. Press Esc or `q` to dismiss, or Ctrl+C to cancel the in-flight press. See the [CLI reference](/cli/buttons_board).
+
+- **Severity coloring** — stdout and stderr lines are color-coded so you can tell them apart at a glance. A live elapsed timer in the header shows how long the press has been running.
+
+- **Follow mode** — the viewer pins to the tail of the output by default. Press `f` to toggle follow mode, `g` to jump to the top, or `G` to jump back to the bottom and re-enable follow.
+</Update>
+
 <Update label="2026-04-18" description="Board themes">
 ## Board themes
 
