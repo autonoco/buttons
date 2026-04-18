@@ -58,6 +58,14 @@ type Model struct {
 	// footer. Pane shows recent run history for the focused button.
 	logsOpen bool
 
+	// pressPulse is the name of the button currently showing the
+	// keydown / fire frames of the mechanical-press animation. Empty
+	// when no press is mid-choreography. Distinct from status because
+	// the pulse can flash even when the underlying press completes
+	// synchronously (HTTP button returning in <180ms).
+	pressPulse     string
+	pressPulseFire bool
+
 	width, height int
 }
 
@@ -73,6 +81,24 @@ type pressDoneMsg struct {
 	result *engine.Result
 	err    error
 }
+
+// pressFireMsg fires 40ms after keydown to swap the keydown (thick
+// border) frame for the fire (orange border + fill) frame — the
+// moment the user feels "I committed the press." Name is carried
+// through so a second press stacked on the first doesn't dangle a
+// stale pulse on a row that was already released.
+type pressFireMsg struct{ name string }
+
+// pressReleaseMsg fires 180ms after keydown and ends the choreography.
+// If the press is still running at this point, the row falls back to
+// the persistent PinnedActive / statusRunning state — visually
+// continuous because both use the same thick-orange border.
+type pressReleaseMsg struct{ name string }
+
+const (
+	pressFireDelay    = 40 * time.Millisecond
+	pressReleaseDelay = 180 * time.Millisecond
+)
 
 // tickMsg drives the spinner. We only schedule ticks while at least one
 // button is in statusRunning, so idle boards don't spin needlessly.
@@ -138,6 +164,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pressDoneMsg:
 		return m.handlePressDone(msg), nil
+
+	case pressFireMsg:
+		// Only flip fire on if the pulse is still targeting the same
+		// button. A rapid double-press would otherwise paint fire on a
+		// row that already released.
+		if m.pressPulse == msg.name {
+			m.pressPulseFire = true
+		}
+		return m, nil
+
+	case pressReleaseMsg:
+		// End the pulse. If the underlying press is still running, the
+		// row visually stays "active" via statusRunning → PinnedActive;
+		// both frames share the thick-orange border so the transition
+		// reads as one continuous gesture, not a flicker.
+		if m.pressPulse == msg.name {
+			m.pressPulse = ""
+			m.pressPulseFire = false
+		}
+		return m, nil
 
 	case tickMsg:
 		m.spinnerFrame++
@@ -353,12 +399,20 @@ func (m Model) pressButton(name string) (tea.Model, tea.Cmd) {
 
 	pressCmd := runPress(btn, codePath, batteries)
 
-	// Start the spinner only if not already ticking — avoids tick storm.
+	// Four-frame choreography: rest → keydown (now) → fire (+40ms) →
+	// release (+180ms). pressPulse is set synchronously so the very
+	// next View() already shows the keydown frame; fire and release
+	// arrive via tea.Tick.
+	m.pressPulse = name
+	m.pressPulseFire = false
+	fireCmd := tea.Tick(pressFireDelay, func(_ time.Time) tea.Msg { return pressFireMsg{name: name} })
+	releaseCmd := tea.Tick(pressReleaseDelay, func(_ time.Time) tea.Msg { return pressReleaseMsg{name: name} })
+
 	if !m.ticking {
 		m.ticking = true
-		return m, tea.Batch(pressCmd, tickCmd())
+		return m, tea.Batch(pressCmd, fireCmd, releaseCmd, tickCmd())
 	}
-	return m, pressCmd
+	return m, tea.Batch(pressCmd, fireCmd, releaseCmd)
 }
 
 func runPress(btn *button.Button, codePath string, batteries map[string]string) tea.Cmd {
@@ -561,10 +615,19 @@ func (m Model) renderPinned() string {
 }
 
 func (m Model) renderPinnedCard(btn button.Button, selected bool) string {
+	// Priority order: running (persistent state) > fire pulse (2nd
+	// choreography frame) > keydown pulse (1st frame) > selected >
+	// idle. Running beats fire so a long-running press doesn't flicker
+	// back to idle once the 180ms release timer fires.
 	style := m.styles.PinnedIdle
-	if m.status[btn.Name] == statusRunning {
+	switch {
+	case m.status[btn.Name] == statusRunning:
 		style = m.styles.PinnedActive
-	} else if selected {
+	case m.pressPulse == btn.Name && m.pressPulseFire:
+		style = m.styles.PinnedActive
+	case m.pressPulse == btn.Name:
+		style = m.styles.PinnedSelected
+	case selected:
 		style = m.styles.PinnedSelected
 	}
 	label := btn.Name
@@ -591,11 +654,23 @@ func (m Model) renderListRow(btn button.Button, idx int) string {
 	failed := m.status[btn.Name] == statusFailed
 	selected := m.section == sectionList && idx == m.cursorList
 
-	// Spinner frame only while running; success/failure get static glyphs.
+	// Glyph selection — priority matches renderPinnedCard so a pulse
+	// flashed on a row already resolves seamlessly into running-active.
+	//   running       spinner (braille frame)
+	//   fire pulse    ◉ in indicator (orange)
+	//   keydown pulse ▣ in primary
+	//   ok            ✓ in status-ok
+	//   failed        ✗ in status-error
+	//   idle          □ in muted
+	pulsing := m.pressPulse == btn.Name
 	var glyph string
 	switch {
 	case active:
 		glyph = m.styles.indicator(true, m.spinnerFrame)
+	case pulsing && m.pressPulseFire:
+		glyph = m.styles.Indicator.Render("◉")
+	case pulsing:
+		glyph = m.styles.ButtonNameSelected.Render("▣")
 	case done:
 		glyph = m.styles.StatusOK.Render("✓")
 	case failed:
