@@ -1,0 +1,18 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-18" description="Logs pane in the board dashboard">
+## Logs pane in the board dashboard
+
+You can now see recent run history for any button without leaving the board.
+
+### New features
+
+- **Inline logs pane** — press `L` while focused on a button in the board to open a logs pane that shows the last five runs. Each row displays the result glyph, timestamp, exit code, duration, and a preview of the output. Press `L` again to hide it. See the [CLI reference](/cli/buttons_board).
+
+- **At-a-glance results** — successful runs show a green check mark; failures show an orange cross. The output preview is the first line of stdout on success, or stderr on failure, truncated to fit your terminal width so every row stays on a single line.
+
+- **Helpful empty states** — if no button is focused, the pane tells you to focus one. If the focused button has no runs yet, it prompts you to press it to record one.
+</Update>
