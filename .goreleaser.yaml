@@ -130,6 +130,18 @@ dockers:
       - "ghcr.io/autonoco/buttons:latest-amd64"
     build_flag_templates:
       - "--platform=linux/amd64"
+      # Disable buildx attestation manifests. Without these flags, buildx
+      # >= 0.10 pushes an OCI image index with provenance + SBOM
+      # attestations. `docker manifest create` (used by the
+      # docker_manifests: block below) expects plain Docker v2 manifests
+      # and rejects the attestation index with "manifest verification
+      # failed for digest <sha>". Keeping attestations off here is the
+      # canonical fix for goreleaser + buildx + GHCR. Revisit when we
+      # migrate to dockers_v2 (goreleaser's new native buildx path),
+      # which creates multi-arch manifests via buildx itself and can
+      # keep attestations enabled.
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.title=buttons"
       - "--label=org.opencontainers.image.description=Deterministic workflow engine for AI agents"
       - "--label=org.opencontainers.image.source=https://github.com/autonoco/buttons"
@@ -151,6 +163,9 @@ dockers:
       - "ghcr.io/autonoco/buttons:latest-arm64"
     build_flag_templates:
       - "--platform=linux/arm64"
+      # Same attestation-disable rationale as the amd64 block above.
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.title=buttons"
       - "--label=org.opencontainers.image.description=Deterministic workflow engine for AI agents"
       - "--label=org.opencontainers.image.source=https://github.com/autonoco/buttons"
