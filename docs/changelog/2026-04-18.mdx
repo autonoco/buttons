@@ -17,6 +17,44 @@ You can now see recent run history for any button without leaving the board.
 - **Helpful empty states** — if no button is focused, the pane tells you to focus one. If the focused button has no runs yet, it prompts you to press it to record one.
 </Update>
 
+<Update label="2026-04-18" description="Per-user settings and configurable defaults">
+## Per-user settings and configurable defaults
+
+You can now save personal preferences that apply across all your projects with `buttons config`.
+
+### New features
+
+- **`buttons config` command** — a new command group for managing per-user settings. Run `buttons config` to see your current values, `buttons config set` to save a preference, and `buttons config unset` to clear one. Settings are stored globally and never leak into project repos. Pass `--json` for machine-readable output.
+
+- **Configurable default timeout** — use `buttons config set default-timeout 600` to change the default timeout for all new buttons. The CLI resolves timeouts in order: explicit `--timeout` flag first, then your configured default, then the built-in 300 seconds. See the [CLI reference](/cli/buttons_create).
+</Update>
+
+<Update label="2026-04-18" description="Board press animation and live timer">
+## Board press animation and live timer
+
+The board dashboard now gives you real-time visual feedback when you press a button.
+
+### New features
+
+- **Press animation** — pressing a button in the board plays a quick physical-press animation before the spinner takes over. The effect works with both keyboard and mouse clicks.
+
+- **Live elapsed counter** — buttons that are running now show a live clock so you can see how long a press has been active. Short presses display seconds with one decimal (e.g. "3.2s"), longer presses switch to mm:ss, and anything over an hour shows hh:mm:ss. See the [CLI reference](/cli/buttons_board).
+</Update>
+
+<Update label="2026-04-18" description="CLI quality-of-life improvements">
+## CLI quality-of-life improvements
+
+Small refinements to make everyday commands faster to learn and use.
+
+### Updates
+
+- **"Next:" hints after commands** — successful commands now suggest a natural follow-up. For example, `buttons create` shows `Next: buttons press <name>`, and `buttons press` shows `Next: buttons history <name>`. Hints are hidden in `--json` mode and when piping output.
+
+- **Common flags in help text** — `buttons create --help` and `buttons press --help` now surface the most-used flags (like `--timeout`, `--arg`, and `--dry-run`) at the top of the output so you don't have to scroll through the full list.
+
+- **Auto-pruning run history** — the `pressed/` directory is now capped at 100 runs per button. Older runs are automatically cleaned up after each press so history doesn't grow without limit.
+</Update>
+
 <Update label="2026-04-18" description="Higher default press timeout">
 ## Higher default press timeout
 
