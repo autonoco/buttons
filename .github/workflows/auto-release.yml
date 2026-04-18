@@ -119,7 +119,19 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Publish to npm
-        run: node scripts/publish-npm.mjs
-        env:
-          VERSION: ${{ steps.version.outputs.next }}
+      # Dogfood: rather than calling the node script directly, build the
+      # buttons CLI from this checkout and press the publish-npm button
+      # committed at .buttons/buttons/publish-npm/. That button is itself
+      # a thin wrapper around scripts/publish-npm.mjs, so the behavior is
+      # identical — but CI validating the button end-to-end keeps the
+      # "project-local .buttons/ is a real thing you can use" story
+      # coherent. If the button breaks, releases break; the press becomes
+      # one more sample to read when someone's learning the tool.
+      #
+      # Version must be passed without the leading 'v' — that's the
+      # contract publish-npm.mjs expects (it reads process.env.VERSION).
+      - name: Publish to npm (via buttons press)
+        run: |
+          go build -o ./buttons .
+          VERSION="${{ steps.version.outputs.next }}"
+          ./buttons press publish-npm --arg version="${VERSION#v}"
