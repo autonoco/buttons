@@ -255,6 +255,18 @@ List all buttons
 buttons list
 ```
 
+### `buttons logs`
+
+Press a button and watch its output stream live
+
+```
+buttons logs [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--arg` | stringArray | argument as key=value (repeatable; validated against the button spec) |
+
 ### `buttons press`
 
 Run a button
