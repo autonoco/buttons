@@ -3,6 +3,68 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-18" description="Enum arguments">
+## Enum arguments
+
+You can now restrict an argument to a fixed set of valid values.
+
+### New features
+
+- **`enum` argument type** — declare an argument as `name:enum:required:value1|value2|value3` when creating a button. Buttons validates the supplied value at press time and rejects anything not in the list with a clear error message. Useful for environments (`staging|prod|canary`), log levels, regions, or any closed set where a typo could cause problems. See [arguments](/concepts/arguments).
+
+- **Enum picker on the board** — when you press a button with enum arguments from the board, the inline form shows a horizontal choice strip you can cycle through with the arrow keys. No free-text typing required — just pick a value and press Enter.
+</Update>
+
+<Update label="2026-04-18" description="Detail view">
+## Detail view
+
+Running `buttons <name>` now opens an interactive detail page in your terminal.
+
+### New features
+
+- **Button detail page** — `buttons <name>` displays a structured TUI page showing the button's runtime, timeout, arguments, usage examples, and last run result. Press `e` to open the button's script in your editor, or `q` to dismiss. Non-TTY and `--json` output are unchanged, so existing scripts won't break.
+</Update>
+
+<Update label="2026-04-18" description="Live log streaming">
+## Live log streaming
+
+You can now watch a button's output in real time as it runs.
+
+### New features
+
+- **`buttons logs <name>` command** — opens a full-screen TUI that streams every line of stdout and stderr as the button executes. The viewer stays open after the press finishes so you can scroll through the output. Press `f` to toggle follow mode, `g` to jump to the top, `G` to jump to the bottom, and `Esc` to dismiss. `Ctrl+C` cancels the in-flight press.
+
+- **Severity coloring** — stdout and stderr lines are visually distinct. Stdout lines are prefixed with an arrow glyph and rendered in the primary color; stderr lines are highlighted so errors stand out immediately.
+</Update>
+
+<Update label="2026-04-18" description="Inline args form on the board">
+## Inline args form on the board
+
+Buttons with required arguments can now be pressed directly from the board.
+
+### New features
+
+- **Inline argument form** — pressing a button that has required arguments on the board now opens an inline form instead of sending you back to the CLI. Fill in each field, press Enter to submit, or Esc to cancel. Validation runs the same checks as `buttons press`, so you get the same error messages. See the [CLI reference](/cli/buttons_board).
+</Update>
+
+<Update label="2026-04-18" description="Board visual refresh">
+## Board visual refresh
+
+The board dashboard gets a design overhaul with better readability and richer feedback.
+
+### Updates
+
+- **Status bar** — a new bottom chrome strip shows terminal info, active press status, and contextual badges so you always know what the board is doing.
+
+- **Improved dark terminal support** — dividers and muted text are now legible on dark terminal backgrounds. Previously, some elements were nearly invisible against common dark themes.
+
+- **Active pinned cards** — pinned buttons now show an orange border and a live elapsed timer while running, with a tail badge prompting you to open the log stream.
+
+- **Refined list rows** — button metadata (runtime, timeout, argument count) is right-aligned for a cleaner, table-like layout. The focused-row cursor is now a double-chevron for better visibility.
+
+- **Command preview in arg form** — the argument form now shows a "will run:" preview of the exact CLI command that will execute, so you can verify your inputs before submitting.
+</Update>
+
 <Update label="2026-04-18" description="Board themes">
 ## Board themes
 
