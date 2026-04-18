@@ -1,0 +1,1771 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>buttons — CLI</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Space+Grotesk:wght@400;500;600;700&family=Bowlby+One+SC&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   TOKENS — anchored to the identity spec in internal/tui/styles.go
+   Ink #0A0A0A · Indicator #FF5A1F · Paper #F5F5F2
+   Aluminum #C5C5C0 · Dust #6E6E68
+   The TUI itself is dark by default (terminal). We pin an
+   ALUMINUM case around the terminal window to echo the TP-7 /
+   Nostromo hardware-panel inspo without inventing new colors.
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --ink:#0A0A0A;
+  --indicator:#FF5A1F;
+  --indicator-dim:#7a2d10;
+  --paper:#F5F5F2;
+  --aluminum:#C5C5C0;
+  --dust:#6E6E68;
+
+  /* Terminal inside surface */
+  --term-bg:#0b0b0b;
+  --term-bg-2:#0f0f0f;
+  --term-fg:#e9e7df;
+  --term-dim:#8a8880;
+  --term-mute:#4a4844;
+  --term-line:#1f1e1a;
+
+  /* Hardware case */
+  --case-bg:#1a1a18;
+  --case-bg-2:#141413;
+  --case-edge:#2a2a27;
+  --case-stencil:#8a8880;
+  --panel-label:#b5b2a6;
+
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --disp: 'Bowlby One SC', 'Space Grotesk', sans-serif;
+  --sans: 'Space Grotesk', system-ui, sans-serif;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:var(--sans);
+  background:
+    radial-gradient(1200px 800px at 30% 10%, #262622 0%, #0e0e0d 60%, #050505 100%);
+  color:var(--paper);
+  min-height:100vh;
+  padding:48px 24px 96px;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ─── Top meta bar ──────────────────────────────────────────── */
+.meta{
+  max-width:1280px;
+  margin:0 auto 28px;
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  gap:24px;
+  color:var(--aluminum);
+}
+.meta .wordmark{
+  font-family:var(--disp);
+  font-size:28px;
+  letter-spacing:.02em;
+  color:var(--paper);
+  line-height:.95;
+}
+.meta .wordmark span{color:var(--indicator)}
+.meta .sub{
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  color:var(--dust);
+  display:flex; gap:18px; flex-wrap:wrap;
+}
+.meta .sub b{color:var(--aluminum); font-weight:500}
+
+/* ─── Canvas grid of stations ───────────────────────────────── */
+.canvas{
+  max-width:1280px;
+  margin:0 auto;
+  display:grid;
+  grid-template-columns:repeat(12, 1fr);
+  gap:24px;
+}
+.station{
+  grid-column:span 12;
+  position:relative;
+}
+.station .caption{
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:.24em;
+  text-transform:uppercase;
+  color:var(--dust);
+  margin:0 0 10px 2px;
+  display:flex;
+  gap:14px;
+  align-items:baseline;
+}
+.station .caption b{color:var(--paper); font-weight:500}
+.station .caption em{color:var(--indicator); font-style:normal}
+
+/* ─── Hardware case wrapping the terminal ───────────────────── */
+.case{
+  background:
+    linear-gradient(180deg, #1e1e1b 0%, #141412 100%);
+  border-radius:22px;
+  padding:22px;
+  position:relative;
+  box-shadow:
+    0 2px 0 rgba(255,255,255,.04) inset,
+    0 -2px 0 rgba(0,0,0,.6) inset,
+    0 40px 80px -40px rgba(0,0,0,.9),
+    0 0 0 1px rgba(255,255,255,.03);
+  overflow:hidden;
+}
+.case::before{
+  /* subtle machined texture */
+  content:"";
+  position:absolute; inset:0;
+  background:
+    repeating-linear-gradient(0deg,
+      rgba(255,255,255,.012) 0 1px, transparent 1px 3px);
+  pointer-events:none;
+}
+.case-bar{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:0 4px 16px;
+  color:var(--case-stencil);
+  font-family:var(--mono);
+  font-size:10px;
+  letter-spacing:.28em;
+  text-transform:uppercase;
+}
+.case-bar .serial{margin-left:auto; color:var(--dust)}
+.case-bar .dots{display:flex; gap:6px}
+.case-bar .dots i{
+  width:10px; height:10px; border-radius:50%;
+  background:#2a2a27;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.04);
+  display:block;
+}
+.case-bar .dots i.on{background:var(--indicator); box-shadow:0 0 8px rgba(255,90,31,.6), inset 0 1px 1px rgba(0,0,0,.6)}
+.case-bar .dots i.grn{background:#7a9a3a; box-shadow:0 0 6px rgba(130,170,60,.45), inset 0 1px 1px rgba(0,0,0,.6)}
+
+.bezel{
+  background:#070706;
+  border-radius:12px;
+  padding:14px;
+  box-shadow:
+    inset 0 0 0 1px #000,
+    inset 0 0 0 4px #0d0d0b,
+    inset 0 2px 14px rgba(0,0,0,.8);
+  position:relative;
+}
+.screen{
+  position:relative;
+  background:var(--term-bg);
+  border-radius:4px;
+  overflow:hidden;
+  box-shadow:
+    inset 0 0 60px rgba(0,0,0,.6),
+    inset 0 0 0 1px #000;
+}
+.screen.scanlines::after{
+  content:"";
+  position:absolute; inset:0;
+  background:repeating-linear-gradient(180deg,
+    rgba(255,255,255,.03) 0 1px, transparent 1px 3px);
+  pointer-events:none;
+  mix-blend-mode:overlay;
+}
+.screen::before{
+  /* glass sheen */
+  content:"";
+  position:absolute; inset:0;
+  background:
+    radial-gradient(140% 60% at 50% -10%, rgba(255,255,255,.06), transparent 60%);
+  pointer-events:none;
+}
+
+/* ─── Case footer chrome ─────────────────────────────────────── */
+.case-footer{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:16px 4px 0;
+  gap:18px;
+  color:var(--case-stencil);
+  font-family:var(--mono);
+  font-size:10px;
+  letter-spacing:.28em;
+  text-transform:uppercase;
+}
+.case-footer .vents{
+  display:flex; gap:3px;
+}
+.case-footer .vents i{
+  display:block; width:3px; height:16px; border-radius:2px;
+  background:#0a0a09;
+  box-shadow:inset 0 0 0 1px #242421;
+}
+.case-footer .pill{
+  padding:4px 10px;
+  border-radius:2px;
+  border:1px solid #2a2a27;
+  color:var(--panel-label);
+  background:#0e0e0c;
+}
+.case-footer .pill.hot{color:var(--indicator); border-color:var(--indicator-dim)}
+
+/* ─── The TUI (inside .screen) ──────────────────────────────── */
+.tui{
+  font-family:var(--mono);
+  font-size:13px;
+  line-height:1.5;
+  color:var(--term-fg);
+  padding:18px 20px;
+  min-height:520px;
+  position:relative;
+  z-index:1;
+}
+.tui .row{display:flex; gap:0; align-items:center}
+
+/* Header */
+.tui-header{
+  display:flex; justify-content:space-between; align-items:center;
+  color:var(--term-fg);
+}
+.tui-header .brand{
+  font-weight:700;
+  letter-spacing:.02em;
+}
+.tui-header .brand::before{
+  content:"● ";
+  color:var(--indicator);
+  text-shadow:0 0 8px rgba(255,90,31,.5);
+  font-size:11px;
+  vertical-align:1px;
+}
+.tui-header .right{color:var(--term-dim)}
+.tui-header .right b{color:var(--term-fg); font-weight:500}
+
+.rule{
+  color:var(--term-mute);
+  margin:10px 0;
+  overflow:hidden;
+  white-space:nowrap;
+}
+
+/* Pinned cards row */
+.pins{
+  display:flex; gap:16px; padding:2px 0 2px;
+}
+.pin{
+  border:1px solid var(--term-mute);
+  padding:8px 18px;
+  color:var(--term-fg);
+  min-width:130px;
+  text-align:center;
+  font-weight:500;
+  letter-spacing:.02em;
+  position:relative;
+  cursor:pointer;
+  user-select:none;
+  transition:transform 60ms linear, box-shadow 60ms linear, background 60ms linear;
+}
+.pin:hover{
+  border-color:var(--term-fg);
+  box-shadow:0 0 0 1px var(--term-fg) inset;
+}
+.pin.sel{
+  border-color:var(--term-fg);
+  border-width:1px;
+  box-shadow:0 0 0 1px var(--term-fg) inset;
+  font-weight:700;
+}
+.pin.act{
+  border-color:var(--indicator);
+  color:var(--indicator);
+  box-shadow:0 0 0 1px var(--indicator) inset, 0 0 18px rgba(255,90,31,.18);
+  font-weight:700;
+}
+/* Mechanical press state for pinned buttons — same 4-frame choreo as pressbtn */
+.pin.kd{
+  transform:translateY(1px);
+  background:var(--term-line);
+  box-shadow:
+    inset 0 2px 0 rgba(0,0,0,.5),
+    inset 0 -1px 0 rgba(255,255,255,.04),
+    0 0 0 1px var(--term-fg) inset;
+}
+.pin.fire{
+  transform:translateY(1px);
+  background:var(--indicator);
+  color:#0a0a09;
+  border-color:var(--indicator);
+  box-shadow:0 0 22px rgba(255,90,31,.55), 0 0 0 1px var(--indicator) inset;
+}
+.pin.fire small{color:#0a0a09; opacity:.8}
+.pin small{
+  display:block;
+  font-size:9px;
+  letter-spacing:.24em;
+  text-transform:uppercase;
+  color:var(--term-dim);
+  margin-top:4px;
+}
+.pin.act small{color:var(--indicator)}
+.pin.act::after{
+  /* Little "tap to tail logs" hint on ACTIVE pins */
+  content:"↵ tail";
+  position:absolute;
+  top:-7px; right:-7px;
+  font-family:var(--mono);
+  font-size:9px;
+  letter-spacing:.18em;
+  padding:1px 5px;
+  background:#0b0b0b;
+  color:var(--indicator);
+  border:1px solid var(--indicator);
+  text-transform:uppercase;
+}
+
+/* List rows */
+.list{margin-top:2px}
+.list .lrow{
+  display:grid;
+  grid-template-columns:20px 1fr auto auto;
+  gap:10px;
+  padding:2px 0;
+  align-items:center;
+}
+.list .lrow .glyph{color:var(--term-mute); text-align:center}
+.list .lrow .name{color:var(--term-fg)}
+.list .lrow .name .arrow{color:var(--term-fg); font-weight:700}
+.list .lrow .meta{color:var(--term-dim)}
+.list .lrow.sel .name{font-weight:700}
+.list .lrow.sel .glyph{color:var(--term-fg)}
+.list .lrow.ok .glyph{color:#b9c28e}
+.list .lrow.err .glyph{color:var(--indicator)}
+.list .lrow.run .glyph{color:var(--indicator); text-shadow:0 0 6px rgba(255,90,31,.5)}
+.list .lrow.run .name{color:var(--indicator); font-weight:700}
+.list .lrow .badge{
+  background:var(--indicator);
+  color:#0a0a09;
+  padding:1px 8px;
+  font-weight:700;
+  letter-spacing:.24em;
+  font-size:10px;
+}
+
+/* Footer hints + press pill */
+.footer-row{
+  display:flex; justify-content:space-between; align-items:center;
+  gap:24px;
+  margin-top:6px;
+}
+.pressbtn{
+  background:var(--paper);
+  color:var(--ink);
+  padding:4px 18px;
+  font-weight:700;
+  letter-spacing:.02em;
+  border:1px solid var(--paper);
+  position:relative;
+}
+.pressbtn.disabled{
+  background:transparent;
+  color:var(--term-mute);
+  border-color:var(--term-mute);
+}
+.hints{
+  display:flex; gap:14px; align-items:center; color:var(--term-dim)
+}
+.kbd{
+  background:#1c1c19;
+  color:var(--term-fg);
+  padding:1px 8px;
+  font-weight:700;
+  letter-spacing:.02em;
+  border:1px solid #242420;
+  margin-right:6px;
+}
+.sep{color:var(--term-mute)}
+
+/* Toasts */
+.toast-ok{color:#b9c28e; margin-top:12px}
+.toast-ok::before{content:"✓  "; color:#b9c28e}
+.toast-err{color:var(--indicator); margin-top:12px}
+.toast-err::before{content:"!  "; color:var(--indicator)}
+
+/* Logs pane */
+.logs{margin-top:8px}
+.logs .title{color:var(--term-fg); font-weight:700}
+.logs .title .meta{color:var(--term-dim); font-weight:400; margin-left:10px}
+.logs .lg{
+  display:grid;
+  grid-template-columns:20px 80px 150px 1fr;
+  gap:10px;
+  padding:2px 0;
+  color:var(--term-dim);
+}
+.logs .lg .g.ok{color:#b9c28e}
+.logs .lg .g.er{color:var(--indicator)}
+.logs .lg .pv{color:var(--term-fg)}
+
+/* Arg form */
+.argform .label{color:var(--term-dim); margin-right:8px}
+.argform .field{
+  display:inline-block;
+  border-bottom:1px solid var(--term-mute);
+  min-width:200px;
+  padding:2px 4px;
+  color:var(--term-fg);
+}
+.argform .field.focus{
+  border-bottom-color:var(--indicator);
+  box-shadow:0 1px 0 var(--indicator);
+  color:var(--term-fg);
+}
+.argform .field .caret{
+  display:inline-block;
+  width:8px; height:1.1em;
+  background:var(--indicator);
+  vertical-align:-2px;
+  margin-left:1px;
+  animation:blink 1s steps(2,start) infinite;
+}
+@keyframes blink{50%{opacity:0}}
+.argform .hint{color:var(--term-mute); font-style:italic; margin-left:10px}
+
+/* Spec block (detail view) */
+.spec{
+  display:grid;
+  grid-template-columns:110px 1fr;
+  gap:0 18px;
+  color:var(--term-fg);
+}
+.spec dt{color:var(--term-dim); text-transform:lowercase}
+.spec dd{margin:0; color:var(--term-fg)}
+
+/* Diff-ish blocks for create wizard */
+.code{
+  background:#080807;
+  border:1px solid var(--term-line);
+  padding:8px 12px;
+  margin:6px 0;
+  color:var(--term-fg);
+  white-space:pre;
+  overflow:hidden;
+}
+.code .c{color:var(--term-dim)}
+.code .k{color:var(--term-fg); font-weight:700}
+.code .a{color:var(--indicator)}
+.code .s{color:#b9c28e}
+
+/* Dual-pane */
+.two-up{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:28px;
+}
+@media (max-width:1024px){ .two-up{grid-template-columns:1fr} }
+
+/* Theme variants */
+.screen.phos{
+  --term-fg:#b8f3c3;
+  --term-dim:#5aa06a;
+  --term-mute:#2d4a32;
+  --term-bg:#061109;
+  --term-line:#0f2014;
+}
+.screen.phos .tui-header .brand::before{color:#b8f3c3; text-shadow:0 0 8px rgba(184,243,195,.7)}
+.screen.phos .list .lrow.run .glyph,
+.screen.phos .list .lrow.run .name,
+.screen.phos .pin.act{color:#fff5a0; border-color:#fff5a0; box-shadow:0 0 0 1px #fff5a0 inset, 0 0 18px rgba(255,245,160,.2)}
+.screen.phos .list .lrow.err .glyph,
+.screen.phos .toast-err{color:#ff8a6c}
+.screen.phos .pressbtn{background:#b8f3c3; border-color:#b8f3c3; color:#06130a}
+.screen.phos .list .lrow .badge{background:#fff5a0; color:#06130a}
+.screen.phos{background:radial-gradient(120% 80% at 50% 0%, #0a2415 0%, #061109 70%)}
+
+.screen.amber{
+  --term-fg:#f7c472;
+  --term-dim:#a56b2c;
+  --term-mute:#3a2612;
+  --term-bg:#100803;
+  --term-line:#1a0e04;
+}
+.screen.amber .tui-header .brand::before{color:#ffbe5a; text-shadow:0 0 10px rgba(255,190,90,.8)}
+.screen.amber .pressbtn{background:#f7c472; border-color:#f7c472; color:#200f03}
+.screen.amber .list .lrow .badge{background:#ffbe5a; color:#200f03}
+
+.screen.paper{
+  --term-fg:#0a0a0a;
+  --term-dim:#6e6e68;
+  --term-mute:#c5c5c0;
+  --term-bg:#f5f5f2;
+  --term-line:#e4e3df;
+}
+.screen.paper .tui-header .brand::before{color:var(--indicator); text-shadow:none}
+.screen.paper .kbd{background:#e8e8e3; color:#0a0a0a; border-color:#d8d8d3}
+.screen.paper .pressbtn{background:#0a0a0a; color:#f5f5f2; border-color:#0a0a0a}
+.screen.paper .code{background:#ecebe6; border-color:#d8d8d3}
+
+/* ─── Tweaks panel ──────────────────────────────────────────── */
+.tweaks{
+  position:fixed; right:18px; bottom:18px;
+  background:#141413;
+  border:1px solid #2a2a27;
+  border-radius:10px;
+  padding:14px 14px 10px;
+  color:var(--paper);
+  font-family:var(--mono);
+  font-size:11px;
+  width:260px;
+  box-shadow:0 20px 50px -20px rgba(0,0,0,.9);
+  display:none;
+  z-index:40;
+}
+.tweaks.on{display:block}
+.tweaks h4{
+  margin:0 0 10px;
+  font-family:var(--disp);
+  font-size:13px;
+  letter-spacing:.12em;
+  color:var(--paper);
+}
+.tweaks h4 span{color:var(--indicator)}
+.tweaks .grp{margin-bottom:10px}
+.tweaks .lbl{
+  color:var(--dust);
+  font-size:9px;
+  letter-spacing:.24em;
+  text-transform:uppercase;
+  margin-bottom:4px;
+}
+.tweaks .seg{
+  display:grid;
+  grid-template-columns:repeat(4, 1fr);
+  gap:4px;
+}
+.tweaks .seg button{
+  background:#0e0e0c;
+  border:1px solid #2a2a27;
+  color:var(--paper);
+  padding:6px 0;
+  font-family:var(--mono);
+  font-size:10px;
+  cursor:pointer;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.tweaks .seg button.on{background:var(--indicator); color:#0a0a09; border-color:var(--indicator)}
+.tweaks .row2{display:flex; gap:8px}
+.tweaks .row2 button{flex:1}
+
+/* Page sections */
+h2.section{
+  max-width:1280px;
+  margin:72px auto 18px;
+  font-family:var(--disp);
+  font-size:24px;
+  letter-spacing:.04em;
+  color:var(--paper);
+  display:flex; align-items:baseline; gap:14px;
+}
+h2.section small{
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:.28em;
+  text-transform:uppercase;
+  color:var(--dust);
+  font-weight:400;
+}
+h2.section::before{
+  content:"";
+  display:inline-block;
+  width:10px; height:10px;
+  background:var(--indicator);
+  box-shadow:0 0 10px rgba(255,90,31,.6);
+}
+
+.spinframe{animation:spin .9s steps(10) infinite}
+@keyframes spin{to{transform:rotate(1turn)}}
+
+.spin-b{display:inline-block; width:1ch; text-align:center}
+.spin-b::before{
+  content:"⠋";
+  animation:spinb .9s steps(10) infinite;
+}
+
+/* ─── Mechanical press treatment ────────────────────────────── */
+/* Real key-press on Enter: 80ms frame flip. Uses lipgloss-legal
+   moves: border thickness swap (Normal↔Thick), bg/fg invert, and
+   a 1-cell glyph change. All rendererable in Bubble Tea. */
+.pressbtn.kd{
+  transform:translateY(1px);
+  box-shadow:0 0 0 1px var(--paper) inset;
+  background:var(--term-fg);
+  color:var(--term-bg);
+  filter:brightness(.85);
+}
+.pressbtn:hover{filter:brightness(1.05); cursor:pointer}
+.pressbtn:active{transform:translateY(1px); filter:brightness(.85)}
+
+/* Row-level depress: thick border appears on keydown, glyph travels */
+.lrow.depress .name{text-shadow:0 0 0 var(--term-fg)}
+.lrow.depress{
+  background:linear-gradient(180deg, rgba(255,255,255,.04), transparent);
+}
+.lrow.depress .glyph{color:var(--indicator); text-shadow:0 0 8px rgba(255,90,31,.8)}
+
+/* Three-frame press travel for docs diagrams */
+.travel{
+  display:inline-grid;
+  grid-template-columns:repeat(5, auto);
+  gap:14px;
+  align-items:center;
+  color:var(--term-dim);
+  font-family:var(--mono);
+  font-size:12px;
+}
+.travel .fr{
+  border:1px solid var(--term-mute);
+  padding:6px 14px;
+  color:var(--term-fg);
+  background:var(--term-bg-2);
+  min-width:90px;
+  text-align:center;
+  letter-spacing:.04em;
+}
+.travel .fr.rest{}
+.travel .fr.down{
+  border:1px solid var(--term-fg);
+  box-shadow:inset 0 2px 0 rgba(0,0,0,.4), inset 0 -1px 0 rgba(255,255,255,.05);
+  transform:translateY(1px);
+}
+.travel .fr.fire{
+  background:var(--indicator); color:#0a0a09; border-color:var(--indicator);
+  box-shadow:0 0 18px rgba(255,90,31,.35);
+}
+.travel .fr.back{border:1px solid var(--term-fg)}
+.travel .fr.ok{border-color:#b9c28e; color:#b9c28e}
+.travel .arrow{color:var(--term-mute)}
+
+/* Stream / logs scroll */
+.stream{
+  font-family:var(--mono);
+  font-size:12px;
+  color:var(--term-fg);
+  white-space:pre;
+  line-height:1.42;
+}
+.stream .ts{color:var(--term-mute)}
+.stream .sev-e{color:var(--indicator)}
+.stream .sev-w{color:#f0c060}
+.stream .sev-i{color:var(--term-dim)}
+.stream .sev-o{color:var(--term-fg)}
+.stream .sev-d{color:#8aaaff}
+.stream .cur::after{
+  content:"▋";
+  color:var(--indicator);
+  animation:blink 1s steps(2,start) infinite;
+  margin-left:2px;
+}
+
+/* Tab strip for logs view */
+.tabs{
+  display:flex;
+  gap:0;
+  border-bottom:1px solid var(--term-mute);
+  margin-top:2px;
+}
+.tab{
+  padding:4px 14px;
+  color:var(--term-dim);
+  border:1px solid transparent;
+  border-bottom:none;
+  margin-bottom:-1px;
+  letter-spacing:.02em;
+}
+.tab.on{
+  color:var(--term-fg);
+  border-color:var(--term-mute);
+  background:var(--term-bg-2);
+  font-weight:700;
+}
+.tab .num{
+  display:inline-block;
+  margin-left:6px;
+  padding:0 6px;
+  background:#1c1c19;
+  color:var(--term-fg);
+  font-size:10px;
+  letter-spacing:.04em;
+}
+.tab.on .num{background:var(--indicator); color:#0a0a09}
+
+/* Sparkline of run timing */
+.spark{
+  display:inline-grid;
+  grid-template-columns:repeat(24, 4px);
+  gap:2px;
+  align-items:end;
+  height:22px;
+}
+.spark i{
+  display:block;
+  width:4px;
+  background:var(--term-mute);
+}
+.spark i.ok{background:var(--term-dim)}
+.spark i.hot{background:var(--indicator)}
+.spark i.fail{background:var(--indicator); opacity:.5}
+
+/* Filter chips */
+.chips{display:flex; gap:6px; flex-wrap:wrap}
+.chips .chip{
+  border:1px solid var(--term-mute);
+  color:var(--term-dim);
+  padding:1px 8px;
+  letter-spacing:.04em;
+  font-size:11px;
+}
+.chips .chip.on{border-color:var(--term-fg); color:var(--term-fg); background:#1c1c19}
+.chips .chip.hot{border-color:var(--indicator); color:var(--indicator)}
+
+/* Meter bar */
+.meter{
+  display:grid;
+  grid-template-columns:70px 1fr 90px;
+  gap:10px;
+  align-items:center;
+  color:var(--term-dim);
+}
+.meter .bar{
+  height:10px;
+  background:var(--term-line);
+  position:relative;
+  overflow:hidden;
+}
+.meter .bar i{
+  display:block; height:100%;
+  background:linear-gradient(90deg, var(--term-dim), var(--term-fg));
+}
+.meter .bar.hot i{background:linear-gradient(90deg, var(--indicator-dim), var(--indicator))}
+@keyframes spinb{
+  0%{content:"⠋"} 10%{content:"⠙"} 20%{content:"⠹"} 30%{content:"⠸"}
+  40%{content:"⠼"} 50%{content:"⠴"} 60%{content:"⠦"} 70%{content:"⠧"}
+  80%{content:"⠇"} 90%{content:"⠏"}
+}
+
+/* Ensure consistent row widths */
+.tui .list .lrow .name, .tui .list .lrow .meta{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+</style>
+</head>
+<body>
+
+<!-- META -->
+<div class="meta">
+  <div>
+    <div class="wordmark">buttons<span>●</span></div>
+    <div class="sub" style="margin-top:6px">
+      <span>CLI · TUI DESIGN</span>
+      <span>v0.2 · BOARD</span>
+      <span>autonoco/<b>buttons</b></span>
+    </div>
+  </div>
+  <div class="sub" style="text-align:right">
+    <span>N8N FOR AGENTS</span>
+    <span>BUBBLE TEA · LIPGLOSS</span>
+    <span>APACHE 2.0</span>
+  </div>
+</div>
+
+<!-- ============================================================
+     STATION 01 — BOARD, IDLE + PINNED
+     ============================================================ -->
+<h2 class="section">Board <small>01 · ambient dashboard</small></h2>
+
+<div class="canvas">
+  <div class="station" id="st-board">
+    <div class="caption"><b>board / idle</b> <span>`buttons` — default invocation, pinned row + list</span></div>
+    <div class="case">
+      <div class="case-bar">
+        <span class="dots"><i class="on"></i><i class="grn"></i><i></i></span>
+        <span>BTN-04 / BOARD</span>
+        <span class="serial">UNIT 7904W · ~/.buttons</span>
+      </div>
+      <div class="bezel">
+        <div class="screen scanlines" id="scr-board">
+          <div class="tui">
+            <div class="tui-header">
+              <div class="brand">buttons</div>
+              <div class="right">btn<span style="color:var(--term-mute)">—</span><b>08</b> <span class="sep">·</span> <b>board</b></div>
+            </div>
+            <div class="rule">────────────────────────────────────────────────────────────────────────────────────────</div>
+
+            <div class="pins">
+              <div class="pin sel">deploy<small>shell · 300s</small></div>
+              <div class="pin">weather<small>http · 60s</small></div>
+              <div class="pin">notify-slack<small>http · 60s</small></div>
+            </div>
+
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────────────────</div>
+
+            <div class="list">
+              <div class="lrow ok"><span class="glyph">✓</span><span class="name">  dh-check</span><span class="meta">shell · 60s · 0 arg</span><span></span></div>
+              <div class="lrow err"><span class="glyph">✗</span><span class="name">  dh-pipeline</span><span class="meta">shell · 3600s · 2 arg</span><span></span></div>
+              <div class="lrow ok"><span class="glyph">✓</span><span class="name">  dh-schema</span><span class="meta">shell · 60s · 1 arg</span><span></span></div>
+              <div class="lrow sel"><span class="glyph">›</span><span class="name"><span class="arrow">›</span> dh-tables</span><span class="meta">shell · 60s · 1 arg</span><span></span></div>
+              <div class="lrow"><span class="glyph">□</span><span class="name">  weather</span><span class="meta">http · 60s · GET wttr.in/{{city}}</span><span></span></div>
+              <div class="lrow"><span class="glyph">□</span><span class="name">  notify-slack</span><span class="meta">http · 60s · POST hooks.slack.com/…</span><span></span></div>
+              <div class="lrow"><span class="glyph">□</span><span class="name">  repos-stargazers</span><span class="meta">http · 60s · POST api.github.com/graphql</span><span></span></div>
+              <div class="lrow"><span class="glyph">□</span><span class="name">  deploy-checklist</span><span class="meta">prompt · 60s</span><span></span></div>
+            </div>
+
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────────────────</div>
+
+            <div class="footer-row">
+              <div class="pressbtn">press</div>
+              <div class="hints">
+                <span><span class="kbd">↑↓</span>nav</span><span class="sep">·</span>
+                <span><span class="kbd">↵</span>press</span><span class="sep">·</span>
+                <span><span class="kbd">L</span>logs</span><span class="sep">·</span>
+                <span><span class="kbd">?</span>help</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="case-footer">
+        <div class="vents"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="pill">TTY 1</span>
+        <span class="pill">UTF-8</span>
+        <span class="pill">256-COLOR</span>
+        <span class="pill hot">● REC</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     STATION 02 — RUNNING & DONE STATES
+     ============================================================ -->
+<h2 class="section">Press states <small>02 · running / ok / fail</small></h2>
+
+<div class="canvas">
+  <div class="station two-up">
+    <!-- RUNNING -->
+    <div>
+      <div class="caption"><b>running</b> <em>ACTIVE</em> <span>· spinner frame, pinned card pulses, toast held</span></div>
+      <div class="case">
+        <div class="case-bar">
+          <span class="dots"><i class="on"></i><i class="grn"></i><i></i></span>
+          <span>BTN-04 / BOARD</span>
+          <span class="serial">RUNTIME 00:00:03</span>
+        </div>
+        <div class="bezel">
+          <div class="screen scanlines">
+            <div class="tui">
+              <div class="tui-header">
+                <div class="brand">buttons</div>
+                <div class="right">btn—<b>08</b> <span class="sep">·</span> <b>board</b></div>
+              </div>
+              <div class="rule">────────────────────────────────────────────────────────────────────────────────────</div>
+              <div class="pins">
+                <div class="pin act">deploy<small>● active · 3.2s</small></div>
+                <div class="pin">weather<small>http · 60s</small></div>
+                <div class="pin">notify-slack<small>http · 60s</small></div>
+              </div>
+              <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────────────</div>
+              <div class="list">
+                <div class="lrow run">
+                  <span class="glyph"><span class="spin-b"></span></span>
+                  <span class="name">› deploy</span>
+                  <span class="meta">shell · 300s · 1 arg</span>
+                  <span class="badge">↵ LOGS</span>
+                </div>
+                <div class="lrow ok"><span class="glyph">✓</span><span class="name">  dh-check</span><span class="meta">shell · 60s</span><span></span></div>
+                <div class="lrow err"><span class="glyph">✗</span><span class="name">  dh-pipeline</span><span class="meta">shell · 3600s · 2 arg</span><span></span></div>
+                <div class="lrow"><span class="glyph">□</span><span class="name">  weather</span><span class="meta">http · 60s</span><span></span></div>
+                <div class="lrow"><span class="glyph">□</span><span class="name">  notify-slack</span><span class="meta">http · 60s</span><span></span></div>
+              </div>
+              <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────────────</div>
+              <div class="footer-row">
+                <div class="pressbtn disabled">press</div>
+                <div class="hints">
+                  <span><span class="kbd">↑↓</span>nav</span><span class="sep">·</span>
+                  <span><span class="kbd">↵</span>press</span><span class="sep">·</span>
+                  <span><span class="kbd">L</span>logs</span>
+                </div>
+              </div>
+              <div class="toast-err" style="color:var(--indicator)">●  deploy running… stdout streaming to ~/.buttons/buttons/deploy/pressed/</div>
+            </div>
+          </div>
+        </div>
+        <div class="case-footer">
+          <div class="vents"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <span class="pill hot">● ACTIVE</span>
+          <span class="pill">ENV +3</span>
+          <span class="pill">TTY 1</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- OK TOAST -->
+    <div>
+      <div class="caption"><b>success</b> <span>· toast quiets to dust-green, status columns update</span></div>
+      <div class="case">
+        <div class="case-bar">
+          <span class="dots"><i></i><i class="grn"></i><i></i></span>
+          <span>BTN-04 / BOARD</span>
+          <span class="serial">LAST 437ms · EXIT 0</span>
+        </div>
+        <div class="bezel">
+          <div class="screen scanlines">
+            <div class="tui">
+              <div class="tui-header">
+                <div class="brand">buttons</div>
+                <div class="right">btn—<b>08</b> <span class="sep">·</span> <b>board</b></div>
+              </div>
+              <div class="rule">────────────────────────────────────────────────────────────────────────────────────</div>
+              <div class="pins">
+                <div class="pin sel">deploy<small>shell · ok · 437ms</small></div>
+                <div class="pin">weather<small>http · 60s</small></div>
+                <div class="pin">notify-slack<small>http · 60s</small></div>
+              </div>
+              <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────────────</div>
+              <div class="list">
+                <div class="lrow ok sel"><span class="glyph">✓</span><span class="name"><span class="arrow">›</span> deploy</span><span class="meta">shell · 300s · 1 arg</span><span></span></div>
+                <div class="lrow ok"><span class="glyph">✓</span><span class="name">  dh-check</span><span class="meta">shell · 60s</span><span></span></div>
+                <div class="lrow err"><span class="glyph">✗</span><span class="name">  dh-pipeline</span><span class="meta">shell · 3600s · 2 arg</span><span></span></div>
+                <div class="lrow"><span class="glyph">□</span><span class="name">  weather</span><span class="meta">http · 60s</span><span></span></div>
+                <div class="lrow"><span class="glyph">□</span><span class="name">  notify-slack</span><span class="meta">http · 60s</span><span></span></div>
+              </div>
+              <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────────────</div>
+              <div class="footer-row">
+                <div class="pressbtn">press</div>
+                <div class="hints">
+                  <span><span class="kbd">↑↓</span>nav</span><span class="sep">·</span>
+                  <span><span class="kbd">↵</span>press</span><span class="sep">·</span>
+                  <span><span class="kbd">L</span>logs</span>
+                </div>
+              </div>
+              <div class="toast-ok">pressed deploy · exit 0 · 437ms · recorded to pressed/2026-04-18T12-31-58.json</div>
+            </div>
+          </div>
+        </div>
+        <div class="case-footer">
+          <div class="vents"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <span class="pill">EXIT 0</span>
+          <span class="pill">437 ms</span>
+          <span class="pill">HIST +1</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     STATION 03 — LOGS PANE (toggled with L)
+     ============================================================ -->
+<h2 class="section">Logs pane <small>03 · shift+L toggles · scoped to focused button</small></h2>
+
+<div class="canvas">
+  <div class="station">
+    <div class="caption"><b>board + logs</b> <span>· 5 most-recent runs for the row under the cursor</span></div>
+    <div class="case">
+      <div class="case-bar">
+        <span class="dots"><i class="on"></i><i class="grn"></i><i></i></span>
+        <span>BTN-04 / BOARD · LOGS</span>
+        <span class="serial">HISTORY pressed/*.json</span>
+      </div>
+      <div class="bezel">
+        <div class="screen scanlines">
+          <div class="tui">
+            <div class="tui-header">
+              <div class="brand">buttons</div>
+              <div class="right">btn—<b>08</b> <span class="sep">·</span> <b>board</b></div>
+            </div>
+            <div class="rule">────────────────────────────────────────────────────────────────────────────────────────</div>
+            <div class="list" style="margin-top:2px">
+              <div class="lrow sel ok"><span class="glyph">✓</span><span class="name"><span class="arrow">›</span> dh-pipeline</span><span class="meta">shell · 3600s · 2 arg</span><span></span></div>
+              <div class="lrow ok"><span class="glyph">✓</span><span class="name">  dh-check</span><span class="meta">shell · 60s</span><span></span></div>
+              <div class="lrow err"><span class="glyph">✗</span><span class="name">  dh-schema</span><span class="meta">shell · 60s · 1 arg</span><span></span></div>
+              <div class="lrow"><span class="glyph">□</span><span class="name">  weather</span><span class="meta">http · 60s</span><span></span></div>
+            </div>
+
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────────────────</div>
+
+            <div class="logs">
+              <div class="title">logs <span class="meta">· dh-pipeline · last 5</span></div>
+              <div style="height:6px"></div>
+              <div class="lg"><span class="g ok">✓</span><span>12:31:58</span><span>exit 0   ·  2437ms</span><span class="pv">pipeline synced 1,204 rows → warehouse.events</span></div>
+              <div class="lg"><span class="g ok">✓</span><span>11:58:14</span><span>exit 0   ·  2301ms</span><span class="pv">pipeline synced 988 rows → warehouse.events</span></div>
+              <div class="lg"><span class="g er">✗</span><span>11:02:44</span><span>exit 124 · 60004ms</span><span class="pv">timeout after 60s: dbt run --select staging_events</span></div>
+              <div class="lg"><span class="g ok">✓</span><span>10:40:09</span><span>exit 0   ·  2198ms</span><span class="pv">pipeline synced 1,102 rows → warehouse.events</span></div>
+              <div class="lg"><span class="g ok">✓</span><span>10:15:31</span><span>exit 0   ·  2104ms</span><span class="pv">pipeline synced 1,076 rows → warehouse.events</span></div>
+            </div>
+
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────────────────</div>
+            <div class="footer-row">
+              <div class="pressbtn">press</div>
+              <div class="hints">
+                <span><span class="kbd">↑↓</span>nav</span><span class="sep">·</span>
+                <span><span class="kbd">↵</span>press</span><span class="sep">·</span>
+                <span><span class="kbd">L</span>hide</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="case-footer">
+        <div class="vents"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="pill">LOGS OPEN</span>
+        <span class="pill">SCOPE dh-pipeline</span>
+        <span class="pill">LAST 5</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     STATION 04 — ARG PROMPT / PRESS FLOW
+     ============================================================ -->
+<h2 class="section">Press with args <small>04 · inline prompt replaces footer when the row has required args</small></h2>
+
+<div class="canvas">
+  <div class="station two-up">
+    <div>
+      <div class="caption"><b>arg entry</b> <span>· blinking caret on focused field; tab cycles</span></div>
+      <div class="case">
+        <div class="case-bar">
+          <span class="dots"><i></i><i class="grn"></i><i></i></span>
+          <span>BTN-04 / PRESS</span>
+          <span class="serial">deploy --arg env=_</span>
+        </div>
+        <div class="bezel">
+          <div class="screen scanlines">
+            <div class="tui">
+              <div class="tui-header">
+                <div class="brand">buttons</div>
+                <div class="right">press <b>deploy</b> <span class="sep">·</span> 1 required arg</div>
+              </div>
+              <div class="rule">────────────────────────────────────────────────────────────────────────────</div>
+
+              <div style="color:var(--term-fg); font-weight:700; margin-top:2px">deploy <span style="color:var(--term-dim); font-weight:400">— ship a release to a target env</span></div>
+
+              <div style="margin-top:10px" class="argform">
+                <div class="label">env  <span style="color:var(--term-mute)">string · required</span></div>
+                <div class="field focus">staging<span class="caret"></span></div>
+                <div class="hint">↵ to run · esc to cancel</div>
+              </div>
+
+              <div style="margin-top:6px" class="argform">
+                <div class="label">verbose  <span style="color:var(--term-mute)">bool · optional</span></div>
+                <div class="field">false</div>
+              </div>
+
+              <div class="rule" style="margin-top:20px">────────────────────────────────────────────────────────────────────────────</div>
+              <div style="color:var(--term-dim); margin-top:2px">
+                will run: <span style="color:var(--term-fg)">buttons press deploy --arg env=staging --arg verbose=false</span>
+              </div>
+              <div style="color:var(--term-mute); margin-top:2px">timeout 300s · runtime shell · exec ~/.buttons/buttons/deploy/main.sh</div>
+
+              <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+              <div class="footer-row">
+                <div class="pressbtn">run press</div>
+                <div class="hints">
+                  <span><span class="kbd">⇥</span>next field</span><span class="sep">·</span>
+                  <span><span class="kbd">↵</span>run</span><span class="sep">·</span>
+                  <span><span class="kbd">⎋</span>back</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="case-footer">
+          <div class="vents"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <span class="pill">ARGS 1/2</span>
+          <span class="pill">DRY-RUN READY</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- FAILURE -->
+    <div>
+      <div class="caption"><b>failure</b> <span>· exit code + stderr preview on the toast line</span></div>
+      <div class="case">
+        <div class="case-bar">
+          <span class="dots"><i class="on"></i><i></i><i></i></span>
+          <span>BTN-04 / BOARD</span>
+          <span class="serial">EXIT 124 · TIMEOUT</span>
+        </div>
+        <div class="bezel">
+          <div class="screen scanlines">
+            <div class="tui">
+              <div class="tui-header">
+                <div class="brand">buttons</div>
+                <div class="right">btn—<b>08</b> <span class="sep">·</span> <b>board</b></div>
+              </div>
+              <div class="rule">────────────────────────────────────────────────────────────────────────────</div>
+              <div class="pins">
+                <div class="pin sel" style="border-color:var(--indicator); color:var(--indicator)">dh-pipeline<small style="color:var(--indicator)">✗ exit 124</small></div>
+                <div class="pin">deploy<small>shell · 300s</small></div>
+              </div>
+              <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+              <div class="list">
+                <div class="lrow err sel"><span class="glyph">✗</span><span class="name"><span class="arrow">›</span> dh-pipeline</span><span class="meta">shell · 3600s · 2 arg</span><span></span></div>
+                <div class="lrow ok"><span class="glyph">✓</span><span class="name">  dh-check</span><span class="meta">shell · 60s</span><span></span></div>
+                <div class="lrow ok"><span class="glyph">✓</span><span class="name">  dh-schema</span><span class="meta">shell · 60s</span><span></span></div>
+                <div class="lrow"><span class="glyph">□</span><span class="name">  weather</span><span class="meta">http · 60s</span><span></span></div>
+              </div>
+              <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+              <div class="footer-row">
+                <div class="pressbtn">retry</div>
+                <div class="hints">
+                  <span><span class="kbd">↑↓</span>nav</span><span class="sep">·</span>
+                  <span><span class="kbd">↵</span>retry</span><span class="sep">·</span>
+                  <span><span class="kbd">L</span>logs</span>
+                </div>
+              </div>
+              <div class="toast-err">press dh-pipeline: TIMEOUT after 60s — stderr: “waiting for db-primary…”</div>
+            </div>
+          </div>
+        </div>
+        <div class="case-footer">
+          <div class="vents"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <span class="pill hot">● FAULT</span>
+          <span class="pill">EXIT 124</span>
+          <span class="pill">TIMEOUT</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     STATION 05 — DETAIL VIEW (`buttons weather`)
+     ============================================================ -->
+<h2 class="section">Detail <small>05 · `buttons weather` · single-button spec sheet</small></h2>
+
+<div class="canvas">
+  <div class="station">
+    <div class="caption"><b>detail</b> <span>· args, runtime, endpoint, last run — structured, scannable</span></div>
+    <div class="case">
+      <div class="case-bar">
+        <span class="dots"><i></i><i class="grn"></i><i></i></span>
+        <span>BTN-04 / DETAIL</span>
+        <span class="serial">weather · http</span>
+      </div>
+      <div class="bezel">
+        <div class="screen scanlines">
+          <div class="tui">
+            <div class="tui-header">
+              <div class="brand">buttons</div>
+              <div class="right">weather <span class="sep">·</span> <b>detail</b></div>
+            </div>
+            <div class="rule">────────────────────────────────────────────────────────────────────────────</div>
+            <div style="color:var(--term-fg); font-weight:700; font-size:15px; margin-top:4px">weather</div>
+            <div style="color:var(--term-dim); margin-top:2px">get current weather for a city via wttr.in JSON API</div>
+
+            <div style="margin-top:14px">
+              <dl class="spec">
+                <dt>runtime</dt><dd>http</dd>
+                <dt>method</dt><dd>GET</dd>
+                <dt>url</dt><dd>https://wttr.in/<span style="color:var(--indicator)">{{city}}</span>?format=j1</dd>
+                <dt>timeout</dt><dd>60s</dd>
+                <dt>max resp</dt><dd>10M</dd>
+                <dt>private</dt><dd>blocked</dd>
+              </dl>
+            </div>
+
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+            <div style="color:var(--term-dim); margin-bottom:4px">args</div>
+            <div class="spec" style="grid-template-columns:140px 80px 1fr">
+              <div style="color:var(--term-fg)">city</div><div style="color:var(--term-dim)">string</div><div style="color:var(--indicator)">required</div>
+            </div>
+
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+            <div style="color:var(--term-dim)">usage</div>
+            <div class="code" style="margin-top:4px">
+<span class="k">buttons press</span> weather <span class="a">--arg</span> city=<span class="s">&lt;string&gt;</span>
+<span class="k">buttons press</span> weather <span class="a">--arg</span> city=<span class="s">Miami</span> <span class="a">--json</span>
+            </div>
+            <div style="color:var(--term-dim); margin-top:8px">last run · 2026-04-18 12:28 · ok · 612ms · city=Miami</div>
+
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+            <div class="footer-row">
+              <div class="pressbtn">press weather</div>
+              <div class="hints">
+                <span><span class="kbd">↵</span>press</span><span class="sep">·</span>
+                <span><span class="kbd">e</span>edit</span><span class="sep">·</span>
+                <span><span class="kbd">h</span>history</span><span class="sep">·</span>
+                <span><span class="kbd">⎋</span>back</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="case-footer">
+        <div class="vents"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="pill">HTTP GET</span>
+        <span class="pill">10M CAP</span>
+        <span class="pill">NET PUBLIC</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     STATION 06 — EMPTY STATE
+     ============================================================ -->
+<h2 class="section">Empty state <small>06 · first run / fresh install</small></h2>
+
+<div class="canvas">
+  <div class="station">
+    <div class="caption"><b>empty</b> <span>· teaches two real commands instead of a generic CTA</span></div>
+    <div class="case">
+      <div class="case-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span>BTN-04 / BOARD · EMPTY</span>
+        <span class="serial">~/.buttons/buttons/ · 0 files</span>
+      </div>
+      <div class="bezel">
+        <div class="screen scanlines">
+          <div class="tui">
+            <div class="tui-header">
+              <div class="brand">buttons</div>
+              <div class="right">btn—<b>00</b> <span class="sep">·</span> <b>board</b></div>
+            </div>
+            <div class="rule">────────────────────────────────────────────────────────────────────────────</div>
+            <div style="padding:36px 0 20px; text-align:left">
+              <div style="font-family:var(--disp); font-size:34px; color:var(--term-fg); letter-spacing:.02em">no buttons yet.</div>
+              <div style="color:var(--term-dim); margin-top:8px; max-width:60ch">
+                buttons are reusable actions with typed args and structured output.<br>
+                create one in another terminal — this board updates automatically.
+              </div>
+
+              <div class="code" style="margin-top:22px"><span class="c"># a shell one-liner</span>
+<span class="k">buttons create</span> hello <span class="a">--code</span> <span class="s">'echo hi'</span></div>
+              <div class="code"><span class="c"># a URL</span>
+<span class="k">buttons create</span> weather <span class="a">--url</span> <span class="s">'https://wttr.in/{{city}}?format=j1'</span> <span class="a">--arg</span> city:string:required</div>
+              <div class="code"><span class="c"># an agent prompt</span>
+<span class="k">buttons create</span> deploy-checklist <span class="a">--prompt</span> <span class="s">"verify staging is green before shipping"</span></div>
+            </div>
+
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+            <div class="footer-row">
+              <div class="pressbtn disabled">press</div>
+              <div class="hints">
+                <span>listening for changes…</span><span class="sep">·</span>
+                <span><span class="kbd">^C</span>exit</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="case-footer">
+        <div class="vents"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="pill">WATCH ~/.buttons</span>
+        <span class="pill">POLL 2s</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     STATION 07 — THEME ALT (PAPER · INK)
+     ============================================================ -->
+<h2 class="section">Theme: paper <small>07 · ink/paper terminal · honors the identity spec’s light mode</small></h2>
+
+<div class="canvas">
+  <div class="station">
+    <div class="caption"><b>paper theme</b> <span>· F5F5F2 bg, 0A0A0A ink, indicator still reserved for ACTIVE</span></div>
+    <div class="case" style="background:linear-gradient(180deg,#ecece7 0%, #d6d5cf 100%)">
+      <div class="case-bar" style="color:#3c3a36">
+        <span class="dots"><i class="on" style="background:var(--indicator)"></i><i class="grn"></i><i style="background:#c9c7bf"></i></span>
+        <span style="color:#3c3a36">BTN-04 / BOARD · PAPER</span>
+        <span class="serial" style="color:#6b6963">UNIT 7904W</span>
+      </div>
+      <div class="bezel" style="background:#cfcdc6; box-shadow:inset 0 0 0 1px #b8b5ad, inset 0 0 0 4px #dcdad3, inset 0 2px 10px rgba(0,0,0,.25)">
+        <div class="screen paper">
+          <div class="tui">
+            <div class="tui-header">
+              <div class="brand" style="color:#0a0a0a">buttons</div>
+              <div class="right">btn—<b>08</b> <span class="sep">·</span> <b>board</b></div>
+            </div>
+            <div class="rule">────────────────────────────────────────────────────────────────────────────</div>
+            <div class="pins">
+              <div class="pin act">deploy<small>● active · 2.8s</small></div>
+              <div class="pin sel">dh-check<small>shell · 60s</small></div>
+              <div class="pin">weather<small>http · 60s</small></div>
+            </div>
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+            <div class="list">
+              <div class="lrow run"><span class="glyph"><span class="spin-b"></span></span><span class="name">› deploy</span><span class="meta">shell · 300s</span><span class="badge">ACTIVE</span></div>
+              <div class="lrow ok sel"><span class="glyph">✓</span><span class="name"><span class="arrow">›</span> dh-check</span><span class="meta">shell · 60s</span><span></span></div>
+              <div class="lrow err"><span class="glyph">✗</span><span class="name">  dh-pipeline</span><span class="meta">shell · 3600s</span><span></span></div>
+              <div class="lrow"><span class="glyph">□</span><span class="name">  weather</span><span class="meta">http · 60s</span><span></span></div>
+              <div class="lrow"><span class="glyph">□</span><span class="name">  notify-slack</span><span class="meta">http · 60s</span><span></span></div>
+            </div>
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+            <div class="footer-row">
+              <div class="pressbtn">press</div>
+              <div class="hints">
+                <span><span class="kbd">↑↓</span>nav</span><span class="sep">·</span>
+                <span><span class="kbd">↵</span>press</span><span class="sep">·</span>
+                <span><span class="kbd">L</span>logs</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="case-footer" style="color:#3c3a36">
+        <div class="vents"><i style="background:#b8b5ad; box-shadow:inset 0 0 0 1px #a5a29a"></i><i style="background:#b8b5ad; box-shadow:inset 0 0 0 1px #a5a29a"></i><i style="background:#b8b5ad; box-shadow:inset 0 0 0 1px #a5a29a"></i><i style="background:#b8b5ad; box-shadow:inset 0 0 0 1px #a5a29a"></i><i style="background:#b8b5ad; box-shadow:inset 0 0 0 1px #a5a29a"></i><i style="background:#b8b5ad; box-shadow:inset 0 0 0 1px #a5a29a"></i><i style="background:#b8b5ad; box-shadow:inset 0 0 0 1px #a5a29a"></i><i style="background:#b8b5ad; box-shadow:inset 0 0 0 1px #a5a29a"></i><i style="background:#b8b5ad; box-shadow:inset 0 0 0 1px #a5a29a"></i></div>
+        <span class="pill" style="background:#dcdad3; border-color:#b8b5ad; color:#3c3a36">TTY 1</span>
+        <span class="pill" style="background:#dcdad3; border-color:#b8b5ad; color:#3c3a36">UTF-8</span>
+        <span class="pill hot">● ACTIVE</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     STATION 08 — THEME ALT (PHOSPHOR GREEN)
+     ============================================================ -->
+<h2 class="section">Theme: phosphor <small>08 · Nostromo CRT · full-on diegetic mode</small></h2>
+
+<div class="canvas">
+  <div class="station">
+    <div class="caption"><b>phosphor theme</b> <span>· BUTTONS_THEME=phosphor · scanlines on by default</span></div>
+    <div class="case">
+      <div class="case-bar">
+        <span class="dots"><i class="grn"></i><i class="grn"></i><i></i></span>
+        <span>BTN-04 / BOARD · CRT</span>
+        <span class="serial">MU-TH-UR 6000 · ISSUE 3</span>
+      </div>
+      <div class="bezel">
+        <div class="screen phos scanlines">
+          <div class="tui">
+            <div class="tui-header">
+              <div class="brand">BUTTONS</div>
+              <div class="right">BTN—<b>08</b> <span class="sep">·</span> <b>BOARD</b></div>
+            </div>
+            <div class="rule">────────────────────────────────────────────────────────────────────────────</div>
+            <div class="pins">
+              <div class="pin act">DEPLOY<small>● ACTIVE · 3.2s</small></div>
+              <div class="pin sel">DH-CHECK<small>SHELL · 60s</small></div>
+              <div class="pin">WEATHER<small>HTTP · 60s</small></div>
+            </div>
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+            <div class="list">
+              <div class="lrow run"><span class="glyph"><span class="spin-b"></span></span><span class="name">› DEPLOY</span><span class="meta">SHELL · 300s</span><span class="badge">ACTIVE</span></div>
+              <div class="lrow ok sel"><span class="glyph">✓</span><span class="name"><span class="arrow">›</span> DH-CHECK</span><span class="meta">SHELL · 60s</span><span></span></div>
+              <div class="lrow err"><span class="glyph">✗</span><span class="name">  DH-PIPELINE</span><span class="meta">SHELL · 3600s</span><span></span></div>
+              <div class="lrow"><span class="glyph">□</span><span class="name">  WEATHER</span><span class="meta">HTTP · 60s</span><span></span></div>
+              <div class="lrow"><span class="glyph">□</span><span class="name">  NOTIFY-SLACK</span><span class="meta">HTTP · 60s</span><span></span></div>
+            </div>
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+            <div class="footer-row">
+              <div class="pressbtn">PRESS</div>
+              <div class="hints">
+                <span><span class="kbd">↑↓</span>NAV</span><span class="sep">·</span>
+                <span><span class="kbd">↵</span>PRESS</span><span class="sep">·</span>
+                <span><span class="kbd">L</span>LOGS</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="case-footer">
+        <div class="vents"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="pill">PHOSPHOR P1</span>
+        <span class="pill">CRT 60HZ</span>
+        <span class="pill hot">● ACTIVE</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     STATION 09 — RUN LOGS (live stream + replay)
+     ============================================================ -->
+<h2 class="section">Run logs <small>09 · live stream · tailed while running, scroll-lockable when done</small></h2>
+
+<div class="canvas">
+  <div class="station" id="st-logs">
+    <div class="caption"><b>buttons logs deploy</b> <span>· click the pulsing <span style="color:var(--indicator)">● active</span> pin to tail · <span style="color:var(--paper)">L</span> from board · <span style="color:var(--paper)">↵</span> on an active row</span></div>
+    <div class="case">
+      <div class="case-bar">
+        <span class="dots"><i class="on"></i><i class="grn"></i><i></i></span>
+        <span>BTN-04 / LOGS · DEPLOY</span>
+        <span class="serial">FOLLOW · 03.2s · EXIT —</span>
+      </div>
+      <div class="bezel">
+        <div class="screen scanlines">
+          <div class="tui">
+            <div class="tui-header">
+              <div class="brand">buttons</div>
+              <div class="right">deploy <span class="sep">·</span> <b>logs</b> <span class="sep">·</span> <span style="color:var(--indicator)">● follow</span></div>
+            </div>
+            <div class="rule">────────────────────────────────────────────────────────────────────────────</div>
+
+            <!-- Compact header: what's running, elapsed, follow state -->
+            <div style="display:grid; grid-template-columns:1fr auto; gap:20px; align-items:baseline; margin-top:4px">
+              <div>
+                <div style="color:var(--term-fg); font-weight:700">deploy <span style="color:var(--term-dim); font-weight:400">— shell · env=<span style="color:var(--term-fg)">staging</span></span></div>
+                <div style="color:var(--term-mute); margin-top:2px; font-size:11px">started 12:31:58  ·  press 0c5b  ·  pid 41238</div>
+              </div>
+              <div style="color:var(--indicator); font-weight:700; font-size:13px; letter-spacing:.04em">
+                <span class="spin-b"></span> 00:03 / 05:00
+              </div>
+            </div>
+
+            <!-- Stream -->
+            <div class="stream" style="margin-top:10px">
+<span class="ts">12:31:58.021</span> <span class="sev-i">info </span> deploy: starting — env=staging, ref=HEAD, sha=c8ab3f9
+<span class="ts">12:31:58.104</span> <span class="sev-o">stdout</span> ▸ resolving dependencies… <span style="color:var(--term-dim)">(pnpm-lock.yaml)</span>
+<span class="ts">12:31:58.612</span> <span class="sev-o">stdout</span> ▸ building api@2.8.1  <span style="color:var(--term-dim)">[▰▰▰▰▰▰▰▱▱▱] 72%</span>
+<span class="ts">12:31:59.884</span> <span class="sev-o">stdout</span> ▸ building web@2.8.1  <span style="color:var(--term-dim)">[▰▰▰▰▰▰▰▰▰▱] 91%</span>
+<span class="ts">12:32:00.451</span> <span class="sev-w">warn </span> using deprecated flag --legacy-peer-deps
+<span class="ts">12:32:01.002</span> <span class="sev-o">stdout</span> ▸ pushing image ghcr.io/autonoco/api:c8ab3f9  <span style="color:var(--term-dim)">(4.21 MB/s)</span>
+<span class="ts">12:32:01.880</span> <span class="sev-i">info </span> kube: applying manifests/staging/*.yaml
+<span class="ts">12:32:02.113</span> <span class="sev-o">stdout</span> ▸ deployment.apps/api configured
+<span class="ts">12:32:02.117</span> <span class="sev-o">stdout</span> ▸ deployment.apps/web configured
+<span class="ts">12:32:02.119</span> <span class="sev-o">stdout</span> ▸ service/api unchanged
+<span class="ts">12:32:02.612</span> <span class="sev-i">info </span> waiting for rollout… (api 0/3 ready)
+<span class="ts">12:32:03.104</span> <span class="sev-o">stdout</span> ▸ pod api-c8ab3f9-pvj2 <span style="color:#b9c28e">ready</span>  <span style="color:var(--term-dim)">(1/3)</span>
+<span class="ts">12:32:03.240</span> <span class="cur">waiting for rollout… (api 1/3 ready)</span></div>
+
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+            <div class="footer-row">
+              <div class="pressbtn" style="background:transparent; color:var(--indicator); border-color:var(--indicator)">■ cancel</div>
+              <div class="hints">
+                <span><span class="kbd">f</span>follow</span><span class="sep">·</span>
+                <span><span class="kbd">g/G</span>top/end</span><span class="sep">·</span>
+                <span><span class="kbd">⎋</span>back to board</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="case-footer">
+        <div class="vents"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="pill hot">● FOLLOW</span>
+        <span class="pill">PRESS 0c5b</span>
+        <span class="pill">TAIL</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     STATION 10 — MECHANICAL PRESS / BUTTON TRAVEL
+     ============================================================ -->
+<h2 class="section">Mechanical press <small>10 · faking physical travel in a terminal</small></h2>
+
+<div class="canvas">
+  <div class="station">
+    <div class="caption"><b>press choreography</b> <span>· ~180ms total · all four frames use only lipgloss border/bg swaps</span></div>
+    <div class="case">
+      <div class="case-bar">
+        <span class="dots"><i class="on"></i><i class="grn"></i><i></i></span>
+        <span>BTN-04 / INTERACTION · PRESS</span>
+        <span class="serial">↵ KEYDOWN → 40ms TRAVEL → FIRE → 80ms HOLD → RELEASE</span>
+      </div>
+      <div class="bezel">
+        <div class="screen scanlines">
+          <div class="tui">
+            <div class="tui-header">
+              <div class="brand">buttons</div>
+              <div class="right">press <span class="sep">·</span> <b>choreography</b></div>
+            </div>
+            <div class="rule">────────────────────────────────────────────────────────────────────────────</div>
+
+            <!-- Frame strip -->
+            <div style="color:var(--term-dim); margin:8px 0 6px">the pressbtn across four frames</div>
+            <div class="travel">
+              <span class="fr rest">press</span>
+              <span class="arrow">→</span>
+              <span class="fr down">press</span>
+              <span class="arrow">→</span>
+              <span class="fr fire">● fire</span>
+            </div>
+            <div style="color:var(--term-mute); font-size:11px; margin-top:6px">rest (NormalBorder, paper fill) → keydown +40ms (ThickBorder, inset shadow, ↓1px) → fire +80ms (indicator fill, brief glow) → release → active</div>
+
+            <div style="margin:22px 0 6px; color:var(--term-dim)">the focused list row while the key is held</div>
+            <div class="list" style="border:1px dashed var(--term-mute); padding:6px 10px">
+              <div class="lrow sel depress">
+                <span class="glyph">●</span>
+                <span class="name"><span class="arrow">›</span> deploy</span>
+                <span class="meta">shell · 300s · 1 arg</span>
+                <span class="kbd">↵ held</span>
+              </div>
+            </div>
+            <div style="color:var(--term-mute); font-size:11px; margin-top:6px">glyph swaps <span style="color:var(--term-fg)">□</span> → <span style="color:var(--term-fg)">▣</span> → <span style="color:var(--indicator)">●</span> in sync. row gains a 1-line inset shadow. bubbletea sees the KeyPressMsg; we set a <code style="color:var(--paper)">pressPulse</code> model field, schedule a <code style="color:var(--paper)">tea.Tick(80ms)</code> to clear it.</div>
+
+            <div style="margin:22px 0 6px; color:var(--term-dim)">three-glyph travel (bonus — cycle every press)</div>
+            <div class="travel" style="grid-template-columns:repeat(7, auto)">
+              <span class="fr rest">□ deploy</span>
+              <span class="arrow">→</span>
+              <span class="fr down">▣ deploy</span>
+              <span class="arrow">→</span>
+              <span class="fr fire">◉ deploy</span>
+              <span class="arrow">→</span>
+              <span class="fr ok">✓ deploy</span>
+            </div>
+
+            <div class="rule" style="margin-top:22px">────────────────────────────────────────────────────────────────────────────</div>
+
+            <div style="color:var(--term-dim); margin-bottom:4px">implementation sketch — <span style="color:var(--term-mute)">internal/tui/board.go</span></div>
+<div class="code">
+<span class="c">// Model field: transient pressed-row name (cleared by pressReleaseMsg)</span>
+<span class="k">type</span> Model <span class="k">struct</span> {
+    ...
+    pressPulse     <span class="k">string</span>        <span class="c">// name of row currently showing "depressed" frame</span>
+    pressPulseFire <span class="k">bool</span>          <span class="c">// 2nd frame: indicator fill instead of inset</span>
+}
+
+<span class="c">// On Enter/Space, show 1st frame, schedule 2nd frame and release</span>
+<span class="k">case</span> <span class="s">"enter"</span>, <span class="s">" "</span>:
+    m.pressPulse = name
+    <span class="k">return</span> m, tea.Batch(
+        tea.Tick(40*time.Millisecond, <span class="k">func</span>(_ time.Time) tea.Msg { <span class="k">return</span> pressFireMsg{name} }),
+        tea.Tick(180*time.Millisecond, <span class="k">func</span>(_ time.Time) tea.Msg { <span class="k">return</span> pressReleaseMsg{name} }),
+        runPress(btn, codePath, batteries),
+    )
+
+<span class="c">// On mouse: honour real press/release semantics (bubbletea v2 distinguishes them)</span>
+<span class="k">case</span> tea.MouseClickMsg: <span class="c">// logical click — same as keyboard</span>
+<span class="k">case</span> tea.MouseMotionMsg: <span class="c">// for hover-indicator on rows if MouseModeCellMotion</span>
+</div>
+
+            <div class="rule" style="margin-top:14px">────────────────────────────────────────────────────────────────────────────</div>
+            <div class="footer-row">
+              <div class="pressbtn" id="demoBtn">press (try me)</div>
+              <div class="hints">
+                <span>click / space to feel the travel</span><span class="sep">·</span>
+                <span><span class="kbd">⎋</span>back</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="case-footer">
+        <div class="vents"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="pill">KEYDOWN 40ms</span>
+        <span class="pill">FIRE 80ms</span>
+        <span class="pill hot">● ACTIVE</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ─── Pinned buttons: clickable with mechanical press ──────────
+   Same 4-frame travel as pressbtn: rest → kd (40ms) → fire (80ms)
+   → release. ACTIVE pins scroll to the run-logs station. */
+(function(){
+  const pins = document.querySelectorAll('.pin');
+  const logsStation = document.querySelector('h2.section + .canvas .station .case-bar span:nth-child(2)');
+  // find the run-logs canvas by its bar label
+  let logsCanvas = null;
+  document.querySelectorAll('.case-bar').forEach(bar=>{
+    if (bar.textContent.includes('LOGS')) logsCanvas = bar.closest('.canvas');
+  });
+
+  const travel = (el, onFire) => {
+    if (el.classList.contains('kd') || el.classList.contains('fire')) return;
+    el.classList.add('kd');
+    setTimeout(()=>{
+      el.classList.remove('kd');
+      el.classList.add('fire');
+      if (onFire) onFire();
+    }, 40);
+    setTimeout(()=>{
+      el.classList.remove('fire');
+    }, 220);
+  };
+
+  pins.forEach(p=>{
+    p.setAttribute('tabindex','0');
+    p.setAttribute('role','button');
+    const isActive = p.classList.contains('act');
+    p.addEventListener('click', ()=>{
+      travel(p, ()=>{
+        if (isActive && logsCanvas) {
+          logsCanvas.scrollIntoView({behavior:'smooth', block:'center'});
+        }
+      });
+    });
+    p.addEventListener('keydown', e=>{
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); p.click(); }
+    });
+  });
+})();
+
+/* ─── Hint-strip: make "L logs" clickable jump to run-logs station ── */
+(function(){
+  const target = document.getElementById('st-logs');
+  if (!target) return;
+  document.querySelectorAll('.hints span').forEach(s=>{
+    const txt = s.textContent.trim().toLowerCase();
+    if (txt === 'llogs' || txt.endsWith(' logs') || txt.endsWith('logs')) {
+      if (!s.querySelector('.kbd')) return;
+      const label = (s.querySelector('.kbd').textContent || '').trim().toLowerCase();
+      if (label !== 'l') return;
+      s.style.cursor = 'pointer';
+      s.style.transition = 'color 120ms';
+      s.addEventListener('mouseenter', ()=>{ s.style.color = 'var(--term-fg)'; });
+      s.addEventListener('mouseleave', ()=>{ s.style.color = ''; });
+      s.addEventListener('click', ()=>{
+        target.scrollIntoView({behavior:'smooth', block:'start'});
+      });
+    }
+  });
+})();
+
+/* Interactive demo: press the button to see the travel */
+(function(){
+  const b = document.getElementById('demoBtn');
+  if (!b) return;
+  const fire = () => {
+    b.classList.add('kd');
+    setTimeout(()=>{
+      b.style.background = 'var(--indicator)';
+      b.style.color = '#0a0a09';
+      b.style.borderColor = 'var(--indicator)';
+    }, 40);
+    setTimeout(()=>{
+      b.classList.remove('kd');
+      b.style.background = '';
+      b.style.color = '';
+      b.style.borderColor = '';
+    }, 180);
+  };
+  b.addEventListener('click', fire);
+  document.addEventListener('keydown', e=>{
+    if ((e.key === ' ' || e.key === 'Enter') && document.activeElement === document.body) {
+      e.preventDefault(); fire();
+    }
+  });
+})();
+</script>
+
+<!-- ============================================================
+     NOTES
+     ============================================================ -->
+<div style="max-width:1280px; margin:72px auto 0; color:var(--aluminum); font-size:13px; line-height:1.6">
+  <h3 style="font-family:var(--disp); font-size:18px; color:var(--paper); letter-spacing:.04em; margin:0 0 10px">notes for the maintainer</h3>
+  <ul style="padding-left:18px; color:var(--dust)">
+    <li>Every glyph is real: ✓ ✗ □ › ● — all renderable with <code style="color:var(--paper)">lipgloss</code>. The spinner is the same braille cycle already in <code style="color:var(--paper)">styles.go</code>.</li>
+    <li>Hardware chrome around the terminal is for <em>marketing/docs</em> only — the actual TUI stops at the screen. Don't ship the bezel inside Bubble Tea.</li>
+    <li>Orange stays reserved for ACTIVE. Success toast is dust-green so the eye tracks failures first. Keep the rule in <code style="color:var(--paper)">styles.go</code>.</li>
+    <li>Press-with-args (station 04) is new — current TUI bails to CLI for required args. The arg form is a single-column bubbletea <code style="color:var(--paper)">huh?</code>-style prompt with Tab/Enter semantics.</li>
+    <li>Detail view (station 05) mirrors <code style="color:var(--paper)">cmd/detail.go</code> output but reorganized as a TUI page — same data, better hierarchy.</li>
+    <li>Paper & phosphor themes: gate on <code style="color:var(--paper)">BUTTONS_THEME</code> env (phosphor, paper, default). Current <code style="color:var(--paper)">BuildStyles()</code> only branches on dark/light — extend it.</li>
+  </ul>
+</div>
+
+<!-- ============================================================
+     TWEAKS PANEL — toggled via __activate_edit_mode
+     ============================================================ -->
+<div class="tweaks" id="tweaks">
+  <h4>tweaks<span>●</span></h4>
+  <div class="grp">
+    <div class="lbl">Theme</div>
+    <div class="seg" data-g="theme">
+      <button data-v="default" class="on">Default</button>
+      <button data-v="paper">Paper</button>
+      <button data-v="amber">Amber</button>
+      <button data-v="phos">Phos</button>
+    </div>
+  </div>
+  <div class="grp">
+    <div class="lbl">Scanlines</div>
+    <div class="row2" data-g="scan">
+      <button data-v="on" class="on">On</button>
+      <button data-v="off">Off</button>
+    </div>
+  </div>
+  <div class="grp">
+    <div class="lbl">Density</div>
+    <div class="row2" data-g="density">
+      <button data-v="sparse" class="on">Sparse</button>
+      <button data-v="dense">Dense</button>
+    </div>
+  </div>
+  <div style="color:var(--dust); font-size:9px; letter-spacing:.2em; text-transform:uppercase; margin-top:4px">applies to all stations</div>
+</div>
+
+<script>
+/* Tweaks plumbing */
+const DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "default",
+  "scan": "on",
+  "density": "dense"
+}/*EDITMODE-END*/;
+
+let state = {...DEFAULTS};
+
+function applyState(){
+  // Theme → swap the .screen class on every screen
+  document.querySelectorAll('.screen').forEach(scr=>{
+    // Leave the explicit .paper and .phos demos alone — they're locked to that theme in the design.
+    if (scr.dataset.lock) return;
+    scr.classList.remove('phos','amber','paper');
+    if (state.theme && state.theme !== 'default') scr.classList.add(state.theme);
+  });
+  // Scanlines
+  document.querySelectorAll('.screen').forEach(scr=>{
+    if (state.scan === 'off') scr.classList.remove('scanlines');
+    else scr.classList.add('scanlines');
+  });
+  // Density → tighter TUI line-height + padding
+  document.querySelectorAll('.tui').forEach(t=>{
+    t.style.lineHeight = state.density === 'dense' ? '1.32' : '1.5';
+    t.style.padding = state.density === 'dense' ? '14px 16px' : '18px 20px';
+    t.style.fontSize = state.density === 'dense' ? '12px' : '13px';
+  });
+  // Buttons in panel
+  document.querySelectorAll('.tweaks .seg, .tweaks .row2').forEach(grp=>{
+    const g = grp.dataset.g;
+    grp.querySelectorAll('button').forEach(b=>{
+      b.classList.toggle('on', b.dataset.v === state[g]);
+    });
+  });
+}
+
+// Lock the paper and phos demo screens so theme swap doesn't clobber them
+document.querySelectorAll('.screen.paper, .screen.phos').forEach(s => s.dataset.lock = "1");
+
+document.querySelectorAll('.tweaks button[data-v]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const g = btn.parentElement.dataset.g;
+    state[g] = btn.dataset.v;
+    applyState();
+    try{
+      window.parent.postMessage({type:'__edit_mode_set_keys', edits:{[g]: state[g]}}, '*');
+    }catch(e){}
+  });
+});
+
+window.addEventListener('message', e=>{
+  const d = e.data || {};
+  if (d.type === '__activate_edit_mode') document.getElementById('tweaks').classList.add('on');
+  if (d.type === '__deactivate_edit_mode') document.getElementById('tweaks').classList.remove('on');
+});
+
+try{ window.parent.postMessage({type:'__edit_mode_available'}, '*'); }catch(e){}
+applyState();
+</script>
+
+</body>
+</html>

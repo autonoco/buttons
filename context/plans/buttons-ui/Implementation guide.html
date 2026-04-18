@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>buttons — implementation guide</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Space+Grotesk:wght@400;500;600;700&family=Bowlby+One+SC&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0A0A0A;
+  --indicator:#FF5A1F;
+  --paper:#F5F5F2;
+  --aluminum:#C5C5C0;
+  --dust:#6E6E68;
+
+  --term-bg:#0b0b0b;
+  --term-bg-2:#0f0f0f;
+  --term-fg:#e9e7df;
+  --term-dim:#8a8880;
+  --term-mute:#4a4844;
+  --term-line:#1f1e1a;
+
+  --case-bg:#1a1a18;
+  --case-edge:#2a2a27;
+
+  --mono:'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --disp:'Bowlby One SC', 'Space Grotesk', sans-serif;
+  --sans:'Space Grotesk', system-ui, sans-serif;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:var(--sans);
+  background:radial-gradient(1200px 800px at 30% 10%, #262622 0%, #0e0e0d 60%, #050505 100%);
+  color:var(--paper);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────────── */
+.topbar{
+  max-width:1040px;
+  margin:0 auto;
+  padding:40px 32px 0;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:24px;
+  border-bottom:1px solid var(--case-edge);
+  padding-bottom:20px;
+}
+.wordmark{
+  font-family:var(--disp);
+  font-size:38px;
+  letter-spacing:.02em;
+  line-height:.95;
+}
+.wordmark span{color:var(--indicator)}
+.topbar .sub{
+  font-family:var(--mono);
+  color:var(--aluminum);
+  font-size:11px;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  text-align:right;
+}
+.topbar .sub .pill{
+  display:inline-block;
+  border:1px solid var(--indicator);
+  color:var(--indicator);
+  padding:2px 8px;
+  margin-left:6px;
+}
+
+/* ── Layout ─────────────────────────────────────────────── */
+.shell{
+  max-width:1040px;
+  margin:0 auto;
+  display:grid;
+  grid-template-columns:240px 1fr;
+  gap:40px;
+  padding:32px;
+}
+nav.toc{
+  position:sticky;
+  top:24px;
+  align-self:start;
+  font-family:var(--mono);
+  font-size:12px;
+  max-height:calc(100vh - 48px);
+  overflow:auto;
+  border:1px solid var(--case-edge);
+  padding:18px 14px;
+  background:linear-gradient(180deg, rgba(26,26,24,.8), rgba(14,14,13,.8));
+}
+nav.toc h5{
+  font-family:var(--mono);
+  font-size:10px;
+  letter-spacing:.24em;
+  text-transform:uppercase;
+  color:var(--dust);
+  margin:0 0 10px;
+  font-weight:500;
+}
+nav.toc ol{margin:0; padding:0; list-style:none; counter-reset:toc;}
+nav.toc li{counter-increment:toc; margin:4px 0;}
+nav.toc li::before{
+  content:counter(toc, decimal-leading-zero);
+  color:var(--dust);
+  margin-right:10px;
+  font-variant-numeric:tabular-nums;
+}
+nav.toc a{
+  color:var(--aluminum);
+  text-decoration:none;
+  transition:color 120ms;
+}
+nav.toc a:hover{color:var(--indicator)}
+
+article{
+  min-width:0;
+  line-height:1.65;
+  color:var(--aluminum);
+  font-size:15px;
+}
+article h1{
+  font-family:var(--disp);
+  font-size:42px;
+  letter-spacing:.01em;
+  color:var(--paper);
+  margin:0 0 14px;
+  line-height:1;
+}
+article h1 + blockquote{
+  margin-top:0;
+}
+article h2{
+  font-family:var(--disp);
+  font-size:24px;
+  color:var(--paper);
+  margin:56px 0 14px;
+  letter-spacing:.01em;
+  padding-top:20px;
+  border-top:1px solid var(--case-edge);
+  position:relative;
+}
+article h2::before{
+  position:absolute;
+  right:0; top:20px;
+  font-family:var(--mono);
+  font-size:10px;
+  letter-spacing:.24em;
+  color:var(--dust);
+  text-transform:uppercase;
+  content:"§ " attr(data-idx);
+}
+article h3{
+  font-family:var(--sans);
+  font-size:17px;
+  color:var(--paper);
+  margin:28px 0 8px;
+  letter-spacing:.01em;
+  font-weight:700;
+}
+article h4{
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  color:var(--indicator);
+  margin:20px 0 6px;
+}
+article p{margin:12px 0}
+article a{color:var(--indicator); text-decoration:underline; text-decoration-color:rgba(255,90,31,.4); text-underline-offset:3px;}
+article a:hover{text-decoration-color:var(--indicator)}
+article strong{color:var(--paper)}
+article em{color:var(--paper); font-style:normal; border-bottom:1px dotted var(--dust); padding-bottom:1px;}
+
+article ul, article ol{padding-left:22px; margin:12px 0}
+article li{margin:6px 0}
+article li::marker{color:var(--indicator)}
+
+article blockquote{
+  border-left:2px solid var(--indicator);
+  margin:16px 0;
+  padding:4px 18px;
+  color:var(--aluminum);
+  background:linear-gradient(90deg, rgba(255,90,31,.06), transparent 80%);
+  font-style:normal;
+}
+article blockquote p{margin:6px 0}
+
+article hr{
+  border:none;
+  border-top:1px solid var(--case-edge);
+  margin:48px 0;
+  position:relative;
+}
+article hr::after{
+  content:"•";
+  position:absolute;
+  left:50%; top:-12px;
+  transform:translateX(-50%);
+  background:#0b0b0b;
+  padding:0 14px;
+  color:var(--dust);
+  font-size:16px;
+}
+
+/* ── Inline code ─────────────────────────────────────────── */
+article code{
+  font-family:var(--mono);
+  font-size:.85em;
+  background:var(--term-line);
+  color:var(--paper);
+  padding:1px 6px;
+  border:1px solid var(--case-edge);
+}
+
+/* ── Code blocks — full terminal treatment ───────────────── */
+article pre{
+  position:relative;
+  background:linear-gradient(180deg, var(--term-bg-2), var(--term-bg));
+  border:1px solid var(--case-edge);
+  padding:22px 20px 18px;
+  margin:18px 0;
+  overflow-x:auto;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.03),
+    inset 0 -1px 0 rgba(0,0,0,.4),
+    0 10px 30px rgba(0,0,0,.35);
+}
+article pre::before{
+  content:"";
+  position:absolute;
+  top:8px; left:10px;
+  width:9px; height:9px;
+  background:var(--indicator);
+  border-radius:50%;
+  box-shadow:
+    14px 0 0 #444,
+    28px 0 0 #444;
+  opacity:.8;
+}
+article pre code{
+  background:transparent;
+  border:none;
+  padding:0;
+  font-size:12.5px;
+  line-height:1.55;
+  color:var(--term-fg);
+  font-family:var(--mono);
+}
+
+/* Go syntax highlighting — via regex in JS after render */
+.tok-k{color:#f0c060; font-weight:500}         /* keywords */
+.tok-s{color:#b9c28e}                           /* strings */
+.tok-c{color:var(--dust); font-style:italic}    /* comments */
+.tok-f{color:#e9e7df}                           /* identifiers after func/type */
+.tok-n{color:#8aaaff}                           /* numbers */
+.tok-p{color:var(--indicator)}                  /* punctuation accents */
+.tok-h{color:var(--indicator)}                  /* shell prompts / highlights */
+
+/* ── Tables ─────────────────────────────────────────────── */
+article table{
+  border-collapse:collapse;
+  width:100%;
+  margin:18px 0;
+  font-size:14px;
+}
+article th, article td{
+  border-bottom:1px solid var(--case-edge);
+  padding:10px 12px;
+  text-align:left;
+  vertical-align:top;
+}
+article th{
+  color:var(--dust);
+  font-family:var(--mono);
+  font-size:10px;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  font-weight:500;
+  background:rgba(255,255,255,.02);
+}
+article td code{font-size:.8em}
+
+/* ── Anchor links on headings ─────────────────────────── */
+article h2 a.anchor,
+article h3 a.anchor{
+  opacity:0; transition:opacity 120ms;
+  color:var(--indicator);
+  margin-left:10px;
+  text-decoration:none;
+  font-family:var(--mono);
+  font-size:.6em;
+}
+article h2:hover a.anchor,
+article h3:hover a.anchor{opacity:.8}
+
+/* ── Footer ─────────────────────────────────────────── */
+footer{
+  max-width:1040px;
+  margin:0 auto;
+  padding:32px 32px 64px;
+  color:var(--dust);
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:.2em;
+  text-transform:uppercase;
+  border-top:1px solid var(--case-edge);
+  display:flex;
+  justify-content:space-between;
+  gap:16px;
+}
+
+/* ── Scrollbar polish ─────────────────────────────────── */
+::-webkit-scrollbar{width:10px; height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--case-edge); border:2px solid #0b0b0b}
+::-webkit-scrollbar-thumb:hover{background:var(--term-mute)}
+
+/* ── Responsive ───────────────────────────────────────── */
+@media (max-width: 900px){
+  .shell{grid-template-columns:1fr; padding:24px}
+  nav.toc{position:static; max-height:none}
+  article h1{font-size:32px}
+  article h2{font-size:20px}
+  .topbar{padding:24px 24px 0}
+  .topbar .sub{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wordmark">buttons<span>.</span></div>
+  <div class="sub">
+    implementation guide<br>
+    v1 · 2026.04 <span class="pill">● draft</span>
+  </div>
+</div>
+
+<div class="shell">
+  <nav class="toc" aria-label="Table of contents">
+    <h5>Contents</h5>
+    <ol>
+      <li><a href="#architecture">Architecture in 30 seconds</a></li>
+      <li><a href="#identity">The identity rule, encoded</a></li>
+      <li><a href="#styles">Lip Gloss style system</a></li>
+      <li><a href="#model">The Bubble Tea model</a></li>
+      <li><a href="#input">Input &amp; hit-testing</a></li>
+      <li><a href="#press">Pressing buttons</a></li>
+      <li><a href="#mechanical">Mechanical press choreography</a></li>
+      <li><a href="#logs">The logs view</a></li>
+      <li><a href="#themes">Themes</a></li>
+      <li><a href="#testing">Testing</a></li>
+      <li><a href="#anti">Anti-patterns rejected</a></li>
+      <li><a href="#quickref">Quick reference</a></li>
+    </ol>
+  </nav>
+
+  <article id="doc">
+    <!-- rendered from IMPLEMENTATION.md at load -->
+    <p style="font-family:var(--mono); color:var(--dust)">loading&hellip;</p>
+  </article>
+</div>
+
+<footer>
+  <span>autonoco / buttons</span>
+  <span>bubble tea v2 · lip gloss v2 · go 1.22+</span>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+/* Load the canonical IMPLEMENTATION.md and render it here. Keeps the
+   markdown as the source of truth for the repo — this page is a view. */
+(async function(){
+  const res = await fetch('IMPLEMENTATION.md');
+  const md  = await res.text();
+
+  marked.setOptions({ gfm:true, breaks:false });
+  const html = marked.parse(md);
+  const art = document.getElementById('doc');
+  art.innerHTML = html;
+
+  // Drop the embedded TOC in the markdown — our sidebar replaces it.
+  const firstH2 = art.querySelector('h2');
+  if (firstH2 && /contents/i.test(firstH2.textContent)) {
+    let node = firstH2;
+    const toRemove = [];
+    while (node && !(node.tagName === 'HR')) {
+      toRemove.push(node);
+      node = node.nextElementSibling;
+    }
+    toRemove.forEach(n=>n.remove());
+    if (node) node.remove();
+  }
+
+  // Number every h2 and stamp data-idx for the side margin glyph.
+  let idx = 1;
+  art.querySelectorAll('h2').forEach(h=>{
+    h.setAttribute('data-idx', String(idx).padStart(2,'0'));
+    idx++;
+    // Give sidebar anchors something to hit. Map by heading text.
+    const slug = h.textContent.toLowerCase()
+      .replace(/[^a-z0-9\s]/g,'')
+      .trim()
+      .replace(/\s+/g,'-');
+    h.id = slug;
+    const a = document.createElement('a');
+    a.href = '#' + slug;
+    a.className = 'anchor';
+    a.textContent = '#';
+    h.appendChild(a);
+  });
+
+  // Rewrite sidebar anchors to match first N headings by order.
+  const heads = art.querySelectorAll('h2');
+  document.querySelectorAll('nav.toc a').forEach((a, i)=>{
+    if (heads[i]) a.href = '#' + heads[i].id;
+  });
+
+  // Lightweight Go syntax highlight.
+  const goKeywords = /\b(package|import|type|struct|interface|func|return|if|else|for|range|switch|case|default|break|continue|go|defer|const|var|chan|select|map|nil|true|false)\b/g;
+  art.querySelectorAll('pre code').forEach(block=>{
+    let s = block.textContent;
+    // Escape for HTML first
+    s = s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // Comments — // ... to end of line
+    s = s.replace(/(\/\/[^\n]*)/g, '<span class="tok-c">$1</span>');
+    // Strings — "..."
+    s = s.replace(/("(?:\\.|[^"\\])*")/g, '<span class="tok-s">$1</span>');
+    // Numbers
+    s = s.replace(/\b(\d+(?:\.\d+)?(?:ms|s|h)?)\b/g, '<span class="tok-n">$1</span>');
+    // Keywords — but not inside already-wrapped spans
+    s = s.replace(goKeywords, '<span class="tok-k">$1</span>');
+    block.innerHTML = s;
+  });
+})();
+</script>
+
+</body>
+</html>
