@@ -15,6 +15,14 @@ import (
 
 const maxOutputBytes = 1 << 20 // 1MB
 
+// maxRunsPerButton caps how many press records we keep on disk per
+// button. After each Record, older entries beyond this cap are deleted
+// so `pressed/` doesn't grow unbounded for long-running automations.
+// 100 is generous for debugging ("what did the last few presses do?")
+// while still bounded — at ~1 MB per run that's 100 MB worst case per
+// button, and typical payloads are much smaller.
+const maxRunsPerButton = 100
+
 // Run represents a persisted execution record.
 type Run struct {
 	ButtonName     string            `json:"button_name"`
@@ -70,6 +78,44 @@ func Record(result *engine.Result) error {
 		return fmt.Errorf("failed to write run file: %w", err)
 	}
 
+	// Trim old runs so the pressed/ directory stays bounded. Swallow
+	// prune errors — a failed prune shouldn't fail the press path the
+	// user actually cares about; worst case the directory grows a
+	// little and the next successful Record catches up.
+	_ = pruneOldRuns(pressedDir, maxRunsPerButton)
+
+	return nil
+}
+
+// pruneOldRuns keeps the N most recent *.json files in pressedDir and
+// deletes the rest. Ordering uses the filename (which is an ISO-ish
+// UTC timestamp set by Record) so we don't have to stat every file —
+// cheaper and monotonic with how files are named.
+func pruneOldRuns(pressedDir string, keep int) error {
+	if keep <= 0 {
+		return nil
+	}
+	entries, err := os.ReadDir(pressedDir)
+	if err != nil {
+		return err
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	if len(names) <= keep {
+		return nil
+	}
+	// Sort ascending (oldest first) so the slice to delete is the head.
+	sort.Strings(names)
+	toDelete := names[:len(names)-keep]
+	for _, name := range toDelete {
+		// Best-effort; a single failed unlink shouldn't stop the rest.
+		_ = os.Remove(filepath.Join(pressedDir, name))
+	}
 	return nil
 }
 
