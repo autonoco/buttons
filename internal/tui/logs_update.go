@@ -35,7 +35,6 @@ func (m LogsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logsDoneMsg:
 		m.result = msg.result
 		m.done = true
-		m.ticking = false
 		return m, nil
 
 	case tickMsg:
@@ -45,7 +44,6 @@ func (m LogsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.done {
 			return m, tickCmd()
 		}
-		m.ticking = false
 		return m, nil
 	}
 

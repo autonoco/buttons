@@ -41,7 +41,6 @@ type LogsModel struct {
 	follow       bool // true = pin to the tail of the stream
 	scrollTop    int  // first visible line index when not following
 	spinnerFrame int
-	ticking      bool
 
 	width, height int
 }
@@ -70,8 +69,11 @@ func NewLogs(btn *button.Button, args, batteries map[string]string, codePath str
 // Init kicks off the press, starts waiting for the first streamed
 // line, and starts the spinner tick. Three commands batched — Bubble
 // Tea runs them concurrently.
+//
+// No `ticking` guard like board's Model uses: the logs view starts the
+// tick loop exactly once here, and the tickMsg handler stops re-arming
+// once `done` is true. There's no path that could double-start it.
 func (m LogsModel) Init() tea.Cmd {
-	m.ticking = true
 	return tea.Batch(
 		streamPress(m.ctx, m.btn, m.args, m.batteries, m.sink, m.codePath),
 		waitForLine(m.sink),
