@@ -48,6 +48,13 @@ type Model struct {
 
 	status map[string]runStatus
 
+	// pressStartedAt records when a press began, keyed by button name,
+	// so the view can render a live elapsed counter on the active
+	// card. Cleared in handlePressDone when the press completes (or
+	// fails) — stale entries would otherwise show "active · 83s" on a
+	// row that finished half a minute ago.
+	pressStartedAt map[string]time.Time
+
 	lastErr string
 	lastOK  string // transient success toast (name of last button that returned ok)
 
@@ -125,11 +132,12 @@ func New(svc *button.Service, initial string) (*Model, error) {
 	}
 
 	m := &Model{
-		svc:     svc,
-		styles:  BuildStyles(),
-		buttons: buttons,
-		status:  map[string]runStatus{},
-		section: sectionList,
+		svc:            svc,
+		styles:         BuildStyles(),
+		buttons:        buttons,
+		status:         map[string]runStatus{},
+		pressStartedAt: map[string]time.Time{},
+		section:        sectionList,
 	}
 	if m.hasPinned() {
 		m.section = sectionPinned
@@ -382,6 +390,7 @@ func (m Model) pressButton(name string) (tea.Model, tea.Cmd) {
 	m.lastErr = ""
 	m.lastOK = ""
 	m.status[name] = statusRunning
+	m.pressStartedAt[name] = time.Now()
 
 	codePath, _ := m.svc.CodePath(name)
 
@@ -441,6 +450,10 @@ func tuiBatteryDiscoverer() (string, bool) {
 }
 
 func (m Model) handlePressDone(msg pressDoneMsg) Model {
+	// Stale elapsed entry would linger as "active · 83s" on a row that
+	// just finished. Clear it the instant we know the press terminated.
+	delete(m.pressStartedAt, msg.name)
+
 	if msg.err != nil || msg.result == nil || msg.result.Status != "ok" {
 		m.status[msg.name] = statusFailed
 		m.lastOK = ""
@@ -634,6 +647,14 @@ func (m Model) renderPinnedCard(btn button.Button, selected bool) string {
 	if len(label) < 10 {
 		label = fmt.Sprintf("%-10s", label)
 	}
+	// While running, render a second line inside the card showing a
+	// live elapsed counter ("● active · 3.2s"). Lip Gloss handles
+	// multi-line content inside a bordered box; the card grows by one
+	// row only while active, so idle-state layout is unchanged.
+	if m.status[btn.Name] == statusRunning {
+		sub := "● active · " + formatElapsed(m.elapsedFor(btn.Name))
+		return style.Render(label + "\n" + sub)
+	}
 	return style.Render(label)
 }
 
@@ -695,8 +716,44 @@ func (m Model) renderListRow(btn button.Button, idx int) string {
 
 	if active {
 		row += "  " + m.styles.BadgeActive.Render("ACTIVE")
+		row += "  " + m.styles.Muted.Render(formatElapsed(m.elapsedFor(btn.Name)))
 	}
 	return row
+}
+
+// elapsedFor returns how long the press has been running, or 0 when
+// there's no active press for the name (or the press just finished and
+// the entry was cleared). The caller is expected to check status
+// before deciding whether to render.
+func (m Model) elapsedFor(name string) time.Duration {
+	start, ok := m.pressStartedAt[name]
+	if !ok {
+		return 0
+	}
+	return time.Since(start)
+}
+
+// formatElapsed renders a duration compactly:
+//
+//	< 60s      → "3.2s"   (one decimal — feels live)
+//	< 60min    → "2:07"   (mm:ss — feels long)
+//	>= 60min   → "1:04:22" (hh:mm:ss — rare but tidy)
+//
+// Picked for glanceability: short presses look responsive, longer
+// presses read as a clock.
+func formatElapsed(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	if d < time.Hour {
+		m := int(d.Minutes())
+		s := int(d.Seconds()) - m*60
+		return fmt.Sprintf("%d:%02d", m, s)
+	}
+	h := int(d.Hours())
+	mins := int(d.Minutes()) - h*60
+	s := int(d.Seconds()) - h*3600 - mins*60
+	return fmt.Sprintf("%d:%02d:%02d", h, mins, s)
 }
 
 // renderEmptyHero is the empty-state content block. Designed to teach
