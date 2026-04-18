@@ -163,6 +163,14 @@ func (m LogsModel) renderLogsLine(l engine.LogLine, previewBudget int) string {
 	}
 
 	text := truncateDisplay(l.Text, previewBudget)
+	// Prefix stdout lines with a `▸` arrow glyph so stream content
+	// reads as "the program's voice" vs. info / warn / err which are
+	// the program's status. Spec station 09.
+	prefix := ""
+	if l.Sev == engine.SeverityStdout {
+		prefix = m.styles.Muted.Render("▸ ")
+	}
+
 	// stderr and warn lines get their text subtly shaded toward
 	// the severity color so they read differently from stdout
 	// without making the whole row loud.
@@ -176,7 +184,7 @@ func (m LogsModel) renderLogsLine(l engine.LogLine, previewBudget int) string {
 		textCol = m.styles.ButtonName.Render(text)
 	}
 
-	return fmt.Sprintf("%s  %s  %s", tsCol, sevCol, textCol)
+	return fmt.Sprintf("%s  %s  %s%s", tsCol, sevCol, prefix, textCol)
 }
 
 // renderLogsFooter composes the action pill + key hints. Mirrors the

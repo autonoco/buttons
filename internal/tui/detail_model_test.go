@@ -3,6 +3,8 @@ package tui
 import (
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/autonoco/buttons/internal/button"
 )
 
@@ -61,9 +63,10 @@ func TestDetailView_SnapshotShapes(t *testing.T) {
 	m := newTestDetailModel(btn, "/tmp/main.sh")
 	m.width, m.height = 100, 40
 	view := m.View()
-	out := view.Content
-	// Smoke checks: key sections appear in order. Proper snapshot
-	// tests come with Group F1.
+	// Strip ANSI before substring-matching — the visual-fidelity pass
+	// colorizes the usage line token-by-token, which scatters escape
+	// codes mid-string and breaks naive Contains.
+	out := ansi.Strip(view.Content)
 	wants := []string{
 		"deploy", // header
 		"runtime",

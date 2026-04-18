@@ -1,20 +1,20 @@
-  buttons                                                       btn—03 · board
+  ● buttons                                                     btn—03 · board
 ────────────────────────────────────────────────────────────────────────────────
 
-  ┏━━━━━━━━━━━━━━━━┓
-  ┃                ┃
-  ┃   deploy       ┃
-  ┃                ┃
-  ┗━━━━━━━━━━━━━━━━┛
+  ┏━━━━━━━━━━━━━━┓
+  ┃  deploy      ┃
+  ┗━━━━━━━━━━━━━━┛
 
 ────────────────────────────────────────────────────────────────────────────────
 
-  □   deploy   shell · 300s
-  □   weather  http · 60s · GET wttr.in/NYC
-  □   notify   http · 60s · POST hooks.example.com/webhook
+  □   deploy                                                      shell · 300s
+  □   weather                                     http · 60s · GET wttr.in/NYC
+  □   notify                       http · 60s · POST hooks.example.com/webhook
 
 ────────────────────────────────────────────────────────────────────────────────
 
   ┌─────────┐                                                                 
-  │  press  │                               ↑↓  nav  ·   ↵  press  ·   L  logs
+  │  press  │                  ↑↓  nav  ·   ↵  press  ·   L  logs  ·   ?  help
   └─────────┘                                                                 
+
+  TTY 1 · UTF-8 · 256-COLOR                                              ● REC

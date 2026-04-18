@@ -596,8 +596,11 @@ type layout struct {
 }
 
 const (
-	leftPad       = 2
-	pinnedHeight  = 5 // top border + pad + text + pad + bottom border
+	leftPad = 2
+	// pinnedHeight is the rendered height of a pinned card: top border
+	// + text line + bottom border = 3 rows. Was 5 before the
+	// visual-fidelity pass tightened the vertical padding.
+	pinnedHeight  = 3
 	footerHeight  = 3 // bordered action pill height
 	actionGap     = 2 // spaces between quit and press pills
 	headerHeight  = 1
@@ -686,6 +689,12 @@ func (m Model) View() tea.View {
 		parts = append(parts, status)
 	}
 
+	// Bottom status chrome — tiny muted strip with contextual badges.
+	// Matches the spec stations' chrome row (TTY 1 · UTF-8 · 256-COLOR
+	// · ● REC / ● ACTIVE / LOGS OPEN / etc.).
+	parts = append(parts, "")
+	parts = append(parts, m.renderChrome())
+
 	content := strings.Join(parts, "\n")
 
 	v := tea.NewView(content)
@@ -695,7 +704,12 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) renderHeader() string {
-	left := m.styles.Wordmark.Render("buttons")
+	// Brand mark: always-visible orange dot to the left of the wordmark.
+	// This is the identity spec's header element — "the buttons logo."
+	// Not an active-state indicator; it stays even when nothing's
+	// running. Use of orange here is the one legitimate "orange isn't
+	// for ACTIVE only" exception in the codebase.
+	left := m.styles.BrandDot.Render("● ") + m.styles.Wordmark.Render("buttons")
 	right := m.styles.Label.Render(fmt.Sprintf("btn—%02d", len(m.buttons))) +
 		m.styles.Muted.Render(" · ") +
 		m.styles.Label.Render("board")
@@ -780,6 +794,10 @@ func (m Model) renderList() string {
 }
 
 func (m Model) renderListRow(btn button.Button, idx int) string {
+	return m.renderListRowFull(btn, idx)
+}
+
+func (m Model) renderListRowFull(btn button.Button, idx int) string {
 	active := m.status[btn.Name] == statusRunning
 	done := m.status[btn.Name] == statusOK
 	failed := m.status[btn.Name] == statusFailed
@@ -810,25 +828,57 @@ func (m Model) renderListRow(btn button.Button, idx int) string {
 		glyph = m.styles.indicator(false, -1)
 	}
 
+	// Double-chevron cursor when the row is focused: one "section" marker
+	// (› ) directly after the glyph, and one "row" marker (› ) before
+	// the name. Matches the spec's "› ›" affordance and reads more
+	// clearly than a single chevron packed against the name.
+	var rowCursor string
+	if selected {
+		rowCursor = m.styles.ButtonNameSelected.Render("› ")
+	} else {
+		rowCursor = "  "
+	}
+
 	var name string
 	switch {
 	case active:
 		name = m.styles.ButtonNameActive.Render(btn.Name)
 	case selected:
-		name = m.styles.ButtonNameSelected.Render("› " + btn.Name)
+		name = m.styles.ButtonNameSelected.Render(btn.Name)
 	default:
-		name = m.styles.ButtonName.Render("  " + btn.Name)
+		name = m.styles.ButtonName.Render(btn.Name)
 	}
 
 	meta := m.styles.Secondary.Render(metaFor(btn))
 
-	row := fmt.Sprintf("%s%s %-32s %s", strings.Repeat(" ", leftPad), glyph, name, meta)
+	// Right-align the meta: the left side is `<pad><glyph> <cursor>name`,
+	// the right side is the meta. Width minus both gives the filler. This
+	// makes the board read as a proper table instead of a prose line —
+	// spec style.
+	left := strings.Repeat(" ", leftPad) + glyph + " " + rowCursor + name
 
+	// Active: add the [↵ LOGS] badge on the far right so users know
+	// enter opens the log-tail view. The elapsed counter sits between
+	// the meta and the badge.
+	right := meta
 	if active {
-		row += "  " + m.styles.BadgeActive.Render("ACTIVE")
-		row += "  " + m.styles.Muted.Render(formatElapsed(m.elapsedFor(btn.Name)))
+		right += "  " + m.styles.Muted.Render(formatElapsed(m.elapsedFor(btn.Name)))
+		if selected {
+			right += "  " + m.styles.BadgeActive.Render("↵ LOGS")
+		} else {
+			right += "  " + m.styles.BadgeActive.Render("ACTIVE")
+		}
 	}
-	return row
+
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	gap := w - visibleLen(left) - visibleLen(right) - leftPad
+	if gap < 2 {
+		gap = 2
+	}
+	return left + strings.Repeat(" ", gap) + right
 }
 
 // elapsedFor returns how long the press has been running, or 0 when
@@ -935,7 +985,52 @@ func (m Model) composeHints() string {
 	if m.logsOpen {
 		logsLabel = "hide"
 	}
-	return pair("↑↓", "nav") + sep + pair("↵", "press") + sep + pair("L", logsLabel)
+	return pair("↑↓", "nav") + sep + pair("↵", "press") + sep + pair("L", logsLabel) + sep + pair("?", "help")
+}
+
+// renderChrome is the bottom status strip that mirrors the spec
+// mockup chrome ("TTY 1 · UTF-8 · 256-COLOR · ● REC"). Contextual
+// badges on the right flip based on what the board is doing right
+// now — active press, logs pane open, arg form open — so the chrome
+// reads as the board's current mode-line.
+func (m Model) renderChrome() string {
+	left := strings.Join([]string{"TTY 1", "UTF-8", "256-COLOR"}, m.styles.Muted.Render(" · "))
+	left = m.styles.Chrome.Render(left)
+
+	right := ""
+	// Active press wins the badge: show "● ACTIVE · <name>". If no
+	// press, surface the next most-informative state.
+	switch {
+	case m.anyRunning():
+		for name, s := range m.status {
+			if s == statusRunning {
+				right = m.styles.ChromeActiveBadge.Render("● ACTIVE") +
+					m.styles.Muted.Render(" · ") +
+					m.styles.Chrome.Render(name)
+				break
+			}
+		}
+	case m.argForm != nil:
+		right = m.styles.Chrome.Render(fmt.Sprintf("ARGS %d · DRY-RUN READY", len(m.argForm.fields)))
+	case m.logsOpen:
+		target := m.currentButtonName()
+		if target == "" {
+			target = "none"
+		}
+		right = m.styles.Chrome.Render("LOGS OPEN · SCOPE " + target)
+	default:
+		right = m.styles.ChromeActiveBadge.Render("● REC")
+	}
+
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	gap := w - visibleLen(left) - visibleLen(right) - leftPad*2
+	if gap < 2 {
+		gap = 2
+	}
+	return strings.Repeat(" ", leftPad) + left + strings.Repeat(" ", gap) + right
 }
 
 // renderLogs renders the collapsible history pane that sits above the
@@ -1050,6 +1145,16 @@ func truncateDisplay(s string, cells int) string {
 // or "" if there's nothing to say. Errors read red-indicator, successes
 // read quieter so they don't compete visually.
 func (m Model) renderStatus() string {
+	// Active-press toast — spec prints this in orange with a pulsing
+	// dot, pointing at where the output is being streamed.
+	if m.anyRunning() {
+		for name, s := range m.status {
+			if s == statusRunning {
+				msg := fmt.Sprintf("● %s running… stdout streaming to ~/.buttons/buttons/%s/pressed/", name, name)
+				return strings.Repeat(" ", leftPad) + m.styles.StatusRunning.Render(msg)
+			}
+		}
+	}
 	if m.lastErr != "" {
 		return strings.Repeat(" ", leftPad) + m.styles.StatusError.Render("!  "+m.lastErr)
 	}

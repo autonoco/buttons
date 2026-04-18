@@ -1,15 +1,20 @@
-  buttons                                                       btn—01 · board
+  ● buttons                                                     btn—01 · board
 ────────────────────────────────────────────────────────────────────────────────
 
     press deploy  ·  2 args · 1 required
     
-    › env  string · required   ▎ 
+    › env  string · required   
       verbose  bool · optional  —
+    
+    will run: buttons press deploy
+    timeout 300s · runtime shell · exec ~/.buttons/buttons/deploy/main.sh
     
     ↵ run · ⇥ next field · ⎋ cancel
 
 ────────────────────────────────────────────────────────────────────────────────
 
   ┌─────────┐                                                                 
-  │  press  │                               ↑↓  nav  ·   ↵  press  ·   L  logs
+  │  press  │                  ↑↓  nav  ·   ↵  press  ·   L  logs  ·   ?  help
   └─────────┘                                                                 
+
+  TTY 1 · UTF-8 · 256-COLOR                             ARGS 2 · DRY-RUN READY

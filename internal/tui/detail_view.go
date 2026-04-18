@@ -90,7 +90,10 @@ func (m DetailModel) renderSpec() string {
 	rows = append(rows, [2]string{"runtime", m.btn.Runtime})
 	if m.btn.URL != "" {
 		rows = append(rows, [2]string{"method", m.btn.Method})
-		rows = append(rows, [2]string{"url", m.btn.URL})
+		// URL value gets its {{template}} vars colorized — spec treats
+		// template placeholders as the visually-distinctive "this
+		// changes per press" bit of the spec.
+		rows = append(rows, [2]string{"url", m.highlightTemplateVars(m.btn.URL)})
 		rows = append(rows, [2]string{"max resp", button.FormatSize(button.ResolveMaxResponseBytes(m.btn.MaxResponseBytes))})
 		net := "blocked"
 		if m.btn.AllowPrivateNetworks {
@@ -103,6 +106,30 @@ func (m DetailModel) renderSpec() string {
 	return m.renderKVBlock(rows)
 }
 
+// highlightTemplateVars wraps each {{name}} substring in the
+// TemplateVar style. Everything outside the braces stays primary —
+// so only the placeholders catch the eye, not the URL itself.
+func (m DetailModel) highlightTemplateVars(s string) string {
+	out := ""
+	i := 0
+	for i < len(s) {
+		j := strings.Index(s[i:], "{{")
+		if j < 0 {
+			out += m.styles.ButtonName.Render(s[i:])
+			break
+		}
+		out += m.styles.ButtonName.Render(s[i : i+j])
+		end := strings.Index(s[i+j:], "}}")
+		if end < 0 {
+			out += m.styles.ButtonName.Render(s[i+j:])
+			break
+		}
+		out += m.styles.TemplateVar.Render(s[i+j : i+j+end+2])
+		i += j + end + 2
+	}
+	return out
+}
+
 // renderArgsBlock lists every arg with its type and required flag.
 // Enum-value inline display is gated to the D2 branch that adds
 // ArgDef.Values — once D2 lands this block will show the value set
@@ -113,8 +140,16 @@ func (m DetailModel) renderArgsBlock() string {
 
 	for _, a := range m.btn.Args {
 		name := m.styles.ButtonName.Render(a.Name)
-		req := optionalityLabel(a.Required)
-		typ := m.styles.Muted.Render(fmt.Sprintf("%s · %s", a.Type, req))
+		// Colorize "required" in indicator orange — spec treats it as
+		// an active concern, not muted metadata. Optional stays
+		// muted.
+		var reqCol string
+		if a.Required {
+			reqCol = m.styles.RequiredTag.Render("required")
+		} else {
+			reqCol = m.styles.Muted.Render("optional")
+		}
+		typ := m.styles.Muted.Render(a.Type+" · ") + reqCol
 
 		line := fmt.Sprintf("%-22s  %s", name, typ)
 		lines = append(lines, line)
@@ -124,23 +159,32 @@ func (m DetailModel) renderArgsBlock() string {
 
 // renderUsageBlock is the "here's the exact press command" section.
 // Required args get stub placeholders (`<string>`) so the user can
-// copy the line and fill in values.
+// copy the line and fill in values. Spec colorizes the command
+// keyword + flag tokens in orange; names and values stay primary —
+// matches the arg form's "will run:" line.
 func (m DetailModel) renderUsageBlock() string {
 	label := m.styles.HeroTitle.Render("usage")
 
-	press := "buttons press " + m.btn.Name
-	for _, a := range m.btn.Args {
-		if a.Required {
-			press += fmt.Sprintf(" --arg %s=<%s>", a.Name, a.Type)
+	build := func(extra string) string {
+		out := m.styles.CommandKeyword.Render("buttons press") + " " + m.styles.ButtonName.Render(m.btn.Name)
+		for _, a := range m.btn.Args {
+			if !a.Required {
+				continue
+			}
+			out += " " + m.styles.FlagToken.Render("--arg") + " " +
+				m.styles.ButtonName.Render(fmt.Sprintf("%s=<%s>", a.Name, a.Type))
 		}
+		if extra != "" {
+			out += " " + m.styles.FlagToken.Render(extra)
+		}
+		return out
 	}
-	pressJSON := press + " --json"
 
 	lines := []string{
 		label,
 		"",
-		m.styles.HeroCode.Render(press),
-		m.styles.HeroCode.Render(pressJSON),
+		build(""),
+		build("--json"),
 	}
 	return indentBlock(strings.Join(lines, "\n"), leftPad*2)
 }
