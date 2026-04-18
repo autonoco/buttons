@@ -13,7 +13,13 @@ import (
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/engine"
+	"github.com/autonoco/buttons/internal/history"
 )
+
+// logsPaneLimit caps how many historical runs the logs pane shows for
+// the focused button. Chosen small so the pane never dominates the
+// board on short terminals; users can drop to the CLI for deeper dives.
+const logsPaneLimit = 5
 
 // runStatus tracks what we last observed for each button. It's only
 // meaningful for buttons we've actually pressed this session — on
@@ -47,6 +53,10 @@ type Model struct {
 
 	spinnerFrame int
 	ticking      bool
+
+	// logsOpen toggles the logs pane that sits between the list and the
+	// footer. Pane shows recent run history for the focused button.
+	logsOpen bool
 
 	width, height int
 }
@@ -210,6 +220,13 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.pressButton(name)
+
+	case "L":
+		// Shift+L toggles the logs pane. Lower-case `l` is already bound
+		// to "move cursor right" (vim convention), so logs takes the
+		// shifted variant; the hint chip surfaces the capital.
+		m.logsOpen = !m.logsOpen
+		return m, nil
 	}
 
 	return m, nil
@@ -475,6 +492,13 @@ func (m Model) View() tea.View {
 		parts = append(parts, m.renderList())
 	}
 
+	if m.logsOpen && len(m.buttons) > 0 {
+		parts = append(parts, "")
+		parts = append(parts, m.renderDivider())
+		parts = append(parts, "")
+		parts = append(parts, m.renderLogs())
+	}
+
 	parts = append(parts, "")
 	parts = append(parts, m.renderDivider())
 	parts = append(parts, "")
@@ -656,14 +680,128 @@ func (m Model) renderFooter() string {
 	return indentBlock(row, leftPad)
 }
 
-// composeHints renders a minimal keybind legend — nav and press only.
-// No quit hint; the board doesn't advertise an exit.
+// composeHints renders the minimal keybind legend shown in the footer.
+// No quit chip — board is an ambient dashboard, not a prompt to dismiss.
+// The logs chip flips label between `logs` and `hide` based on state so
+// the hint always reads as the action the key will take.
 func (m Model) composeHints() string {
 	pair := func(key, label string) string {
 		return m.styles.KeyChip.Render(key) + m.styles.Muted.Render(" "+label)
 	}
 	sep := m.styles.Muted.Render("  ·  ")
-	return pair("↑↓", "nav") + sep + pair("↵", "press")
+	logsLabel := "logs"
+	if m.logsOpen {
+		logsLabel = "hide"
+	}
+	return pair("↑↓", "nav") + sep + pair("↵", "press") + sep + pair("L", logsLabel)
+}
+
+// renderLogs renders the collapsible history pane that sits above the
+// footer when `l` has been toggled on. Scope is the button currently
+// under the cursor — users looking at a row expect to see its runs,
+// not a global mix.
+//
+// Each row reads: glyph · time · exit · duration · preview. Preview is
+// the first non-empty line of stdout (or stderr when the press failed),
+// trimmed so the row always fits one terminal line.
+func (m Model) renderLogs() string {
+	title := m.styles.HeroTitle.Render("logs")
+	target := m.currentButtonName()
+	if target == "" {
+		empty := m.styles.Muted.Render("focus a button to see its history")
+		return indentBlock(title+"\n\n"+empty, leftPad)
+	}
+
+	runs, err := history.List(target, logsPaneLimit)
+	if err != nil || len(runs) == 0 {
+		empty := m.styles.Muted.Render(
+			fmt.Sprintf("no runs for %s yet — press it to record one.", target),
+		)
+		return indentBlock(title+m.styles.Muted.Render("  ·  "+target)+"\n\n"+empty, leftPad)
+	}
+
+	lines := []string{
+		title + m.styles.Muted.Render(fmt.Sprintf("  ·  %s  ·  last %d", target, len(runs))),
+		"",
+	}
+	// Width budget for the stdout/stderr preview: terminal width minus
+	// the indent and the fixed-width columns we render before it. Keep
+	// a minimum so very narrow terminals still show something useful.
+	previewBudget := m.width - leftPad - 2 /* row indent */ - 38 /* glyph+time+exit+dur */
+	if previewBudget < 20 {
+		previewBudget = 20
+	}
+	for _, r := range runs {
+		lines = append(lines, m.renderLogRow(r, previewBudget))
+	}
+	return indentBlock(strings.Join(lines, "\n"), leftPad)
+}
+
+func (m Model) renderLogRow(r history.Run, previewBudget int) string {
+	var glyph string
+	switch r.Status {
+	case "ok":
+		glyph = m.styles.StatusOK.Render("✓")
+	default:
+		glyph = m.styles.StatusError.Render("✗")
+	}
+
+	localTime := r.StartedAt.Local().Format("15:04:05")
+	meta := fmt.Sprintf("exit %-3d  %5dms", r.ExitCode, r.DurationMs)
+
+	// Prefer stdout for successful runs, stderr for failed ones. First
+	// non-empty line only — stops the row from consuming the pane with a
+	// long multi-line dump.
+	source := r.Stdout
+	if r.Status != "ok" && r.Stderr != "" {
+		source = r.Stderr
+	}
+	preview := firstLineTrimmed(source)
+	preview = truncateDisplay(preview, previewBudget)
+
+	preview = m.styles.Secondary.Render(preview)
+	timeCol := m.styles.Muted.Render(localTime)
+	metaCol := m.styles.Muted.Render(meta)
+
+	return fmt.Sprintf("  %s  %s  %s  %s", glyph, timeCol, metaCol, preview)
+}
+
+// firstLineTrimmed returns the first non-empty line of s with leading/
+// trailing whitespace removed. Empty input returns "(no output)" so the
+// logs row never renders as just a blank gap.
+func firstLineTrimmed(s string) string {
+	for _, raw := range strings.Split(s, "\n") {
+		line := strings.TrimSpace(raw)
+		if line != "" {
+			return line
+		}
+	}
+	return "(no output)"
+}
+
+// truncateDisplay shortens s to fit within `cells` terminal cells,
+// appending an ellipsis when it had to cut. Rune-aware so emoji / wide
+// chars don't get sliced mid-codepoint.
+func truncateDisplay(s string, cells int) string {
+	if cells <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= cells {
+		return s
+	}
+	// Lip Gloss doesn't ship a truncate helper we can rely on across
+	// versions; walk runes, summing widths.
+	var b strings.Builder
+	used := 0
+	for _, r := range s {
+		w := lipgloss.Width(string(r))
+		if used+w+1 > cells { // reserve 1 cell for the ellipsis
+			break
+		}
+		b.WriteRune(r)
+		used += w
+	}
+	return b.String() + "…"
 }
 
 // renderStatus returns the single-line status/toast below the footer,
