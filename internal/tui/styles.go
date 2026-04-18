@@ -10,9 +10,20 @@
 // Hard rule from the identity spec: orange (Indicator) is only used to
 // signal an active/running state. If you find yourself reaching for it
 // for decoration, don't.
+//
+// Themes
+//
+// `BUTTONS_THEME` can be set to `paper`, `phosphor`, or `amber` to
+// override the default (adaptive light/dark) palette. Every theme
+// defines the same set of color roles — only the hex values differ,
+// and the Indicator-is-ACTIVE-only rule holds across all of them. The
+// warm-shifted indicator on phosphor / amber exists because true
+// orange on phosphor-green vibrates painfully; a warm red / brighter
+// amber preserves the "this row is running" read without the clash.
 package tui
 
 import (
+	"image/color"
 	"os"
 
 	"charm.land/lipgloss/v2"
@@ -27,10 +38,112 @@ const (
 	hexDust      = "#6E6E68"
 )
 
+// themeColors bundles the palette each theme provides. Using
+// color.Color (from image/color) lets both plain lipgloss.Color values
+// and adaptive ld(...) results share a single type — no interface
+// gymnastics in the style builder.
+type themeColors struct {
+	primary     color.Color
+	secondary   color.Color
+	muted       color.Color
+	indicator   color.Color
+	onIndicator color.Color
+	warn        color.Color
+	actionFill  color.Color
+	actionText  color.Color
+	chipBg      color.Color
+}
+
+// resolveTheme inspects $BUTTONS_THEME and returns the palette to use.
+// Unknown / unset values fall through to the adaptive default, so a
+// typo can't suddenly make the board illegible.
+func resolveTheme() themeColors {
+	switch os.Getenv("BUTTONS_THEME") {
+	case "paper":
+		return paperTheme()
+	case "phosphor":
+		return phosphorTheme()
+	case "amber":
+		return amberTheme()
+	default:
+		return defaultTheme()
+	}
+}
+
+// defaultTheme preserves the pre-theming behavior: ink on paper, or
+// paper on a detected dark background. HasDarkBackground queries the
+// terminal once at startup — mid-session theme changes aren't tracked.
+func defaultTheme() themeColors {
+	hasDark := lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
+	ld := lipgloss.LightDark(hasDark)
+	return themeColors{
+		primary:     ld(lipgloss.Color(hexInk), lipgloss.Color(hexPaper)),
+		secondary:   ld(lipgloss.Color(hexDust), lipgloss.Color("#A8A8A0")),
+		muted:       ld(lipgloss.Color(hexAluminum), lipgloss.Color("#3A3A38")),
+		indicator:   lipgloss.Color(hexIndicator),
+		onIndicator: lipgloss.Color(hexPaper),
+		warn:        lipgloss.Color("#F0C060"),
+		actionFill:  lipgloss.Color(hexInk),
+		actionText:  lipgloss.Color(hexPaper),
+		chipBg:      ld(lipgloss.Color("#E8E8E3"), lipgloss.Color("#1E1E1C")),
+	}
+}
+
+// paperTheme forces the ink-on-paper identity-spec palette regardless
+// of the terminal's detected background. For users who run a light
+// theme and want the exact on-brand colors.
+func paperTheme() themeColors {
+	return themeColors{
+		primary:     lipgloss.Color(hexInk),
+		secondary:   lipgloss.Color(hexDust),
+		muted:       lipgloss.Color(hexAluminum),
+		indicator:   lipgloss.Color(hexIndicator),
+		onIndicator: lipgloss.Color(hexPaper),
+		warn:        lipgloss.Color("#B7861F"), // darker amber reads on paper
+		actionFill:  lipgloss.Color(hexInk),
+		actionText:  lipgloss.Color(hexPaper),
+		chipBg:      lipgloss.Color("#E8E8E3"),
+	}
+}
+
+// phosphorTheme channels the Nostromo CRT — phosphor green on near-
+// black. The indicator shifts to warm red so "active" reads instantly
+// without the orange-on-green clash. Warn goes phosphor-amber for
+// the same reason.
+func phosphorTheme() themeColors {
+	return themeColors{
+		primary:     lipgloss.Color("#b8f3c3"),
+		secondary:   lipgloss.Color("#6c9e78"),
+		muted:       lipgloss.Color("#2a4a32"),
+		indicator:   lipgloss.Color("#ff8a6c"), // warm red, not brand orange
+		onIndicator: lipgloss.Color("#0a1c12"),
+		warn:        lipgloss.Color("#ffd470"),
+		actionFill:  lipgloss.Color("#1a3a22"),
+		actionText:  lipgloss.Color("#b8f3c3"),
+		chipBg:      lipgloss.Color("#1a3a22"),
+	}
+}
+
+// amberTheme is the DEC VT220 / old-terminal amber look. The indicator
+// warms to hot amber so running rows outshine the idle ones without
+// leaving the palette.
+func amberTheme() themeColors {
+	return themeColors{
+		primary:     lipgloss.Color("#f7c472"),
+		secondary:   lipgloss.Color("#a17a3c"),
+		muted:       lipgloss.Color("#3a2a15"),
+		indicator:   lipgloss.Color("#ffbe5a"),
+		onIndicator: lipgloss.Color("#1a1108"),
+		warn:        lipgloss.Color("#ffe08a"),
+		actionFill:  lipgloss.Color("#2a1a0a"),
+		actionText:  lipgloss.Color("#f7c472"),
+		chipBg:      lipgloss.Color("#2a1a0a"),
+	}
+}
+
 // Styles bundles every Lip Gloss style the board uses. Built once at
-// TUI startup via BuildStyles(), after terminal background detection,
-// so light-vs-dark color choices are resolved eagerly rather than on
-// every render.
+// TUI startup via BuildStyles(), after theme + background resolution,
+// so palette choices are resolved eagerly rather than on every render.
 type Styles struct {
 	Wordmark  lipgloss.Style
 	Label     lipgloss.Style
@@ -62,108 +175,86 @@ type Styles struct {
 	StatusWarn  lipgloss.Style
 }
 
-// BuildStyles detects the terminal's background (light vs dark) and
-// returns a Styles value with adaptive colors resolved. Ink/Paper swap
-// roles on dark terminals — the wordmark is the "foreground" in either
-// theme, it just changes hex code.
+// BuildStyles assembles the full style graph from whatever palette the
+// active theme resolved to. Every style references roles (primary,
+// indicator, …) — never hex literals — so swapping themes changes
+// every rendered pixel in lockstep.
 func BuildStyles() Styles {
-	hasDark := lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
-	ld := lipgloss.LightDark(hasDark)
-
-	colorPrimary := ld(lipgloss.Color(hexInk), lipgloss.Color(hexPaper))
-	colorSecondary := ld(lipgloss.Color(hexDust), lipgloss.Color("#A8A8A0"))
-	colorMuted := ld(lipgloss.Color(hexAluminum), lipgloss.Color("#3A3A38"))
-	colorIndicator := lipgloss.Color(hexIndicator)
-	colorOnIndicator := lipgloss.Color(hexPaper)
-	// Warn is the "something's off but not broken" signal — used for
-	// the `warn` severity in the streaming log viewer. Amber was chosen
-	// to sit between the (ok) dust-green and the (error) indicator
-	// orange without bleeding into either semantic. Not used for
-	// decoration — the orange-is-active-only rule bends but doesn't
-	// break here: warn is an active concern, just quieter.
-	colorWarn := lipgloss.Color("#F0C060")
-	// Action-primary: dark fill, light text. Light terminal → ink/paper;
-	// dark terminal → still a near-black block with paper text (high-contrast
-	// pill that reads as "the default action").
-	colorActionFill := lipgloss.Color(hexInk)
-	colorActionText := lipgloss.Color(hexPaper)
-	// Key chip: subtle box around a single-key glyph so the user can see
-	// at a glance what key fires an action.
-	colorChipBg := ld(lipgloss.Color("#E8E8E3"), lipgloss.Color("#1E1E1C"))
+	c := resolveTheme()
 
 	return Styles{
-		Wordmark:  lipgloss.NewStyle().Foreground(colorPrimary).Bold(true),
-		Label:     lipgloss.NewStyle().Foreground(colorSecondary),
-		Divider:   lipgloss.NewStyle().Foreground(colorMuted),
-		Secondary: lipgloss.NewStyle().Foreground(colorSecondary),
-		Muted:     lipgloss.NewStyle().Foreground(colorMuted),
-		Indicator: lipgloss.NewStyle().Foreground(colorIndicator),
+		Wordmark:  lipgloss.NewStyle().Foreground(c.primary).Bold(true),
+		Label:     lipgloss.NewStyle().Foreground(c.secondary),
+		Divider:   lipgloss.NewStyle().Foreground(c.muted),
+		Secondary: lipgloss.NewStyle().Foreground(c.secondary),
+		Muted:     lipgloss.NewStyle().Foreground(c.muted),
+		Indicator: lipgloss.NewStyle().Foreground(c.indicator),
 
-		ButtonName:         lipgloss.NewStyle().Foreground(colorPrimary),
-		ButtonNameSelected: lipgloss.NewStyle().Foreground(colorPrimary).Bold(true),
-		ButtonNameActive:   lipgloss.NewStyle().Foreground(colorIndicator).Bold(true),
+		ButtonName:         lipgloss.NewStyle().Foreground(c.primary),
+		ButtonNameSelected: lipgloss.NewStyle().Foreground(c.primary).Bold(true),
+		ButtonNameActive:   lipgloss.NewStyle().Foreground(c.indicator).Bold(true),
 
 		BadgeActive: lipgloss.NewStyle().
-			Foreground(colorOnIndicator).
-			Background(colorIndicator).
+			Foreground(c.onIndicator).
+			Background(c.indicator).
 			Padding(0, 1).
 			Bold(true),
 
 		ActionPrimary: lipgloss.NewStyle().
-			Foreground(colorActionText).
-			Background(colorActionFill).
+			Foreground(c.actionText).
+			Background(c.actionFill).
 			Border(lipgloss.NormalBorder()).
-			BorderForeground(colorActionFill).
+			BorderForeground(c.actionFill).
 			Padding(0, 2),
 
 		ActionSecondary: lipgloss.NewStyle().
-			Foreground(colorPrimary).
+			Foreground(c.primary).
 			Border(lipgloss.NormalBorder()).
-			BorderForeground(colorMuted).
+			BorderForeground(c.muted).
 			Padding(0, 2),
 
 		ActionPrimaryDisabled: lipgloss.NewStyle().
-			Foreground(colorSecondary).
+			Foreground(c.secondary).
 			Border(lipgloss.NormalBorder()).
-			BorderForeground(colorMuted).
+			BorderForeground(c.muted).
 			Padding(0, 2),
 
 		KeyChip: lipgloss.NewStyle().
-			Foreground(colorPrimary).
-			Background(colorChipBg).
+			Foreground(c.primary).
+			Background(c.chipBg).
 			Padding(0, 1).
 			Bold(true),
 
 		PinnedIdle: lipgloss.NewStyle().
-			Foreground(colorPrimary).
+			Foreground(c.primary).
 			Border(lipgloss.NormalBorder()).
-			BorderForeground(colorMuted).
+			BorderForeground(c.muted).
 			Padding(1, 3).
 			Align(lipgloss.Center),
 
 		PinnedSelected: lipgloss.NewStyle().
-			Foreground(colorPrimary).
+			Foreground(c.primary).
 			Bold(true).
 			Border(lipgloss.ThickBorder()).
-			BorderForeground(colorPrimary).
+			BorderForeground(c.primary).
 			Padding(1, 3).
 			Align(lipgloss.Center),
 
 		PinnedActive: lipgloss.NewStyle().
-			Foreground(colorIndicator).
+			Foreground(c.indicator).
 			Bold(true).
 			Border(lipgloss.ThickBorder()).
-			BorderForeground(colorIndicator).
+			BorderForeground(c.indicator).
 			Padding(1, 3).
 			Align(lipgloss.Center),
 
-		HeroTitle: lipgloss.NewStyle().Foreground(colorPrimary).Bold(true),
-		HeroBody:  lipgloss.NewStyle().Foreground(colorSecondary),
-		HeroCode:  lipgloss.NewStyle().Foreground(colorPrimary).Background(colorChipBg).Padding(0, 1),
+		HeroTitle: lipgloss.NewStyle().Foreground(c.primary).Bold(true),
+		HeroBody:  lipgloss.NewStyle().Foreground(c.secondary),
+		HeroCode:  lipgloss.NewStyle().Foreground(c.primary).Background(c.chipBg).Padding(0, 1),
 
-		StatusError: lipgloss.NewStyle().Foreground(colorIndicator),
-		StatusOK:    lipgloss.NewStyle().Foreground(colorSecondary),
-		StatusWarn:  lipgloss.NewStyle().Foreground(colorWarn),
+		StatusError: lipgloss.NewStyle().Foreground(c.indicator),
+		StatusOK:    lipgloss.NewStyle().Foreground(c.secondary),
+		StatusWarn:  lipgloss.NewStyle().Foreground(c.warn),
 	}
 }
 
