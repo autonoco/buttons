@@ -16,3 +16,13 @@ You can now see recent run history for any button without leaving the board.
 
 - **Helpful empty states** — if no button is focused, the pane tells you to focus one. If the focused button has no runs yet, it prompts you to press it to record one.
 </Update>
+
+<Update label="2026-04-18" description="Higher default press timeout">
+## Higher default press timeout
+
+The default timeout for button presses has been raised from 60 seconds to 300 seconds.
+
+### Bug fixes
+
+- **Default timeout raised to 300s** — the previous 60-second default was too tight for realistic workloads like ETL jobs, migrations, and long-running API calls. If your first press on a real pipeline hit the timeout, it looked like the tool was broken. The new 300-second default gives scripts room to finish while still protecting against runaways. You can still shorten it per-button with `--timeout` on [create](/cli/buttons_create) or override per-press with `--timeout` on [press](/cli/buttons_press).
+</Update>
