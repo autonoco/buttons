@@ -3,6 +3,18 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-18" description="Press animation and live elapsed timer">
+## Press animation and live elapsed timer
+
+The board now gives you visual feedback the moment you press a button and while it runs.
+
+### New features
+
+- **Press animation** — pressing a button on the board now plays a quick physical-press animation. The button pulses through a keydown, fire, and release sequence before settling into its active state. The effect works with both keyboard and mouse input, so pressing a button feels responsive and tactile.
+
+- **Live elapsed timer** — buttons that are currently running now display a live elapsed counter. Short presses show tenths of a second (e.g. "3.2s"), longer presses switch to minutes and seconds, and anything over an hour shows a full clock format. The timer clears as soon as the press finishes, so you always know exactly how long a run has been going. See the [CLI reference](/cli/buttons_board).
+</Update>
+
 <Update label="2026-04-18" description="Logs pane in the board dashboard">
 ## Logs pane in the board dashboard
 
