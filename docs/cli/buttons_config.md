@@ -19,15 +19,21 @@ specifically).
 Known keys:
   default-timeout   seconds used when 'buttons create' is run without
                     an explicit --timeout flag (fallback: 300)
+  theme             board TUI theme: default | paper | phosphor | amber
+                    (fallback: default — adapts to terminal background)
 
 Running `buttons config` with no subcommand prints the current values.
+
+Resolution order for theme at TUI startup: $BUTTONS_THEME env var wins,
+then settings, then default. Env override keeps A/B comparison easy.
 
 **Examples:**
 
 ```bash
 buttons config
 buttons config set default-timeout 600
-buttons config unset default-timeout
+buttons config set theme amber
+buttons config unset theme
 ```
 
 ```
