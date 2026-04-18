@@ -16,3 +16,23 @@ You can now see recent run history for any button without leaving the board.
 
 - **Helpful empty states** — if no button is focused, the pane tells you to focus one. If the focused button has no runs yet, it prompts you to press it to record one.
 </Update>
+
+<Update label="2026-04-18" description="CLI polish, auto-pruning history, and higher timeout">
+## CLI polish, auto-pruning history, and higher timeout
+
+Quality-of-life improvements across the CLI based on dogfooding feedback.
+
+### New features
+
+- **"Next:" hints after commands** — successful commands now suggest a natural next step. For example, `buttons create` shows `Next: buttons press <name>`, and `buttons press` shows `Next: buttons history <name>`. Hints are only shown in interactive terminals — they're suppressed in JSON mode and when piping output. See the [CLI reference](/cli/buttons_create).
+
+- **Auto-pruning run history** — the `pressed/` directory now automatically prunes to the last 100 runs per button. Long-running automations and repeat presses no longer cause unbounded disk growth. Pruning happens silently after each press and never interferes with the press itself.
+
+### Updates
+
+- **Common flags surfaced in help** — `buttons create --help` and `buttons press --help` now show the most-used flags (like `--timeout`, `--arg`, `--dry-run`) at the top, before the full alphabetical list. No new flags — just easier discovery.
+
+### Bug fixes
+
+- **Default press timeout raised to 300 seconds** — the default timeout for `buttons press` increased from 60 seconds to 300 seconds. The previous default was too tight for realistic workloads like ETL jobs or long API calls. You can still override per-press with `--timeout`. See the [CLI reference](/cli/buttons_press).
+</Update>
