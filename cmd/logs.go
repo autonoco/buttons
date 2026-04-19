@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -113,9 +114,10 @@ func runtimeLabel(btn *button.Button) string {
 }
 
 // logsButtonJSON prints past runs for one button. Honors --failed
-// (filter to non-ok) and --limit (default 20). Used by agents for
-// triage — a single call shows the last N runs with full structured
-// errors, args, and stderr, so drill-in doesn't need a second command.
+// (filter to non-ok) and --limit (default 20). Agents get full
+// structured JSON; humans in TTY get a compact table. Either way
+// it's the standard CLI — no TUI unless the caller asks for
+// --follow.
 func logsButtonJSON(name string) error {
 	n := logsLimit
 	if n <= 0 {
@@ -134,7 +136,23 @@ func logsButtonJSON(name string) error {
 		}
 		runs = kept
 	}
-	return config.WriteJSON(runs)
+	if jsonOutput {
+		return config.WriteJSON(runs)
+	}
+	if len(runs) == 0 {
+		fmt.Fprintf(os.Stderr, "no runs for %s yet\n", name)
+		return nil
+	}
+	for _, r := range runs {
+		status := r.Status
+		if r.ErrorType != "" {
+			status = r.Status + " · " + r.ErrorType
+		}
+		fmt.Printf("%s  %s  exit=%d  %dms\n",
+			r.StartedAt.Local().Format("2006-01-02 15:04:05"),
+			status, r.ExitCode, r.DurationMs)
+	}
+	return nil
 }
 
 // logsWorkspaceFailures aggregates recent failures across every
