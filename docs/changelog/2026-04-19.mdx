@@ -1,0 +1,30 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-19" description="Live log streaming, detail view, enum args, and board overhaul">
+## Live log streaming, detail view, enum args, and board overhaul
+
+A big batch of board and CLI improvements — live output streaming, a new detail page, enum arguments, and a visual overhaul of the board layout.
+
+### New features
+
+- **Live log streaming** — run `buttons logs <name>` to open a full-screen viewer that streams stdout and stderr line-by-line as a button runs. Lines are color-coded by severity. Press `f` to toggle follow mode, `g`/`G` to jump to top or bottom, and `Esc` to dismiss. The viewer stays open after the press finishes so you can scroll through the output. See the [CLI reference](/cli/buttons_board).
+
+- **Button detail view** — run `buttons <name>` to open a terminal page showing the button's runtime, timeout, arguments, usage examples, and last run result. Press `e` to open the button's code in your editor (`$EDITOR`). Works alongside `--json` and piped output, which remain unchanged.
+
+- **Enum argument type** — declare a fixed set of valid values for an argument using the format `name:enum:required:val1|val2|val3`. Invalid values are rejected at press time with a clear error message. On the board, enum fields render as a horizontal choice strip you navigate with arrow keys. See [arguments](/concepts/arguments).
+
+- **Inline press-with-args form** — buttons with required arguments now show an inline form directly on the board instead of requiring you to drop to the CLI. Tab between fields, type values, and press Enter to submit. Validation runs the same path as `buttons press`.
+
+- **Card grid layout** — the board now renders every button as a bordered card in a wrapping grid that adapts to your terminal width. Pinned buttons sort to the front. Navigate with arrow keys or Tab, and drill into past runs from the logs pane.
+
+- **View toggle** — press `v` on the board to switch between the card grid and a single-column list. Your cursor position is preserved across the toggle.
+
+- **Scrollable log details** — the log detail view now supports full scrolling with PgUp/PgDn, `g`/`G`, Ctrl+B/Ctrl+F, and mouse wheel. A position indicator in the header shows where you are in the output.
+
+### Updates
+
+- **Board visual polish** — the board now displays a chrome strip at the bottom of every view (board, detail, and logs) with contextual status badges. Active pinned cards show an orange border with an elapsed timer and "↵ TAIL" badge. Divider contrast has been improved on dark terminals.
+</Update>
