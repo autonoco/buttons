@@ -1,0 +1,30 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-19" description="Board redesign, live logs, enum args, and detail view">
+## Board redesign, live logs, enum args, and detail view
+
+The board gets a visual overhaul, buttons gain a detail page and a live log viewer, and arguments now support enum types.
+
+### New features
+
+- **Card grid layout** — the board now renders every button as a bordered card in a responsive grid that wraps to your terminal width. Pinned buttons sort to the front. Press `v` to toggle between the card grid and a single-column list. See the [CLI reference](/cli/buttons_board).
+
+- **`buttons logs <name>` command** — watch a button's stdout and stderr stream into a full-screen viewer in real time. The viewer stays open after the press finishes so you can scroll through the output. Press `f` to toggle follow mode, `g`/`G` to jump to top or bottom, and `Esc` to dismiss. See the [CLI reference](/cli/buttons_board).
+
+- **Button detail view** — run `buttons <name>` in an interactive terminal to open a full-screen detail page showing the button's runtime, timeout, arguments, URL, and last run result. Press `e` to open the button's script in your editor. The `--json` flag and piped output still work as before.
+
+- **Enum argument type** — declare a fixed set of valid values for an argument with the new `enum` type. Create with `--arg env:enum:required:staging|prod|canary` and the CLI rejects any value outside the set. On the board, enum fields render as a horizontal picker you navigate with arrow keys. See [arguments](/concepts/arguments).
+
+- **Press with arguments from the board** — buttons with required arguments now open an inline form on the board instead of sending you back to the CLI. Fill in the values, press Enter, and the button fires. Validation runs through the same path as `buttons press`.
+
+- **Drill into past runs from the board** — select a run in the logs pane and press Enter to open a full-screen detail view with the complete stdout and stderr. Use PgUp/PgDn, `g`/`G`, or the mouse wheel to scroll. A position indicator in the header shows where you are in the output.
+
+### Updates
+
+- **Board visual polish** — the board now includes a bottom chrome strip showing terminal info and contextual badges (active button name, logs scope, arg form state). Pinned cards show an orange active-state overlay during a press. Divider contrast has been improved on dark terminals. The arg form previews the exact CLI command that will run.
+
+- **Logs view chrome and follow indicator** — the `buttons logs` viewer now shows an orange `● follow` badge in the header and chrome strip while tailing a live press. Once the press finishes, the badge is replaced by the exit code and duration.
+</Update>
