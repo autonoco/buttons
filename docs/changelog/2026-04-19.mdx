@@ -1,0 +1,71 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-19" description="Live log streaming">
+## Live log streaming
+
+You can now watch a button's output in real time as it runs.
+
+### New features
+
+- **`buttons logs <name>` command** — press a button and stream every line of stdout and stderr into a full-screen terminal viewer as the child process writes it. Lines are color-coded by severity so you can distinguish normal output from errors at a glance. The viewer stays open after the press finishes so you can scroll through the full output. Press `Esc` or `q` to dismiss, or `Ctrl+C` to cancel the in-flight press. See the [CLI reference](/cli/buttons_board).
+
+- **Follow and scroll** — press `f` to toggle follow mode (pinned to the latest output), `g` to jump to the top, and `G` to jump back to the tail. Follow mode is on by default so you never miss a line during a live run.
+</Update>
+
+<Update label="2026-04-19" description="Inline argument form on the board">
+## Inline argument form on the board
+
+Buttons with required arguments can now be pressed directly from the board.
+
+### New features
+
+- **Board argument form** — when you press a button that has required arguments, the board opens an inline form instead of sending you back to the CLI. Fill in each field and hit `Enter` to fire the press. `Esc` cancels. Validation runs through the same path as `buttons press`, so error messages are identical. See [arguments](/concepts/arguments).
+
+- **"Will run" preview** — the form shows the exact CLI command that will execute, so you can verify your inputs before pressing `Enter`.
+</Update>
+
+<Update label="2026-04-19" description="Enum argument type">
+## Enum argument type
+
+You can now declare a fixed set of valid values for a button argument.
+
+### New features
+
+- **`enum` arg type** — pass a pipe-separated list of allowed values when creating a button. Buttons validates the value at press time and rejects anything not in the set. Useful for environments, log levels, regions, and other closed lists. See [arguments](/concepts/arguments).
+
+  ```bash
+  buttons create deploy \
+    --arg env:enum:required:staging|prod|canary
+  ```
+
+- **Board picker** — enum arguments appear as a horizontal choice strip on the board's argument form. Use the left and right arrow keys to cycle through options — no typing required.
+</Update>
+
+<Update label="2026-04-19" description="Button detail view">
+## Button detail view
+
+You can now inspect a button's full configuration in a dedicated terminal page.
+
+### New features
+
+- **`buttons <name>` detail page** — running a button name as a subcommand opens a structured detail view showing its runtime, timeout, arguments, usage examples, and last run result. Press `e` to open the button's code file in your `$EDITOR`. The page works in any terminal; `--json` and piped output remain unchanged for scripts.
+</Update>
+
+<Update label="2026-04-19" description="Board visual polish">
+## Board visual polish
+
+The board has received a design refresh for better readability and visual consistency.
+
+### Updates
+
+- **Chrome strip** — the board and detail view now display a status bar at the bottom of the terminal showing connection info and contextual badges (active press name, logs scope, argument count). The detail view's chrome strip surfaces the button's runtime, timeout, and network access level.
+
+- **Improved list layout** — board rows now show metadata (runtime, timeout, argument count) right-aligned for a cleaner table-like layout. The focused row uses a double-chevron cursor for clearer selection.
+
+- **Active pinned cards** — pinned buttons that are mid-press now show an orange border, an "ACTIVE" indicator with a live timer, and a "TAIL" badge linking to the log viewer.
+
+- **Better dark terminal support** — dividers and muted text are now more visible on dark backgrounds.
+</Update>
