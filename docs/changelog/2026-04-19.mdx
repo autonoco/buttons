@@ -3,6 +3,28 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
+<Update label="2026-04-19" description="Drawer workflows and workspace summary">
+## Drawer workflows and workspace summary
+
+You can now chain buttons into multi-step workflows called drawers, and get a quick snapshot of everything in your workspace with a single command.
+
+### New features
+
+- **Drawer workflows** — drawers let you chain multiple buttons into a typed, sequential workflow. Create a drawer with `buttons drawer create NAME`, add steps with `buttons drawer NAME add BUTTON`, and wire outputs to inputs with `buttons drawer NAME connect A to B`. When you press a drawer, each step runs in order and passes data to the next step using `${ref}` references. If a step fails, you get automatic retries with exponential backoff. See the [CLI reference](/cli/buttons_drawer).
+
+- **Auto-wiring between steps** — use `buttons drawer NAME connect A to B` to auto-match outputs and inputs between two steps by name and type. If there's ambiguity, the CLI tells you exactly which fields collided and asks you to wire them explicitly with `buttons drawer NAME connect A.output.x to B.args.y`.
+
+- **Drawer press with inputs** — press a drawer with `buttons drawer NAME press key=value` to supply top-level inputs. Required inputs that match a step's required args are auto-filled by name, so you don't have to wire every field manually.
+
+- **`buttons summary` command** — run `buttons summary` to see a compact snapshot of all buttons, drawers, recent runs, active runs, and recent failures in your workspace. Add `--json` for a structured response suitable for agents, or `--deep` to inline full schemas and complete run history. Running bare `buttons` with no subcommand now invokes the summary automatically. See the [CLI reference](/cli/buttons_summary).
+
+- **`--summary` flag on mutating commands** — add `--summary` to any mutating command (`press`, `drawer add`, `drawer connect`, `drawer press`, `drawer remove`) to preview what would happen without actually executing. The flag never mutates state or touches the network, so it's safe to use for dry-run planning.
+
+- **Output schemas on buttons** — buttons now support an optional output schema so drawers can type-check cross-step references at connect time. If a downstream step references a field that doesn't exist in the upstream output, you'll get a clear error with a remediation hint before anything runs.
+
+- **Drawer run history** — every drawer press records a full run log with per-step results, duration, and output. Secret-flagged inputs are automatically redacted. History is pruned to the most recent 100 runs, matching the existing button history behavior.
+</Update>
+
 <Update label="2026-04-19" description="Board redesign, live logs, enum args, and detail view">
 ## Board redesign, live logs, enum args, and detail view
 
