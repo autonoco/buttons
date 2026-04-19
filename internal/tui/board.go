@@ -42,11 +42,15 @@ type Model struct {
 
 	buttons []button.Button
 
-	// cursor is the selected index into the card grid. The grid is the
-	// pinned-first ordering returned by cardOrder() — pinned buttons
-	// float to the front, unpinned follow. up/down nav moves by one
-	// grid row (cardsPerRow() cells); left/right moves by 1.
+	// cursor is the selected index into cardOrder(). In card-grid
+	// mode, up/down moves by one grid row (cardsPerRow() cells) and
+	// left/right moves by 1. In list mode, up/down moves by 1 and
+	// left/right has no meaning (ignored).
 	cursor int
+
+	// viewMode switches the main content area between the bordered
+	// card grid and a single-column text list. Toggle with `v`.
+	viewMode viewMode
 
 	status map[string]runStatus
 
@@ -97,6 +101,14 @@ type Model struct {
 
 	width, height int
 }
+
+// viewMode selects the main content layout.
+type viewMode int
+
+const (
+	viewCards viewMode = iota // bordered grid (default)
+	viewList                  // single-column text list
+)
 
 type pressDoneMsg struct {
 	name   string
@@ -178,6 +190,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseClickMsg:
 		if msg.Mouse().Button == tea.MouseLeft {
 			return m.handleLeftClick(msg.Mouse().X, msg.Mouse().Y)
+		}
+		return m, nil
+
+	case tea.MouseWheelMsg:
+		// Scroll wheel drives log-detail scroll when open. Elsewhere
+		// it's currently a no-op; could drive pane-cursor movement
+		// later if we want the board to feel list-like under wheel.
+		if m.logsDetail != nil {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				m.logsDetailScroll = clampScroll(m.logsDetailScroll-3, m.logsDetailMaxScroll())
+			case tea.MouseWheelDown:
+				m.logsDetailScroll = clampScroll(m.logsDetailScroll+3, m.logsDetailMaxScroll())
+			}
 		}
 		return m, nil
 
@@ -277,9 +303,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "up", "k":
 		if m.logsDetail != nil {
-			if m.logsDetailScroll > 0 {
-				m.logsDetailScroll--
-			}
+			m.logsDetailScroll = clampScroll(m.logsDetailScroll-1, m.logsDetailMaxScroll())
 			return m, nil
 		}
 		if m.logsOpen {
@@ -289,13 +313,37 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "down", "j":
 		if m.logsDetail != nil {
-			m.logsDetailScroll++
+			m.logsDetailScroll = clampScroll(m.logsDetailScroll+1, m.logsDetailMaxScroll())
 			return m, nil
 		}
 		if m.logsOpen {
 			return m.movePaneCursor(1), nil
 		}
 		return m.moveByRow(1), nil
+
+	case "pgup", "ctrl+b":
+		if m.logsDetail != nil {
+			m.logsDetailScroll = clampScroll(m.logsDetailScroll-m.logsDetailPage(), m.logsDetailMaxScroll())
+		}
+		return m, nil
+
+	case "pgdown", "ctrl+f":
+		if m.logsDetail != nil {
+			m.logsDetailScroll = clampScroll(m.logsDetailScroll+m.logsDetailPage(), m.logsDetailMaxScroll())
+		}
+		return m, nil
+
+	case "g", "home":
+		if m.logsDetail != nil {
+			m.logsDetailScroll = 0
+			return m, nil
+		}
+
+	case "G", "end":
+		if m.logsDetail != nil {
+			m.logsDetailScroll = m.logsDetailMaxScroll()
+			return m, nil
+		}
 
 	case "left", "h":
 		m.logsPaneCursor = 0
@@ -329,6 +377,18 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.logsOpen = !m.logsOpen
 		if !m.logsOpen {
 			m.logsPaneCursor = 0
+		}
+		return m, nil
+
+	case "v":
+		// Flip between card grid and single-column list. Same data,
+		// different density — list reads like a dense index, cards
+		// read like a dashboard. Cursor index is preserved across
+		// the flip (cardOrder is stable).
+		if m.viewMode == viewCards {
+			m.viewMode = viewList
+		} else {
+			m.viewMode = viewCards
 		}
 		return m, nil
 	}
@@ -441,13 +501,16 @@ func (m Model) moveCursor(delta int) tea.Model {
 	return m
 }
 
-// moveByRow shifts the cursor up/down by one grid row — which is
-// cardsPerRow() cells away. Clamps so the cursor never lands on a
-// non-existent cell past the end of the last row.
+// moveByRow shifts the cursor up/down by one grid row — which in
+// card mode is cardsPerRow() cells away, and in list mode is just 1.
+// Clamps so the cursor never lands past the end of the last row.
 func (m Model) moveByRow(delta int) tea.Model {
 	n := len(m.buttons)
 	if n == 0 {
 		return m
+	}
+	if m.viewMode == viewList {
+		return m.moveCursor(delta)
 	}
 	cols := m.cardsPerRow()
 	target := m.cursor + delta*cols
@@ -670,12 +733,14 @@ type layout struct {
 const (
 	leftPad = 2
 	// cardHeightIdle is the rendered height of an idle card: top border
-	// + name line + meta line + bottom border = 4 rows.
-	cardHeightIdle = 4
+	// + name + blank + meta + bottom border = 5 rows. The interior
+	// blank line makes the two text lines feel like separate pieces
+	// of information rather than a packed two-line block.
+	cardHeightIdle = 5
 	// cardGutter is the vertical blank between card grid rows.
 	cardGutter    = 1
-	footerHeight  = 3 // bordered action pill height
-	actionGap     = 2 // spaces between quit and press pills
+	footerHeight  = 1 // flat pill (no border) is a single row
+	actionGap     = 2
 	headerHeight  = 1
 	dividerHeight = 1
 	sectionBlank  = 1
@@ -691,16 +756,22 @@ func (m Model) computeLayout() layout {
 		hero := m.renderEmptyHero()
 		y += countLines(hero) + sectionBlank + dividerHeight + sectionBlank
 	} else {
-		cols := m.cardsPerRow()
-		rows := (len(m.buttons) + cols - 1) / cols
-		// Each row = card height + gutter between rows. Active cards
-		// are 1 taller (badge above) — but the layout math just needs
-		// a rough bound for hit-testing; hit-test accepts the larger
-		// Y1.
-		rowHeight := cardHeightIdle + cardGutter
-		gridHeight := rows*rowHeight - cardGutter
-		if gridHeight < cardHeightIdle {
-			gridHeight = cardHeightIdle
+		var gridHeight int
+		if m.viewMode == viewList {
+			// One line per row + one blank between rows.
+			n := len(m.buttons)
+			gridHeight = n + (n - 1)
+			if gridHeight < 1 {
+				gridHeight = 1
+			}
+		} else {
+			cols := m.cardsPerRow()
+			rows := (len(m.buttons) + cols - 1) / cols
+			rowHeight := cardHeightIdle + cardGutter
+			gridHeight = rows*rowHeight - cardGutter
+			if gridHeight < cardHeightIdle {
+				gridHeight = cardHeightIdle
+			}
 		}
 		l.cardsY0 = y
 		l.cardsY1 = y + gridHeight - 1
@@ -710,8 +781,9 @@ func (m Model) computeLayout() layout {
 	l.footerY0 = y
 	l.footerY1 = y + footerHeight - 1
 
-	// Press pill width = label("● press" = 7) + padding(6) + border(2).
-	pressW := 7 + 6 + 2
+	// Press pill width = label("press" = 5) + padding(6). No border
+	// on the flat pill so no extra cells.
+	pressW := 5 + 6
 	l.pressX0 = leftPad
 	l.pressX1 = l.pressX0 + pressW
 
@@ -763,18 +835,31 @@ func (m Model) maxNameWidth() int {
 	return w
 }
 
-// cardIndexAt converts a click at (x, y) inside the card-grid region
-// into the index of the card that was clicked, or -1 if the click
-// landed in a gutter. y0 is the row where the grid starts.
+// cardIndexAt converts a click at (x, y) inside the grid region into
+// the index of the button that was clicked, or -1 for gutter clicks.
+// Branches on viewMode so list clicks pick the right row.
 func (m Model) cardIndexAt(x, y, y0 int) int {
 	order := m.cardOrder()
 	if len(order) == 0 {
 		return -1
 	}
+
+	if m.viewMode == viewList {
+		// Rows are 1 line tall; blank line between rows is a gutter.
+		rel := y - y0
+		if rel%2 != 0 { // odd rows are gutters
+			return -1
+		}
+		idx := rel / 2
+		if idx < 0 || idx >= len(order) {
+			return -1
+		}
+		return idx
+	}
+
 	cols := m.cardsPerRow()
 	rowHeight := cardHeightIdle + cardGutter
 	row := (y - y0) / rowHeight
-	// Reject clicks inside the gutter between rows.
 	if (y-y0)%rowHeight >= cardHeightIdle {
 		return -1
 	}
@@ -817,6 +902,8 @@ func (m Model) View() tea.View {
 		parts = append(parts, m.argForm.render(m.styles, m.width))
 	case len(m.buttons) == 0:
 		parts = append(parts, m.renderEmptyHero())
+	case m.viewMode == viewList:
+		parts = append(parts, m.renderList())
 	default:
 		parts = append(parts, m.renderCards())
 	}
@@ -948,10 +1035,10 @@ func (m Model) renderCard(btn button.Button, selected bool) string {
 		sub = m.styles.Muted.Render(cardMeta(btn))
 	}
 
-	// Center-align the sub line within the card's interior width so
-	// short meta strings (e.g., "HTTP · 60S") sit under the name
-	// instead of hard-left against the border.
-	card := style.Render(name + "\n" + sub)
+	// Blank line between name and meta gives the card breathing
+	// room — without it the two lines read as one dense chunk and
+	// the meta competes with the name for the same visual weight.
+	card := style.Render(name + "\n\n" + sub)
 
 	if m.status[btn.Name] == statusRunning {
 		cardW := lipgloss.Width(card)
@@ -974,6 +1061,71 @@ func cardMeta(b button.Button) string {
 		rt = "SHELL"
 	}
 	return fmt.Sprintf("%s · %ds", rt, b.TimeoutSeconds)
+}
+
+// renderList paints the same cardOrder as renderCards but as a
+// single-column text list — one row per button. No borders; the
+// cursor reads as a chevron and the meta right-aligns. Denser than
+// the card grid, useful when scanning lots of buttons at once.
+func (m Model) renderList() string {
+	order := m.cardOrder()
+	if len(order) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(order)*2)
+	for i, btn := range order {
+		lines = append(lines, m.renderListRow(btn, i == m.cursor))
+		// Blank between rows keeps the list feeling spacious instead
+		// of packed like a log stream.
+		if i < len(order)-1 {
+			lines = append(lines, "")
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// renderListRow is one line of the list view: glyph, selection
+// chevron, name (bold when focused), right-aligned meta.
+func (m Model) renderListRow(btn button.Button, selected bool) string {
+	active := m.status[btn.Name] == statusRunning
+
+	var glyph string
+	switch {
+	case active:
+		glyph = m.styles.indicator(true, m.spinnerFrame)
+	default:
+		glyph = m.styles.indicator(false, -1)
+	}
+
+	var chev string
+	if selected {
+		chev = m.styles.ButtonNameSelected.Render("› ")
+	} else {
+		chev = "  "
+	}
+
+	var name string
+	switch {
+	case active:
+		name = m.styles.ButtonNameActive.Render(btn.Name)
+	case selected:
+		name = m.styles.ButtonNameSelected.Render(btn.Name)
+	default:
+		name = m.styles.ButtonName.Render(btn.Name)
+	}
+
+	meta := m.styles.Muted.Render(cardMeta(btn))
+
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	left := strings.Repeat(" ", leftPad) + glyph + " " + chev + name
+	gap := w - visibleLen(left) - visibleLen(meta) - leftPad
+	if gap < 2 {
+		gap = 2
+	}
+	return left + strings.Repeat(" ", gap) + meta
 }
 
 // elapsedFor returns how long the press has been running, or 0 when
@@ -1046,7 +1198,7 @@ func (m Model) renderFooter() string {
 	if !m.pressIsEnabled() {
 		pressStyle = m.styles.ActionPrimaryDisabled
 	}
-	press := pressStyle.Render("● press")
+	press := pressStyle.Render("press")
 
 	hints := m.composeHints()
 
@@ -1081,12 +1233,21 @@ func (m Model) composeHints() string {
 	// detail view they need to know scroll + back; in pane mode they
 	// need ↵ = details, not press. Keeps the chip row honest.
 	if m.logsDetail != nil {
-		return pair("↑↓", "scroll") + sep + pair("esc", "back")
+		return pair("↑↓", "scroll") + sep +
+			pair("pgup/pgdn", "page") + sep +
+			pair("g/G", "top/end") + sep +
+			pair("esc", "back")
 	}
 	if m.logsOpen {
 		return pair("↑↓", "run") + sep + pair("↵", "details") + sep + pair("L", "hide") + sep + pair("esc", "close")
 	}
-	return pair("↑↓", "nav") + sep + pair("↵", "press") + sep + pair("L", "logs") + sep + pair("?", "help")
+	// Label the `v` chip with the TARGET mode, not the current one —
+	// reads as "press v to switch to X," which is what the user wants.
+	viewTarget := "list"
+	if m.viewMode == viewList {
+		viewTarget = "cards"
+	}
+	return pair("↑↓", "nav") + sep + pair("↵", "press") + sep + pair("L", "logs") + sep + pair("v", viewTarget)
 }
 
 // renderChrome is the bottom status strip that mirrors the spec
@@ -1121,8 +1282,9 @@ func (m Model) renderChrome() string {
 			target = "none"
 		}
 		right = m.styles.Chrome.Render("LOGS OPEN · SCOPE " + target)
-	default:
-		right = m.styles.ChromeActiveBadge.Render("● REC")
+		// default: nothing — the chrome strip reads as identity-only
+		// when the board is idle. ● REC was decorative and conveyed
+		// no state, so it's gone.
 	}
 
 	w := m.width
@@ -1220,6 +1382,84 @@ func (m Model) renderLogRow(r history.Run, previewBudget int, selected bool) str
 	return fmt.Sprintf("%s%s  %s  %s  %s", cur, glyph, timeCol, metaCol, preview)
 }
 
+// clampScroll bounds a scroll index to [0, max]. max is the largest
+// valid starting line so the viewport still has content at its top.
+func clampScroll(v, max int) int {
+	if max < 0 {
+		max = 0
+	}
+	if v < 0 {
+		return 0
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+// logsDetailBodyLines materializes the full rendered body of the
+// detail view. Used by the scroll helpers so their math agrees with
+// what renderLogDetail slices.
+func (m Model) logsDetailBodyLines() []string {
+	if m.logsDetail == nil {
+		return nil
+	}
+	r := m.logsDetail
+	lines := []string{}
+	if strings.TrimSpace(r.Stdout) != "" {
+		lines = append(lines, m.styles.Muted.Render("─ stdout ─"))
+		for _, line := range strings.Split(strings.TrimRight(r.Stdout, "\n"), "\n") {
+			lines = append(lines, m.styles.ButtonName.Render(line))
+		}
+	}
+	if strings.TrimSpace(r.Stderr) != "" {
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, m.styles.Muted.Render("─ stderr ─"))
+		for _, line := range strings.Split(strings.TrimRight(r.Stderr, "\n"), "\n") {
+			lines = append(lines, m.styles.StatusError.Render(line))
+		}
+	}
+	if len(lines) == 0 {
+		lines = append(lines, m.styles.Muted.Render("(no output recorded)"))
+	}
+	return lines
+}
+
+// logsDetailViewport is the number of body lines that fit on screen
+// given the current window size. Matches the height reserved in
+// renderLogDetail.
+func (m Model) logsDetailViewport() int {
+	h := m.height - 10
+	if h < 5 {
+		h = 5
+	}
+	return h
+}
+
+// logsDetailMaxScroll is the largest valid scrollTop so the viewport
+// still has content at its top edge.
+func (m Model) logsDetailMaxScroll() int {
+	total := len(m.logsDetailBodyLines())
+	max := total - m.logsDetailViewport()
+	if max < 0 {
+		max = 0
+	}
+	return max
+}
+
+// logsDetailPage returns the page size used by pgup / pgdn. One page
+// minus one line of overlap so users never lose their visual place
+// between pages.
+func (m Model) logsDetailPage() int {
+	p := m.logsDetailViewport() - 1
+	if p < 1 {
+		p = 1
+	}
+	return p
+}
+
 // renderLogDetail is the full-screen historical-run view shown when
 // the user hits ↵ on a pane row. Layout: identity row + metadata row
 // + streamed body (stdout, then stderr if any). Scrolls via up/down
@@ -1243,7 +1483,29 @@ func (m Model) renderLogDetail() string {
 	} else {
 		statusCol = m.styles.StatusError.Render(fmt.Sprintf("✗ %s · exit %d · %dms", r.Status, r.ExitCode, r.DurationMs))
 	}
-	right := statusCol
+
+	bodyLines := m.logsDetailBodyLines()
+	viewport := m.logsDetailViewport()
+	maxScroll := m.logsDetailMaxScroll()
+	scroll := clampScroll(m.logsDetailScroll, maxScroll)
+
+	// Scroll indicator: "42/318" if truncated, percentage, or "all".
+	// Gives users a sense of where they are and whether there's more
+	// to see — without it, the view reads as static even when most of
+	// the output is below the fold.
+	var indicator string
+	total := len(bodyLines)
+	if total <= viewport {
+		indicator = m.styles.Muted.Render("all")
+	} else {
+		last := scroll + viewport
+		if last > total {
+			last = total
+		}
+		pct := (last * 100) / total
+		indicator = m.styles.Muted.Render(fmt.Sprintf("%d–%d/%d · %d%%", scroll+1, last, total, pct))
+	}
+	right := statusCol + m.styles.Muted.Render("  ·  ") + indicator
 
 	w := m.width
 	if w <= 0 {
@@ -1255,50 +1517,9 @@ func (m Model) renderLogDetail() string {
 	}
 	header := strings.Repeat(" ", leftPad) + left + strings.Repeat(" ", gap) + right
 
-	// Body — stdout first, then stderr if present. Both are shown
-	// unmodified (aside from styling) so copy-paste into a bug report
-	// round-trips cleanly. Each section gets a muted label.
-	bodyLines := []string{}
-	if strings.TrimSpace(r.Stdout) != "" {
-		bodyLines = append(bodyLines, m.styles.Muted.Render("─ stdout ─"))
-		for _, line := range strings.Split(strings.TrimRight(r.Stdout, "\n"), "\n") {
-			bodyLines = append(bodyLines, m.styles.ButtonName.Render(line))
-		}
-	}
-	if strings.TrimSpace(r.Stderr) != "" {
-		if len(bodyLines) > 0 {
-			bodyLines = append(bodyLines, "")
-		}
-		bodyLines = append(bodyLines, m.styles.Muted.Render("─ stderr ─"))
-		for _, line := range strings.Split(strings.TrimRight(r.Stderr, "\n"), "\n") {
-			bodyLines = append(bodyLines, m.styles.StatusError.Render(line))
-		}
-	}
-	if len(bodyLines) == 0 {
-		bodyLines = append(bodyLines, m.styles.Muted.Render("(no output recorded)"))
-	}
-
-	// Clamp scroll so we never render past the end of the body. Keep
-	// at least one line in view — scrolling into an empty tail makes
-	// the pane feel broken.
-	visibleHeight := m.height - 10
-	if visibleHeight < 5 {
-		visibleHeight = 5
-	}
-	scroll := m.logsDetailScroll
-	maxScroll := len(bodyLines) - visibleHeight
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	if scroll > maxScroll {
-		scroll = maxScroll
-	}
-	if scroll < 0 {
-		scroll = 0
-	}
-	end := scroll + visibleHeight
-	if end > len(bodyLines) {
-		end = len(bodyLines)
+	end := scroll + viewport
+	if end > total {
+		end = total
 	}
 	body := indentBlock(strings.Join(bodyLines[scroll:end], "\n"), leftPad*2)
 

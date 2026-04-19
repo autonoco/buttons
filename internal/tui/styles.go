@@ -278,29 +278,26 @@ func BuildStyles() Styles {
 			Bold(true),
 
 		// ActionPrimary — the board's single primary CTA ("press").
-		// Filled indicator block with contrasting text; this is the
-		// second sanctioned exception to the "orange = ACTIVE only"
-		// rule (BrandDot is the first). Identity-wise the press button
-		// IS the active affordance, so painting it in indicator color
-		// matches the meaning.
+		// Flat white pill, no border, dark text. Reads as a clean
+		// "click me" affordance without borrowing the indicator-
+		// orange, which is reserved for active/running state. The
+		// earlier thick-bordered orange variant produced a visible
+		// gap where the border and fill met on some terminals —
+		// dropping the border eliminates that class of render bug.
 		ActionPrimary: lipgloss.NewStyle().
-			Foreground(c.onIndicator).
-			Background(c.indicator).
-			Border(lipgloss.ThickBorder()).
-			BorderForeground(c.indicator).
+			Foreground(lipgloss.Color(hexInk)).
+			Background(lipgloss.Color(hexPaper)).
 			Padding(0, 3).
 			Bold(true),
 
 		ActionSecondary: lipgloss.NewStyle().
 			Foreground(c.primary).
-			Border(lipgloss.NormalBorder()).
-			BorderForeground(c.muted).
+			Background(c.chipBg).
 			Padding(0, 2),
 
 		ActionPrimaryDisabled: lipgloss.NewStyle().
 			Foreground(c.secondary).
-			Border(lipgloss.NormalBorder()).
-			BorderForeground(c.muted).
+			Background(c.chipBg).
 			Padding(0, 3),
 
 		KeyChip: lipgloss.NewStyle().

@@ -3,15 +3,14 @@
 
                 ↵ TAIL   ┌──────────────┐
   ┏━━━━━━━━━━━━━━━━━━━┓  │  weather     │
-  ┃    deploy         ┃  │  HTTP · 60s  │
+  ┃    deploy         ┃  │              │
+  ┃                   ┃  │  HTTP · 60s  │
   ┃  ● ACTIVE · 3.2s  ┃  └──────────────┘
   ┗━━━━━━━━━━━━━━━━━━━┛                  
 
 ────────────────────────────────────────────────────────────────────────────────
 
-  ┏━━━━━━━━━━━━━┓                                                             
-  ┃   ● press   ┃              ↑↓  nav  ·   ↵  press  ·   L  logs  ·   ?  help
-  ┗━━━━━━━━━━━━━┛                                                             
+     press                     ↑↓  nav  ·   ↵  press  ·   L  logs  ·   v  list
 
   ● deploy running… stdout streaming to ~/.buttons/buttons/deploy/pressed/
 
