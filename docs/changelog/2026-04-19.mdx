@@ -1,0 +1,28 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-19" description="Full-screen log viewer, enum args, and board polish">
+## Full-screen log viewer, enum args, and board polish
+
+A new live log viewer, a new argument type, and a round of visual refinements across the board.
+
+### New features
+
+- **Full-screen log viewer** — run `buttons logs <name>` to open a dedicated terminal view that streams stdout and stderr in real time as a button runs. Lines are color-coded by severity, and a follow indicator keeps you pinned to the latest output. Press `f` to toggle follow, `g` to jump to the top, or `Esc` to dismiss. The viewer stays open after the press finishes so you can scroll through the full output. See the [CLI reference](/cli/buttons_board).
+
+- **Enum arg type** — declare a fixed set of valid values for an argument with `--arg env:enum:required:staging|prod|canary`. Buttons validates the value at press time and rejects anything not in the list. On the board, enum args render as a horizontal picker you navigate with arrow keys instead of typing a value. See [arguments](/concepts/arguments).
+
+- **Button detail page** — running `buttons <name>` in a terminal now opens a TUI page showing the button's spec, arguments, usage examples, and last run at a glance. Press `e` to open the button's script in your editor. Non-interactive and `--json` output are unchanged.
+
+- **Press with args from the board** — buttons that have required arguments now open an inline form when you press them from the board. Fill in each value, hit Enter, and the press fires without dropping back to the CLI.
+
+### Updates
+
+- **Real-time output streaming** — button output is now streamed line-by-line as the child process writes it, rather than buffered until completion. This powers the new log viewer and will enable richer board integration in the future.
+
+- **Board visual polish** — the board, detail page, and log viewer now share a consistent chrome strip at the bottom of the screen showing terminal info and contextual badges. Pinned cards show an active-state overlay with an elapsed timer during a press. Divider contrast has been improved on dark terminals. Focused rows show a double-chevron cursor and right-aligned metadata.
+
+- **Follow indicator in logs** — the log viewer displays an orange `● follow` badge in the header and chrome strip while tailing a live press. Once the press completes, the badge is replaced with the exit code and duration.
+</Update>
