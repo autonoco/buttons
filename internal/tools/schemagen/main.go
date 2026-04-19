@@ -46,9 +46,15 @@ func run() error {
 	data = append(data, '\n')
 
 	for _, p := range []string{publicPath, embedPath} {
+		// #nosec G301 G306 -- these are build-time artifacts for docs
+		// (docs/schemas/*.json) and embedded assets; both need to be
+		// world-readable so editors, LLM tooling, and SchemaStore can
+		// fetch them. They carry no secrets — schemas are public by
+		// definition. 0755/0644 is the correct permission set here.
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", filepath.Dir(p), err)
 		}
+		// #nosec G306 -- see rationale above; public schema artifact.
 		if err := os.WriteFile(p, data, 0o644); err != nil {
 			return fmt.Errorf("write %s: %w", p, err)
 		}
