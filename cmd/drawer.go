@@ -102,6 +102,8 @@ Usage:
 			return drawerRemove(name)
 		case "summary":
 			return drawerShowSummary(name)
+		case "logs":
+			return drawerLogs(name, vargs)
 		default:
 			return drawerUnknownVerb(name, verb)
 		}
@@ -109,6 +111,13 @@ Usage:
 }
 
 func init() {
+	// Register the logs flags on drawerCmd as well so
+	// `buttons drawer NAME logs --failed --limit 50` parses. The
+	// flag variables are package-level (declared in cmd/logs.go)
+	// so the drawerLogs handler sees the right values regardless
+	// of which command registered them.
+	drawerCmd.Flags().BoolVar(&logsFailed, "failed", false, "only return runs that failed (for `NAME logs`)")
+	drawerCmd.Flags().IntVar(&logsLimit, "limit", 20, "max runs to return (for `NAME logs`)")
 	rootCmd.AddCommand(drawerCmd)
 }
 
@@ -382,6 +391,49 @@ func drawerSchema() error {
 	// drawer schema | jq .` works cleanly.
 	_, err := os.Stdout.Write(drawer.SchemaJSON)
 	return err
+}
+
+// drawerLogs returns past runs for a specific drawer. Shares the
+// same flags as `buttons NAME logs` (--failed, --limit). The TUI
+// live-follow mode isn't wired for drawers in stage 2 — drawers
+// are sequential orchestration and per-button `buttons NAME logs
+// --follow` covers the live-press case at the step level.
+func drawerLogs(name string, vargs []string) error {
+	n := logsLimit
+	if n <= 0 {
+		n = 20
+	}
+	runs, err := drawer.ListRuns(name, n)
+	if err != nil {
+		return handleDrawerError(err)
+	}
+	if logsFailed {
+		kept := runs[:0]
+		for _, r := range runs {
+			if r.Status != "ok" {
+				kept = append(kept, r)
+			}
+		}
+		runs = kept
+	}
+	if jsonOutput {
+		return config.WriteJSON(runs)
+	}
+	if len(runs) == 0 {
+		fmt.Fprintf(os.Stderr, "no runs for drawer %s yet\n", name)
+		return nil
+	}
+	for _, r := range runs {
+		status := r.Status
+		if r.ErrorType != "" {
+			status = r.Status + " · " + r.ErrorType
+		}
+		fmt.Printf("%s  %s  %dms\n", r.StartedAt.Local().Format("2006-01-02 15:04:05"), status, r.DurationMs)
+	}
+	// vargs would be used if we later added step-filters; silence
+	// the unused warning without losing the parameter.
+	_ = vargs
+	return nil
 }
 
 // drawerShowSummary prints the drawer introspection view — topology,

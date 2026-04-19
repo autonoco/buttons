@@ -93,6 +93,24 @@ func Execute(ctx context.Context, btn *button.Button, args, batteries map[string
 		envName := "BUTTONS_ARG_" + strings.ToUpper(strings.ReplaceAll(k, "-", "_"))
 		env = append(env, envName+"="+v)
 	}
+	// Export BUTTONS_PROGRESS_PATH so long-running buttons can stream
+	// structured progress events (JSONL) into a file that `buttons
+	// tail` follows in real time. We create the file empty so tailers
+	// can start before the first write lands. No fd-3 magic — scripts
+	// just append to $BUTTONS_PROGRESS_PATH.
+	progressPath := defaultProgressPath(btn.Name, start)
+	if progressPath != "" {
+		if err := os.MkdirAll(filepathDir(progressPath), 0o700); err == nil {
+			// #nosec G304 G306 -- progressPath is scoped inside the
+			// button's pressed/ dir (same perms as the .json history
+			// file alongside). 0600 keeps it user-private.
+			if f, err := os.OpenFile(progressPath, os.O_CREATE|os.O_RDWR, 0o600); err == nil {
+				_ = f.Close()
+				env = append(env, "BUTTONS_PROGRESS_PATH="+progressPath)
+				result.ProgressPath = progressPath
+			}
+		}
+	}
 	cmd.Env = env
 
 	// Capture everything into buffers (authoritative for Result) and,

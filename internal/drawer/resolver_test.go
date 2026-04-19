@@ -14,8 +14,11 @@ func TestResolve_WholeStringRef_PreservesType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if got != 42 {
-		t.Errorf("want int 42, got %v (%T)", got, got)
+	// CEL returns int64 for integer values.
+	if i64, ok := got.(int64); !ok || i64 != 42 {
+		if i, ok2 := got.(int); !ok2 || i != 42 {
+			t.Errorf("want 42, got %v (%T)", got, got)
+		}
 	}
 
 	got, err = Resolve("${build.output.version}", ctx)
@@ -24,6 +27,41 @@ func TestResolve_WholeStringRef_PreservesType(t *testing.T) {
 	}
 	if got != "1.2.3" {
 		t.Errorf("want string 1.2.3, got %v", got)
+	}
+}
+
+// CEL operators — new in stage 2. String concat, arithmetic, ternary.
+func TestResolve_CELOperators(t *testing.T) {
+	ctx := Context{
+		"inputs": map[string]any{"fallback": "default", "count": 3, "env_name": "prod"},
+		"build":  map[string]any{"output": map[string]any{"version": "1.2.3"}},
+	}
+
+	// Ternary with has() for null-coalescing.
+	got, err := Resolve("${has(build.output.url) ? build.output.url : inputs.fallback}", ctx)
+	if err != nil {
+		t.Fatalf("ternary: %v", err)
+	}
+	if got != "default" {
+		t.Errorf("ternary: got %v", got)
+	}
+
+	// String concat.
+	got, err = Resolve("${'shipped ' + build.output.version}", ctx)
+	if err != nil {
+		t.Fatalf("concat: %v", err)
+	}
+	if got != "shipped 1.2.3" {
+		t.Errorf("concat: got %v", got)
+	}
+
+	// Equality.
+	got, err = Resolve("${inputs.env_name == 'prod'}", ctx)
+	if err != nil {
+		t.Fatalf("eq: %v", err)
+	}
+	if got != true {
+		t.Errorf("eq: got %v", got)
 	}
 }
 

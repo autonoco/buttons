@@ -5,43 +5,50 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	celgo "github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common/types/ref"
 )
 
-// Reference syntax used in drawer step args. A value like
+// Reference syntax in drawer step args. A value like
 // "${build.output.version}" is resolved at press time against the
-// drawer's execution context (inputs map + per-step outputs).
+// drawer's execution context (inputs + per-step outputs + env).
 //
-// Stage 1 supports only dotted-path field access. No operators, no
-// fallbacks, no arithmetic. Stage 2 swaps the implementation for
-// google/cel-go while keeping the ${...} wire format unchanged —
-// this package's Resolve signature is the stable interface.
+// Stage 2: the contents of ${...} are parsed as CEL expressions
+// (github.com/google/cel-go). The wire format is stable across
+// stages — agents that learned to emit ${step.output.field} in
+// stage 1 still work, and now also get:
 //
-// Reserved roots that the context must provide:
+//	${build.output.version ?? inputs.fallback}   — null coalescing
+//	${'shipped ' + publish.output.url}           — string concat
+//	${inputs.count * 2}                          — arithmetic
+//	${inputs.env == 'prod' ? 'strict' : 'lax'}   — ternary
+//
+// $ENV{VAR} is sugar for ${env.VAR} kept for readability.
+//
+// Reserved roots available inside CEL expressions:
 //
 //	inputs.*   — drawer-level inputs supplied at press time
 //	<step_id>  — a completed step; <step_id>.output.* walks the
 //	             button's structured JSON output
-//	env.*      — environment variables; read from os.Getenv at
-//	             resolve time, never stored in the drawer spec
-//
-// $ENV{VAR} is a pseudo-reference that resolves through the same
-// env path but is accepted as sugar so drawer.json is readable when
-// mixed with CEL-style ${...} later.
+//	env.*      — process environment at resolve time
 
 var refPattern = regexp.MustCompile(`\$\{([^}]+)\}|\$ENV\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
+// dottedPath matches a pure dotted-path CEL expression (no operators,
+// no function calls). Used by ExtractRefs to surface type-checkable
+// references to the validator; anything more complex is skipped.
+var dottedPath = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$`)
+
 // Context is the resolution environment. Keys are reference roots
-// (inputs, env, <step_id>). Values can be any JSON-ish shape —
-// resolve() walks them with reflect-free dotted-path access.
+// (inputs, <step_id>). Values can be any JSON-ish shape. "env" is
+// injected automatically from os.Environ().
 type Context map[string]any
 
 // Resolve replaces every ${...} / $ENV{VAR} substring in v. If v is
 // a string that is ENTIRELY one reference, the return value is the
-// raw resolved value (preserving its type — int stays int). Otherwise
+// raw CEL result (preserving its type — int stays int). Otherwise
 // each reference is stringified and interpolated.
-//
-// Recursively handles maps and slices so Step.Args (map[string]any)
-// can carry arbitrarily nested literal + reference mixes.
 func Resolve(v any, ctx Context) (any, error) {
 	switch t := v.(type) {
 	case string:
@@ -71,30 +78,27 @@ func Resolve(v any, ctx Context) (any, error) {
 	}
 }
 
-// resolveString handles the string case. The common shape is a
-// whole-string reference ("${build.output.version}") where we want
-// to preserve the underlying type; handle that specially so an int
-// output doesn't become "42".
 func resolveString(s string, ctx Context) (any, error) {
 	// Whole-string reference: value-preserving.
 	if strings.HasPrefix(s, "${") && strings.HasSuffix(s, "}") && strings.Count(s, "${") == 1 {
-		path := s[2 : len(s)-1]
-		return lookup(path, ctx)
+		expr := s[2 : len(s)-1]
+		return evalCEL(expr, ctx)
 	}
 	if strings.HasPrefix(s, "$ENV{") && strings.HasSuffix(s, "}") && strings.Count(s, "$ENV{") == 1 {
 		name := s[5 : len(s)-1]
 		return os.Getenv(name), nil
 	}
 
-	// Mixed literal + ref: stringify each match and interpolate.
+	// Mixed literal + expr. Stringify each match and interpolate.
 	var firstErr error
 	out := refPattern.ReplaceAllStringFunc(s, func(match string) string {
 		m := refPattern.FindStringSubmatch(match)
 		var val any
 		var err error
-		if m[1] != "" {
-			val, err = lookup(m[1], ctx)
-		} else if m[2] != "" {
+		switch {
+		case m[1] != "":
+			val, err = evalCEL(m[1], ctx)
+		case m[2] != "":
 			val = os.Getenv(m[2])
 		}
 		if err != nil {
@@ -111,53 +115,89 @@ func resolveString(s string, ctx Context) (any, error) {
 	return out, nil
 }
 
-// lookup walks a dotted path through the context map. Arrays are
-// accessed with numeric indices: "items.0.name".
-func lookup(path string, ctx Context) (any, error) {
-	parts := strings.Split(path, ".")
-	if len(parts) == 0 {
-		return nil, fmt.Errorf("empty reference path")
+// evalCEL compiles and evaluates a CEL expression against the
+// context. Each top-level key in ctx becomes a DYN-typed CEL
+// variable; env is injected from os.Environ() every call.
+//
+// Simpler to rebuild the env per call than to cache — CEL compilation
+// is cheap (microseconds) and the var set changes between calls
+// (different upstream step ids per drawer). If this shows up in
+// profiles later, cache by context-shape fingerprint.
+func evalCEL(expr string, ctx Context) (any, error) {
+	opts := make([]celgo.EnvOption, 0, len(ctx)+1)
+	for k := range ctx {
+		opts = append(opts, celgo.Variable(k, celgo.DynType))
+	}
+	opts = append(opts, celgo.Variable("env", celgo.DynType))
+
+	env, err := celgo.NewEnv(opts...)
+	if err != nil {
+		return nil, &ResolveError{Path: expr, Reason: "cel env: " + err.Error()}
+	}
+	ast, issues := env.Parse(expr)
+	if issues != nil && issues.Err() != nil {
+		return nil, &ResolveError{Path: expr, Reason: "parse: " + issues.Err().Error()}
+	}
+	prg, err := env.Program(ast)
+	if err != nil {
+		return nil, &ResolveError{Path: expr, Reason: "program: " + err.Error()}
 	}
 
-	// env.* reads os environment at resolve time.
-	if parts[0] == "env" {
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("env references must be ${env.VARNAME}, got %q", path)
-		}
-		return os.Getenv(parts[1]), nil
+	activation := make(map[string]any, len(ctx)+1)
+	for k, v := range ctx {
+		activation[k] = v
 	}
+	activation["env"] = envFromOS()
 
-	cur, ok := ctx[parts[0]]
-	if !ok {
-		return nil, &ResolveError{Path: path, Reason: fmt.Sprintf("unknown root %q", parts[0])}
+	val, _, err := prg.Eval(activation)
+	if err != nil {
+		return nil, &ResolveError{Path: expr, Reason: err.Error()}
 	}
-	for _, seg := range parts[1:] {
-		switch c := cur.(type) {
-		case map[string]any:
-			v, exists := c[seg]
-			if !exists {
-				return nil, &ResolveError{Path: path, Reason: fmt.Sprintf("field %q not found", seg)}
-			}
-			cur = v
-		case []any:
-			var idx int
-			if _, err := fmt.Sscanf(seg, "%d", &idx); err != nil {
-				return nil, &ResolveError{Path: path, Reason: fmt.Sprintf("expected numeric index, got %q", seg)}
-			}
-			if idx < 0 || idx >= len(c) {
-				return nil, &ResolveError{Path: path, Reason: fmt.Sprintf("index %d out of range", idx)}
-			}
-			cur = c[idx]
-		default:
-			return nil, &ResolveError{Path: path, Reason: fmt.Sprintf("cannot index into %T at %q", cur, seg)}
-		}
-	}
-	return cur, nil
+	return celToAny(val), nil
 }
 
-// ResolveError carries both the full reference path and the specific
-// reason it failed — agents can turn this into a targeted error
-// message with remediation.
+// envFromOS materializes the current process environment as a
+// CEL-friendly map. Called once per expression eval — cheap relative
+// to CEL compile cost, and keeps env reads honest to "now", not
+// "when the drawer was authored."
+func envFromOS() map[string]any {
+	e := os.Environ()
+	out := make(map[string]any, len(e))
+	for _, kv := range e {
+		if i := strings.Index(kv, "="); i > 0 {
+			out[kv[:i]] = kv[i+1:]
+		}
+	}
+	return out
+}
+
+// celToAny unwraps a CEL value to its native Go representation so
+// the caller can round-trip it through encoding/json without
+// knowing about CEL types. CEL lists/maps are handled recursively
+// so nested structures still work.
+func celToAny(v ref.Val) any {
+	native := v.Value()
+	switch t := native.(type) {
+	case map[ref.Val]ref.Val:
+		out := make(map[string]any, len(t))
+		for k, val := range t {
+			key, _ := k.Value().(string)
+			out[key] = celToAny(val)
+		}
+		return out
+	case []ref.Val:
+		out := make([]any, len(t))
+		for i, elem := range t {
+			out[i] = celToAny(elem)
+		}
+		return out
+	default:
+		return native
+	}
+}
+
+// ResolveError carries both the expression that failed and the
+// specific reason. Agents turn this into a remediation hint.
 type ResolveError struct {
 	Path   string
 	Reason string
@@ -167,19 +207,28 @@ func (e *ResolveError) Error() string {
 	return fmt.Sprintf("reference ${%s}: %s", e.Path, e.Reason)
 }
 
-// ExtractRefs scans a value (typically a Step.Args map) and returns
-// every ${ref} path it contains. Used by the validator to type-check
-// references at connect time without running the resolver.
+// ExtractRefs returns every dotted-path identifier referenced inside
+// any ${...} in v. Used by the validator to type-check simple
+// references against upstream output schemas. Complex expressions
+// (operators, ternaries, function calls) are skipped — they'll fail
+// at runtime if malformed, but can't be statically checked here in
+// stage 2. A future pass can wire CEL's full type checker in.
 func ExtractRefs(v any) []string {
 	var out []string
+	seen := map[string]bool{}
 	walk(v, func(s string) {
 		matches := refPattern.FindAllStringSubmatch(s, -1)
 		for _, m := range matches {
-			if m[1] != "" {
-				out = append(out, m[1])
+			expr := strings.TrimSpace(m[1])
+			if expr == "" {
+				continue
 			}
-			// $ENV{...} refs don't get type-checked against upstream
-			// schemas — they're just env strings.
+			// Only surface pure dotted paths. Complex CEL is
+			// intentionally opaque to the validator.
+			if dottedPath.MatchString(expr) && !seen[expr] {
+				seen[expr] = true
+				out = append(out, expr)
+			}
 		}
 	})
 	return out

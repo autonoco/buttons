@@ -31,8 +31,24 @@ type Button struct {
 	// Stored verbatim as raw JSON so we don't force a specific schema
 	// library dependency on every button consumer.
 	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
+	// Queue optionally caps concurrent presses. Buttons sharing the
+	// same Queue.Name share a slot pool. Queue.Key (e.g. "${inputs.user_id}")
+	// scopes the pool by dimension so "openai, 3 concurrent per user"
+	// is expressible without per-user buttons. Omitted → no limit.
+	Queue        *QueueConfig `json:"queue,omitempty"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+}
+
+// QueueConfig declares per-button concurrency limits. Enforced at
+// press time via internal/queue's file-lock semaphore.
+type QueueConfig struct {
+	Name        string `json:"name"`
+	Concurrency int    `json:"concurrency,omitempty"`
+	// Key is a CEL-style reference resolved per-press. Value is
+	// appended to the queue name so distinct keys get distinct
+	// slot pools.
+	Key string `json:"key,omitempty"`
 }
 
 type ArgDef struct {

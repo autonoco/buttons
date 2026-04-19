@@ -5,31 +5,21 @@ description: "CLI reference for buttons logs"
 
 ## buttons logs
 
-Press a button and watch its output stream live
+View a button's past runs, or press and stream live
 
 ### Synopsis
 
-Press a button in a full-screen viewer that tails every line of
-stdout / stderr as the child writes it.
+View a button's run history. Preferred form is name-first to
+match the rest of the CLI:
 
-The viewer stays open after the press completes so you can scroll
-the output at leisure. Press esc or q to dismiss; ctrl+c cancels an
-in-flight press (the child's process group is killed).
+  buttons BUTTONNAME logs           — past runs for this button
+  buttons BUTTONNAME logs --follow  — press + stream live
+  buttons BUTTONNAME logs --failed  — just failures
+  buttons drawer DRAWERNAME logs    — past runs for this drawer
 
-Scope is one press. If the button takes required args, pass them with
---arg key=value the same way 'buttons press' does.
-
-Only shell and code buttons stream today. HTTP and prompt buttons
-still use 'buttons press' for now — their execution is request /
-response, not a long-running process.
-
-**Examples:**
-
-```bash
-buttons logs deploy
-buttons logs deploy --arg env=staging
-buttons logs etl --arg file=/tmp/x.csv
-```
+The verb-first form (buttons logs NAME) still works as an alias.
+buttons logs (no name) dumps recent failures across every button
+and drawer — same shape as summary.recent_failures.
 
 ```
 buttons logs [name] [flags]
@@ -38,8 +28,11 @@ buttons logs [name] [flags]
 ### Options
 
 ```
-      --arg stringArray   argument as key=value (repeatable; validated against the button spec)
+      --arg stringArray   argument as key=value (with --follow, passed through to the press)
+      --failed            only return runs that failed
+  -f, --follow            press the button and stream live output in a TUI
   -h, --help              help for logs
+      --limit int         max runs to return (default 20)
 ```
 
 ### Options inherited from parent commands

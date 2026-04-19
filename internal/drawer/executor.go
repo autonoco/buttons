@@ -300,6 +300,12 @@ func (e *Executor) finalize(res *ExecuteResult, d *Drawer) {
 		Steps:      res.Steps,
 		ErrorType:  errorCode(res.Error),
 	})
+
+	// Failures are already captured in the drawer's own pressed/
+	// history (RecordRun above). Agents triage via `buttons summary`
+	// (cross-target recent_failures) or `buttons drawer NAME` for
+	// the per-drawer view that surfaces recent_runs including the
+	// last failure and its remediation.
 }
 
 // computeBackoff turns a retry policy + attempt number into a wait

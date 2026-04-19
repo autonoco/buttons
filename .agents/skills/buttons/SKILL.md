@@ -197,8 +197,13 @@ buttons delete [flags]
 Manage drawer workflows (chains of buttons)
 
 ```
-buttons drawer
+buttons drawer [flags]
 ```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--failed` | bool | only return runs that failed (for `NAME logs`) |
+| `--limit` | int | max runs to return (for `NAME logs`) |
 
 ### `buttons history`
 
@@ -234,7 +239,7 @@ buttons list
 
 ### `buttons logs`
 
-Press a button and watch its output stream live
+View a button's past runs, or press and stream live
 
 ```
 buttons logs [flags]
@@ -242,7 +247,10 @@ buttons logs [flags]
 
 | Flag | Type | Description |
 |------|------|-------------|
-| `--arg` | stringArray | argument as key=value (repeatable; validated against the button spec) |
+| `--arg` | stringArray | argument as key=value (with --follow, passed through to the press) |
+| `--failed` | bool | only return runs that failed |
+| `-f, --follow` | bool | press the button and stream live output in a TUI |
+| `--limit` | int | max runs to return |
 
 ### `buttons press`
 
@@ -256,6 +264,8 @@ buttons press [flags]
 |------|------|-------------|
 | `--arg` | stringArray | argument as key=value |
 | `--dry-run` | bool | show what would execute without running |
+| `--idempotency-key` | string | reuse the cached result for this key if present (cross-run dedup) |
+| `--idempotency-ttl` | duration | how long idempotency entries stay valid (e.g. 1h, 24h) |
 | `--timeout` | int | override timeout in seconds |
 
 ### `buttons smash`
@@ -285,6 +295,18 @@ buttons summary [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `--deep` | bool | inline full schemas + all recent runs |
+
+### `buttons tail`
+
+Follow the progress JSONL of a press
+
+```
+buttons tail [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `-f, --follow` | bool | keep tailing as new lines arrive |
 
 ### `buttons update`
 

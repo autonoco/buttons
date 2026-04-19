@@ -114,6 +114,25 @@ func DrawerDir(name string) (string, error) {
 	return p, nil
 }
 
+// IdempotencyDir is where cross-run idempotency cache entries live.
+// One JSON file per key hash with TTL embedded.
+func IdempotencyDir() (string, error) {
+	base, err := DataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "idempotency"), nil
+}
+
+// QueuesDir is where per-queue file-lock semaphores live.
+func QueuesDir() (string, error) {
+	base, err := DataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "queues"), nil
+}
+
 func EnsureDataDir() error {
 	base, err := DataDir()
 	if err != nil {

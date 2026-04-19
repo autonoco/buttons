@@ -59,6 +59,13 @@ Workspace introspection: `buttons summary [--json]` dumps buttons, drawers, rece
 
 `--summary` is a universal flag: applied to any mutating command (`press`, `drawer press`, `drawer add`, `drawer connect`, etc.) it returns a read-only plan instead of executing. Never mutates, never touches the network, never side-effects.
 
+### Stage 2 plumbing (CEL, idempotency, queues, progress, DLQ)
+- **Expressions:** `${...}` wraps CEL (`google/cel-go`). Ternaries, string concat, arithmetic, `has()` for null-coalescing. Dotted-path refs still work — the shape agents learned in stage 1 is unchanged; CEL extends it.
+- **Idempotency:** `buttons press NAME --idempotency-key=K --idempotency-ttl=24h` caches successful results in `~/.buttons/idempotency/`. A retry with the same key short-circuits. Only `ok` results cached — failures always retry.
+- **Queues:** buttons declare `queue: { name, concurrency, key? }` in `button.json`. File-lock semaphore at `~/.buttons/queues/` caps concurrent presses. Shared queue names pool across buttons (e.g., everyone hitting the OpenAI API joins `openai` with `concurrency: 3`).
+- **Progress:** engine sets `$BUTTONS_PROGRESS_PATH` per press. Scripts append JSONL events; `buttons tail <button-or-path> [-f]` follows them.
+- **Failure triage:** failures live in each target's `pressed/` history (no separate DLQ store). `buttons summary --json` aggregates under `recent_failures`; `buttons drawer NAME --json` or `buttons history NAME` for the per-target drill-in. Agents replay by reading the args from history and pressing again.
+
 ### Execution Security
 - `context.WithTimeout` on every `os/exec` call, default 60s
 - Kill process GROUP not just process (`Setpgid` + `Kill(-pid, SIGKILL)`) after 5s SIGTERM grace
