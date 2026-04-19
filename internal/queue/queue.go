@@ -45,6 +45,10 @@ func (l *Lock) Release() {
 	}
 	// Unlock + close. The OS releases the flock automatically on
 	// close, so the unlock call is belt-and-suspenders.
+	// #nosec G115 -- os.File.Fd() returns uintptr but syscall.Flock
+	// takes int; this is the idiomatic Go pattern. File descriptor
+	// values are always small positive integers (< 2^31), so the
+	// conversion can't overflow in practice.
 	_ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN)
 	_ = l.file.Close()
 	// Keep the slot file on disk — it's a permanent slot, not a
@@ -101,6 +105,8 @@ func trySlot(dir string, slot int) (*Lock, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open slot: %w", err)
 	}
+	// #nosec G115 -- see Release() for rationale; fd values are
+	// small positive ints, uintptr→int conversion is safe.
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		_ = f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
