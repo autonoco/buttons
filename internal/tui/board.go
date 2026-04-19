@@ -42,11 +42,15 @@ type Model struct {
 
 	buttons []button.Button
 
-	// cursor is the selected index into the card grid. The grid is the
-	// pinned-first ordering returned by cardOrder() — pinned buttons
-	// float to the front, unpinned follow. up/down nav moves by one
-	// grid row (cardsPerRow() cells); left/right moves by 1.
+	// cursor is the selected index into cardOrder(). In card-grid
+	// mode, up/down moves by one grid row (cardsPerRow() cells) and
+	// left/right moves by 1. In list mode, up/down moves by 1 and
+	// left/right has no meaning (ignored).
 	cursor int
+
+	// viewMode switches the main content area between the bordered
+	// card grid and a single-column text list. Toggle with `v`.
+	viewMode viewMode
 
 	status map[string]runStatus
 
@@ -97,6 +101,14 @@ type Model struct {
 
 	width, height int
 }
+
+// viewMode selects the main content layout.
+type viewMode int
+
+const (
+	viewCards viewMode = iota // bordered grid (default)
+	viewList                  // single-column text list
+)
 
 type pressDoneMsg struct {
 	name   string
@@ -331,6 +343,18 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.logsPaneCursor = 0
 		}
 		return m, nil
+
+	case "v":
+		// Flip between card grid and single-column list. Same data,
+		// different density — list reads like a dense index, cards
+		// read like a dashboard. Cursor index is preserved across
+		// the flip (cardOrder is stable).
+		if m.viewMode == viewCards {
+			m.viewMode = viewList
+		} else {
+			m.viewMode = viewCards
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -441,13 +465,16 @@ func (m Model) moveCursor(delta int) tea.Model {
 	return m
 }
 
-// moveByRow shifts the cursor up/down by one grid row — which is
-// cardsPerRow() cells away. Clamps so the cursor never lands on a
-// non-existent cell past the end of the last row.
+// moveByRow shifts the cursor up/down by one grid row — which in
+// card mode is cardsPerRow() cells away, and in list mode is just 1.
+// Clamps so the cursor never lands past the end of the last row.
 func (m Model) moveByRow(delta int) tea.Model {
 	n := len(m.buttons)
 	if n == 0 {
 		return m
+	}
+	if m.viewMode == viewList {
+		return m.moveCursor(delta)
 	}
 	cols := m.cardsPerRow()
 	target := m.cursor + delta*cols
@@ -670,12 +697,14 @@ type layout struct {
 const (
 	leftPad = 2
 	// cardHeightIdle is the rendered height of an idle card: top border
-	// + name line + meta line + bottom border = 4 rows.
-	cardHeightIdle = 4
+	// + name + blank + meta + bottom border = 5 rows. The interior
+	// blank line makes the two text lines feel like separate pieces
+	// of information rather than a packed two-line block.
+	cardHeightIdle = 5
 	// cardGutter is the vertical blank between card grid rows.
 	cardGutter    = 1
-	footerHeight  = 3 // bordered action pill height
-	actionGap     = 2 // spaces between quit and press pills
+	footerHeight  = 1 // flat pill (no border) is a single row
+	actionGap     = 2
 	headerHeight  = 1
 	dividerHeight = 1
 	sectionBlank  = 1
@@ -691,16 +720,22 @@ func (m Model) computeLayout() layout {
 		hero := m.renderEmptyHero()
 		y += countLines(hero) + sectionBlank + dividerHeight + sectionBlank
 	} else {
-		cols := m.cardsPerRow()
-		rows := (len(m.buttons) + cols - 1) / cols
-		// Each row = card height + gutter between rows. Active cards
-		// are 1 taller (badge above) — but the layout math just needs
-		// a rough bound for hit-testing; hit-test accepts the larger
-		// Y1.
-		rowHeight := cardHeightIdle + cardGutter
-		gridHeight := rows*rowHeight - cardGutter
-		if gridHeight < cardHeightIdle {
-			gridHeight = cardHeightIdle
+		var gridHeight int
+		if m.viewMode == viewList {
+			// One line per row + one blank between rows.
+			n := len(m.buttons)
+			gridHeight = n + (n - 1)
+			if gridHeight < 1 {
+				gridHeight = 1
+			}
+		} else {
+			cols := m.cardsPerRow()
+			rows := (len(m.buttons) + cols - 1) / cols
+			rowHeight := cardHeightIdle + cardGutter
+			gridHeight = rows*rowHeight - cardGutter
+			if gridHeight < cardHeightIdle {
+				gridHeight = cardHeightIdle
+			}
 		}
 		l.cardsY0 = y
 		l.cardsY1 = y + gridHeight - 1
@@ -710,8 +745,9 @@ func (m Model) computeLayout() layout {
 	l.footerY0 = y
 	l.footerY1 = y + footerHeight - 1
 
-	// Press pill width = label("● press" = 7) + padding(6) + border(2).
-	pressW := 7 + 6 + 2
+	// Press pill width = label("press" = 5) + padding(6). No border
+	// on the flat pill so no extra cells.
+	pressW := 5 + 6
 	l.pressX0 = leftPad
 	l.pressX1 = l.pressX0 + pressW
 
@@ -763,18 +799,31 @@ func (m Model) maxNameWidth() int {
 	return w
 }
 
-// cardIndexAt converts a click at (x, y) inside the card-grid region
-// into the index of the card that was clicked, or -1 if the click
-// landed in a gutter. y0 is the row where the grid starts.
+// cardIndexAt converts a click at (x, y) inside the grid region into
+// the index of the button that was clicked, or -1 for gutter clicks.
+// Branches on viewMode so list clicks pick the right row.
 func (m Model) cardIndexAt(x, y, y0 int) int {
 	order := m.cardOrder()
 	if len(order) == 0 {
 		return -1
 	}
+
+	if m.viewMode == viewList {
+		// Rows are 1 line tall; blank line between rows is a gutter.
+		rel := y - y0
+		if rel%2 != 0 { // odd rows are gutters
+			return -1
+		}
+		idx := rel / 2
+		if idx < 0 || idx >= len(order) {
+			return -1
+		}
+		return idx
+	}
+
 	cols := m.cardsPerRow()
 	rowHeight := cardHeightIdle + cardGutter
 	row := (y - y0) / rowHeight
-	// Reject clicks inside the gutter between rows.
 	if (y-y0)%rowHeight >= cardHeightIdle {
 		return -1
 	}
@@ -817,6 +866,8 @@ func (m Model) View() tea.View {
 		parts = append(parts, m.argForm.render(m.styles, m.width))
 	case len(m.buttons) == 0:
 		parts = append(parts, m.renderEmptyHero())
+	case m.viewMode == viewList:
+		parts = append(parts, m.renderList())
 	default:
 		parts = append(parts, m.renderCards())
 	}
@@ -948,10 +999,10 @@ func (m Model) renderCard(btn button.Button, selected bool) string {
 		sub = m.styles.Muted.Render(cardMeta(btn))
 	}
 
-	// Center-align the sub line within the card's interior width so
-	// short meta strings (e.g., "HTTP · 60S") sit under the name
-	// instead of hard-left against the border.
-	card := style.Render(name + "\n" + sub)
+	// Blank line between name and meta gives the card breathing
+	// room — without it the two lines read as one dense chunk and
+	// the meta competes with the name for the same visual weight.
+	card := style.Render(name + "\n\n" + sub)
 
 	if m.status[btn.Name] == statusRunning {
 		cardW := lipgloss.Width(card)
@@ -974,6 +1025,71 @@ func cardMeta(b button.Button) string {
 		rt = "SHELL"
 	}
 	return fmt.Sprintf("%s · %ds", rt, b.TimeoutSeconds)
+}
+
+// renderList paints the same cardOrder as renderCards but as a
+// single-column text list — one row per button. No borders; the
+// cursor reads as a chevron and the meta right-aligns. Denser than
+// the card grid, useful when scanning lots of buttons at once.
+func (m Model) renderList() string {
+	order := m.cardOrder()
+	if len(order) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(order)*2)
+	for i, btn := range order {
+		lines = append(lines, m.renderListRow(btn, i == m.cursor))
+		// Blank between rows keeps the list feeling spacious instead
+		// of packed like a log stream.
+		if i < len(order)-1 {
+			lines = append(lines, "")
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// renderListRow is one line of the list view: glyph, selection
+// chevron, name (bold when focused), right-aligned meta.
+func (m Model) renderListRow(btn button.Button, selected bool) string {
+	active := m.status[btn.Name] == statusRunning
+
+	var glyph string
+	switch {
+	case active:
+		glyph = m.styles.indicator(true, m.spinnerFrame)
+	default:
+		glyph = m.styles.indicator(false, -1)
+	}
+
+	var chev string
+	if selected {
+		chev = m.styles.ButtonNameSelected.Render("› ")
+	} else {
+		chev = "  "
+	}
+
+	var name string
+	switch {
+	case active:
+		name = m.styles.ButtonNameActive.Render(btn.Name)
+	case selected:
+		name = m.styles.ButtonNameSelected.Render(btn.Name)
+	default:
+		name = m.styles.ButtonName.Render(btn.Name)
+	}
+
+	meta := m.styles.Muted.Render(cardMeta(btn))
+
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	left := strings.Repeat(" ", leftPad) + glyph + " " + chev + name
+	gap := w - visibleLen(left) - visibleLen(meta) - leftPad
+	if gap < 2 {
+		gap = 2
+	}
+	return left + strings.Repeat(" ", gap) + meta
 }
 
 // elapsedFor returns how long the press has been running, or 0 when
@@ -1046,7 +1162,7 @@ func (m Model) renderFooter() string {
 	if !m.pressIsEnabled() {
 		pressStyle = m.styles.ActionPrimaryDisabled
 	}
-	press := pressStyle.Render("● press")
+	press := pressStyle.Render("press")
 
 	hints := m.composeHints()
 
@@ -1086,7 +1202,13 @@ func (m Model) composeHints() string {
 	if m.logsOpen {
 		return pair("↑↓", "run") + sep + pair("↵", "details") + sep + pair("L", "hide") + sep + pair("esc", "close")
 	}
-	return pair("↑↓", "nav") + sep + pair("↵", "press") + sep + pair("L", "logs") + sep + pair("?", "help")
+	// Label the `v` chip with the TARGET mode, not the current one —
+	// reads as "press v to switch to X," which is what the user wants.
+	viewTarget := "list"
+	if m.viewMode == viewList {
+		viewTarget = "cards"
+	}
+	return pair("↑↓", "nav") + sep + pair("↵", "press") + sep + pair("L", "logs") + sep + pair("v", viewTarget)
 }
 
 // renderChrome is the bottom status strip that mirrors the spec
@@ -1121,8 +1243,9 @@ func (m Model) renderChrome() string {
 			target = "none"
 		}
 		right = m.styles.Chrome.Render("LOGS OPEN · SCOPE " + target)
-	default:
-		right = m.styles.ChromeActiveBadge.Render("● REC")
+		// default: nothing — the chrome strip reads as identity-only
+		// when the board is idle. ● REC was decorative and conveyed
+		// no state, so it's gone.
 	}
 
 	w := m.width

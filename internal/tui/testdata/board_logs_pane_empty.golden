@@ -3,6 +3,7 @@
 
   ┏━━━━━━━━━━━━━━━━┓
   ┃   deploy       ┃
+  ┃                ┃
   ┃  SHELL · 300s  ┃
   ┗━━━━━━━━━━━━━━━━┛
 
@@ -14,8 +15,6 @@
 
 ────────────────────────────────────────────────────────────────────────────────
 
-  ┏━━━━━━━━━━━━━┓                                                             
-  ┃   ● press   ┃         ↑↓  run  ·   ↵  details  ·   L  hide  ·   esc  close
-  ┗━━━━━━━━━━━━━┛                                                             
+     press                ↑↓  run  ·   ↵  details  ·   L  hide  ·   esc  close
 
   TTY 1 · UTF-8 · 256-COLOR                           LOGS OPEN · SCOPE deploy
