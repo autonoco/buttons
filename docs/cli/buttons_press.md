@@ -48,6 +48,7 @@ buttons press [name] [flags]
 ```
       --json       output in JSON format
       --no-input   disable all interactive prompts
+      --summary    show a read-only plan/snapshot instead of mutating
 ```
 
 ### SEE ALSO

@@ -1,6 +1,9 @@
 package button
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Button struct {
 	SchemaVersion        int               `json:"schema_version"`
@@ -20,9 +23,16 @@ type Button struct {
 	// Pinned buttons render as large, clickable cards at the top of the
 	// `buttons board` TUI. Omitted from JSON when false to avoid polluting
 	// every existing button.json — most buttons aren't pinned.
-	Pinned    bool      `json:"pinned,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Pinned bool `json:"pinned,omitempty"`
+	// OutputSchema describes the shape of the button's stdout-as-JSON
+	// output. JSON Schema Draft 2020-12. Optional — when present,
+	// drawers can statically type-check references like
+	// ${step_id.output.field} against this schema at connect time.
+	// Stored verbatim as raw JSON so we don't force a specific schema
+	// library dependency on every button consumer.
+	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
 }
 
 type ArgDef struct {

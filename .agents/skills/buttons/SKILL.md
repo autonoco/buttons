@@ -64,6 +64,7 @@ buttons [command]
 |------|------|-------------|
 | `--json` | bool | output in JSON format |
 | `--no-input` | bool | disable all interactive prompts |
+| `--summary` | bool | show a read-only plan/snapshot instead of mutating |
 
 ### `buttons batteries`
 
@@ -193,34 +194,10 @@ buttons delete [flags]
 
 ### `buttons drawer`
 
-Manage button groups (drawers)
+Manage drawer workflows (chains of buttons)
 
 ```
-buttons drawer [command]
-```
-
-#### `buttons drawer add`
-
-Add a button to a drawer
-
-```
-buttons drawer add
-```
-
-#### `buttons drawer create`
-
-Create a new drawer
-
-```
-buttons drawer create
-```
-
-#### `buttons drawer list`
-
-List all drawers
-
-```
-buttons drawer list
+buttons drawer
 ```
 
 ### `buttons history`
@@ -296,6 +273,18 @@ Marketplace (search/install/import/publish)
 ```
 buttons store
 ```
+
+### `buttons summary`
+
+Print a workspace snapshot (buttons, drawers, recent runs)
+
+```
+buttons summary [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--deep` | bool | inline full schemas + all recent runs |
 
 ### `buttons update`
 

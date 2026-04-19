@@ -49,6 +49,16 @@ Error codes are uppercase snake_case: `NOT_FOUND`, `TIMEOUT`, `SCRIPT_ERROR`, `M
 ### Button Spec Schema
 Every JSON spec file must include `"schema_version": 1`. This is non-negotiable for future migration support.
 
+### Drawer Spec Schema
+Drawers are workflow chains of buttons. Spec stored at `~/.buttons/drawers/<name>/drawer.json` with `"schema_version": 1`. The canonical JSON Schema lives at `docs/schemas/drawer.schema.json` and is generated from the Go struct via `go generate ./...`. Agent-facing CLI verbs: `create`, `add`, `connect`, `press`, `list`, `remove`, `summary`. See `docs/examples/apify-to-snowflake.md` for a full walkthrough.
+
+References between steps use `${step_id.output.field}` (dotted-path) or `$ENV{VAR_NAME}` for secrets. Stage 2 swaps the dotted-path resolver for CEL while keeping the `${...}` wire format stable.
+
+### `buttons summary` and `--summary`
+Workspace introspection: `buttons summary [--json]` dumps buttons, drawers, recent runs, and failures in one response so agents orient themselves in a single tool call. Bare `buttons` invokes the same.
+
+`--summary` is a universal flag: applied to any mutating command (`press`, `drawer press`, `drawer add`, `drawer connect`, etc.) it returns a read-only plan instead of executing. Never mutates, never touches the network, never side-effects.
+
 ### Execution Security
 - `context.WithTimeout` on every `os/exec` call, default 60s
 - Kill process GROUP not just process (`Setpgid` + `Kill(-pid, SIGKILL)`) after 5s SIGTERM grace
