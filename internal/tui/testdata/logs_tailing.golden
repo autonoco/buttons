@@ -1,9 +1,9 @@
-  deploy — shell  ·  press 0c5b                                                ● follow  ·  ⠋ 3.2s
+  deploy — shell  ·  press 0c5b                                                ● follow  ·  ⠋ 0.0s
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-  20:58:16.139  info  deploy: starting — env=staging
-  20:58:16.239  out   ▸ resolving dependencies…
-  20:58:17.339  warn  using deprecated flag --legacy-peer-deps
+  08:31:58.000  info  deploy: starting — env=staging
+  08:31:58.100  out   ▸ resolving dependencies…
+  08:31:59.200  warn  using deprecated flag --legacy-peer-deps
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 

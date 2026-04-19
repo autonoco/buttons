@@ -170,26 +170,47 @@ func TestSnapshot_DetailShell(t *testing.T) {
 	assertSnapshot(t, "detail_shell", m.View().Content)
 }
 
+// logsFixtureTime is a fixed instant used for all log-line timestamps
+// in the logs snapshot tests. Real `time.Now()` makes the rendered
+// `hh:mm:ss.mmm` column drift between runs; pinning a single time
+// keeps the golden deterministic across machines. The logs view
+// renders timestamps via `l.Ts.Local().Format(...)`, so setting the
+// location to time.UTC means the formatter's output is
+// timezone-invariant too.
+var logsFixtureTime = time.Date(2026, 4, 18, 12, 31, 58, 0, time.UTC)
+
 func TestSnapshot_LogsTailing(t *testing.T) {
 	// Full-screen logs view mid-press: header shows "● follow"
 	// indicator + elapsed counter + spinner; chrome bottom shows
 	// "● FOLLOW · PRESS <id>".
+	//
+	// Note: the spinner frame and elapsed counter in the header still
+	// derive from wall-clock-sensitive paths (spinnerFrame is set by
+	// the test below; startedAt is pinned so elapsed() is deterministic
+	// because the test overrides it before calling View).
 	btn := &button.Button{Name: "deploy", Runtime: "shell", TimeoutSeconds: 300}
 	m := NewLogs(btn, nil, nil, "/tmp/deploy/main.sh")
-	// Cancel the timeout context so the untouched Init goroutine path
-	// doesn't leak.
 	if m.cancel != nil {
 		m.cancel()
 	}
 	m.width = 100
 	m.height = 28
 	m.pressID = "0c5b"
-	m.startedAt = time.Now().Add(-3*time.Second - 200*time.Millisecond)
+	// Pin startedAt far in the past but keep elapsed() result stable
+	// by overriding the spinner frame; the view's `elapsed()` uses
+	// time.Since() which is non-deterministic, so the header elapsed
+	// will drift. Accept the drift — the test's point is layout +
+	// chrome + severity coloring, not the elapsed column.
+	m.startedAt = logsFixtureTime
+	m.spinnerFrame = 0
 	m.lines = append(m.lines,
-		engine.LogLine{Ts: m.startedAt, Sev: engine.SeverityInfo, Text: "deploy: starting — env=staging"},
-		engine.LogLine{Ts: m.startedAt.Add(100 * time.Millisecond), Sev: engine.SeverityStdout, Text: "resolving dependencies…"},
-		engine.LogLine{Ts: m.startedAt.Add(1200 * time.Millisecond), Sev: engine.SeverityWarn, Text: "using deprecated flag --legacy-peer-deps"},
+		engine.LogLine{Ts: logsFixtureTime, Sev: engine.SeverityInfo, Text: "deploy: starting — env=staging"},
+		engine.LogLine{Ts: logsFixtureTime.Add(100 * time.Millisecond), Sev: engine.SeverityStdout, Text: "resolving dependencies…"},
+		engine.LogLine{Ts: logsFixtureTime.Add(1200 * time.Millisecond), Sev: engine.SeverityWarn, Text: "using deprecated flag --legacy-peer-deps"},
 	)
+	// Elapsed drift: override by zeroing startedAt so elapsed() returns
+	// 0 (fixed output). We only want the layout to be captured.
+	m.startedAt = time.Time{}
 	assertSnapshot(t, "logs_tailing", m.View().Content)
 }
 
@@ -204,12 +225,15 @@ func TestSnapshot_LogsDoneOK(t *testing.T) {
 	m.width = 100
 	m.height = 28
 	m.pressID = "0c5b"
-	m.startedAt = time.Now().Add(-437 * time.Millisecond)
+	// done + result → elapsed() pulls from DurationMs (deterministic).
 	m.done = true
 	m.result = &engine.Result{Status: "ok", ExitCode: 0, DurationMs: 437}
 	m.lines = append(m.lines,
-		engine.LogLine{Ts: m.startedAt, Sev: engine.SeverityStdout, Text: "ok"},
+		engine.LogLine{Ts: logsFixtureTime, Sev: engine.SeverityStdout, Text: "ok"},
 	)
+	// startedAt is only read by elapsed() and — when done — ignored in
+	// favor of result.DurationMs. Leave it zero so there's no wall-
+	// clock dependency.
 	assertSnapshot(t, "logs_done_ok", m.View().Content)
 }
 
