@@ -22,6 +22,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/autonoco/buttons/internal/button"
+	"github.com/autonoco/buttons/internal/engine"
 )
 
 // update lets a local run rewrite all the golden files after an
@@ -167,6 +168,49 @@ func TestSnapshot_DetailShell(t *testing.T) {
 	m.width = 100
 	m.height = 40
 	assertSnapshot(t, "detail_shell", m.View().Content)
+}
+
+func TestSnapshot_LogsTailing(t *testing.T) {
+	// Full-screen logs view mid-press: header shows "● follow"
+	// indicator + elapsed counter + spinner; chrome bottom shows
+	// "● FOLLOW · PRESS <id>".
+	btn := &button.Button{Name: "deploy", Runtime: "shell", TimeoutSeconds: 300}
+	m := NewLogs(btn, nil, nil, "/tmp/deploy/main.sh")
+	// Cancel the timeout context so the untouched Init goroutine path
+	// doesn't leak.
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.width = 100
+	m.height = 28
+	m.pressID = "0c5b"
+	m.startedAt = time.Now().Add(-3*time.Second - 200*time.Millisecond)
+	m.lines = append(m.lines,
+		engine.LogLine{Ts: m.startedAt, Sev: engine.SeverityInfo, Text: "deploy: starting — env=staging"},
+		engine.LogLine{Ts: m.startedAt.Add(100 * time.Millisecond), Sev: engine.SeverityStdout, Text: "resolving dependencies…"},
+		engine.LogLine{Ts: m.startedAt.Add(1200 * time.Millisecond), Sev: engine.SeverityWarn, Text: "using deprecated flag --legacy-peer-deps"},
+	)
+	assertSnapshot(t, "logs_tailing", m.View().Content)
+}
+
+func TestSnapshot_LogsDoneOK(t *testing.T) {
+	// Logs view after a successful press: header + chrome flip to the
+	// EXIT N / duration summary. Footer pill flips cancel → back.
+	btn := &button.Button{Name: "deploy", Runtime: "shell", TimeoutSeconds: 300}
+	m := NewLogs(btn, nil, nil, "/tmp/deploy/main.sh")
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.width = 100
+	m.height = 28
+	m.pressID = "0c5b"
+	m.startedAt = time.Now().Add(-437 * time.Millisecond)
+	m.done = true
+	m.result = &engine.Result{Status: "ok", ExitCode: 0, DurationMs: 437}
+	m.lines = append(m.lines,
+		engine.LogLine{Ts: m.startedAt, Sev: engine.SeverityStdout, Text: "ok"},
+	)
+	assertSnapshot(t, "logs_done_ok", m.View().Content)
 }
 
 func TestSnapshot_BoardArgFormOpen(t *testing.T) {

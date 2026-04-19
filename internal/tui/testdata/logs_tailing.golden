@@ -1,0 +1,14 @@
+  deploy — shell  ·  press 0c5b                                                ● follow  ·  ⠋ 3.2s
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  20:58:16.139  info  deploy: starting — env=staging
+  20:58:16.239  out   ▸ resolving dependencies…
+  20:58:17.339  warn  using deprecated flag --legacy-peer-deps
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  ┌──────────┐                                                                                    
+  │  cancel  │                                          f  ∞ tail  ·   g/G  top/end  ·   esc  back
+  └──────────┘                                                                                    
+
+  TTY 1 · UTF-8 · 256-COLOR                                                  ● FOLLOW · PRESS 0c5b
