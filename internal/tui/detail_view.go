@@ -49,9 +49,66 @@ func (m DetailModel) View() tea.View {
 	parts = append(parts, "")
 	parts = append(parts, m.renderDetailFooter())
 
+	// Bottom chrome strip — runtime / capacity / network for HTTP
+	// buttons, just the runtime label otherwise. Mirrors the board's
+	// chrome pattern so the two views share visual vocabulary.
+	parts = append(parts, "")
+	parts = append(parts, m.renderDetailChrome())
+
 	v := tea.NewView(strings.Join(parts, "\n"))
 	v.AltScreen = true
 	return v
+}
+
+// renderDetailChrome paints the bottom status strip for the detail
+// page. Surfaces the runtime-shaped facts at a glance:
+//
+//	HTTP button    HTTP <method> · <max-resp> · NET PUBLIC|PRIVATE
+//	shell/python   <RUNTIME> · <timeout>s
+//	prompt         PROMPT · <timeout>s
+//
+// Left side is always the brand identity line the board uses. Right
+// side flips on button type.
+func (m DetailModel) renderDetailChrome() string {
+	left := strings.Join([]string{"TTY 1", "UTF-8", "256-COLOR"}, m.styles.Muted.Render(" · "))
+	left = m.styles.Chrome.Render(left)
+
+	var rightParts []string
+	switch {
+	case m.btn.URL != "":
+		method := m.btn.Method
+		if method == "" {
+			method = "GET"
+		}
+		rightParts = append(rightParts, "HTTP "+method)
+		rightParts = append(rightParts, button.FormatSize(button.ResolveMaxResponseBytes(m.btn.MaxResponseBytes)))
+		if m.btn.AllowPrivateNetworks {
+			rightParts = append(rightParts, "NET PRIVATE")
+		} else {
+			rightParts = append(rightParts, "NET PUBLIC")
+		}
+	case m.btn.Runtime == "prompt":
+		rightParts = append(rightParts, "PROMPT")
+		rightParts = append(rightParts, fmt.Sprintf("%ds", m.btn.TimeoutSeconds))
+	default:
+		rt := strings.ToUpper(m.btn.Runtime)
+		if rt == "" {
+			rt = "SHELL"
+		}
+		rightParts = append(rightParts, rt)
+		rightParts = append(rightParts, fmt.Sprintf("%ds", m.btn.TimeoutSeconds))
+	}
+	right := m.styles.Chrome.Render(strings.Join(rightParts, " · "))
+
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	gap := w - lipgloss.Width(left) - lipgloss.Width(right) - leftPad*2
+	if gap < 2 {
+		gap = 2
+	}
+	return strings.Repeat(" ", leftPad) + left + strings.Repeat(" ", gap) + right
 }
 
 // renderDetailHeader is the name + optional description line.

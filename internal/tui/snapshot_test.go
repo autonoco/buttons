@@ -129,6 +129,46 @@ func TestSnapshot_BoardPinnedActive(t *testing.T) {
 	assertSnapshot(t, "board_pinned_active", m.View().Content)
 }
 
+func TestSnapshot_DetailHTTP(t *testing.T) {
+	// Detail view for an HTTP button — chrome surfaces method, max
+	// response cap, and network access scope.
+	btn := &button.Button{
+		Name:                 "weather",
+		Description:          "get current weather for a city via wttr.in JSON API",
+		Runtime:              "http",
+		URL:                  "https://wttr.in/{{city}}?format=j1",
+		Method:               "GET",
+		TimeoutSeconds:       60,
+		AllowPrivateNetworks: false,
+		Args: []button.ArgDef{
+			{Name: "city", Type: "string", Required: true},
+		},
+	}
+	m := NewDetail(btn, nil, "", "")
+	m.width = 100
+	m.height = 40
+	assertSnapshot(t, "detail_http", m.View().Content)
+}
+
+func TestSnapshot_DetailShell(t *testing.T) {
+	// Detail view for a shell button with a code path — chrome shows
+	// runtime + timeout; the `e edit` hint is present.
+	btn := &button.Button{
+		Name:           "deploy",
+		Description:    "ship a release to a target env",
+		Runtime:        "shell",
+		TimeoutSeconds: 300,
+		Args: []button.ArgDef{
+			{Name: "env", Type: "string", Required: true},
+			{Name: "verbose", Type: "bool", Required: false},
+		},
+	}
+	m := NewDetail(btn, nil, "", "/tmp/deploy/main.sh")
+	m.width = 100
+	m.height = 40
+	assertSnapshot(t, "detail_shell", m.View().Content)
+}
+
 func TestSnapshot_BoardArgFormOpen(t *testing.T) {
 	btn := button.Button{
 		Name:           "deploy",

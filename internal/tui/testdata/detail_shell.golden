@@ -1,0 +1,21 @@
+  deploy  — ship a release to a target env                                                  detail
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    runtime       shell
+    timeout       300s
+
+    args
+    
+    env  string · required
+    verbose  bool · optional
+
+    usage
+    
+    buttons press deploy --arg env=<string>
+    buttons press deploy --arg env=<string> --json
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+   e  edit  ·   ↵  back
+
+  TTY 1 · UTF-8 · 256-COLOR                                                           SHELL · 300s
