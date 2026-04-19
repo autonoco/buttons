@@ -11,6 +11,7 @@ import (
 
 	"github.com/autonoco/buttons/internal/battery"
 	"github.com/autonoco/buttons/internal/button"
+	"github.com/autonoco/buttons/internal/deadletter"
 	"github.com/autonoco/buttons/internal/engine"
 )
 
@@ -300,6 +301,29 @@ func (e *Executor) finalize(res *ExecuteResult, d *Drawer) {
 		Steps:      res.Steps,
 		ErrorType:  errorCode(res.Error),
 	})
+
+	// DLQ on failure so agents can triage via `buttons dlq list`.
+	// Using redacted inputs keeps secrets out of the dead letter dir
+	// just like we do for the run history.
+	if res.Status != "ok" {
+		raw, _ := json.Marshal(res)
+		_ = deadletter.Record(deadletter.Entry{
+			Target:     "drawer/" + d.Name,
+			FailedAt:   res.FinishedAt,
+			Code:       errorCode(res.Error),
+			Message:    errorMessage(res.Error),
+			FailedStep: res.FailedStep,
+			Inputs:     redacted,
+			Raw:        raw,
+		})
+	}
+}
+
+func errorMessage(e *StepError) string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
 }
 
 // computeBackoff turns a retry policy + attempt number into a wait

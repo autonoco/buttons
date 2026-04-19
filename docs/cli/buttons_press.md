@@ -37,10 +37,12 @@ buttons press [name] [flags]
 ### Options
 
 ```
-      --arg stringArray   argument as key=value
-      --dry-run           show what would execute without running
-  -h, --help              help for press
-      --timeout int       override timeout in seconds
+      --arg stringArray            argument as key=value
+      --dry-run                    show what would execute without running
+  -h, --help                       help for press
+      --idempotency-key string     reuse the cached result for this key if present (cross-run dedup)
+      --idempotency-ttl duration   how long idempotency entries stay valid (e.g. 1h, 24h) (default 24h0m0s)
+      --timeout int                override timeout in seconds
 ```
 
 ### Options inherited from parent commands

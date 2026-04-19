@@ -65,11 +65,18 @@ func TestHistory_PressWritesHistory(t *testing.T) {
 		t.Error("started_at should be set")
 	}
 
-	// Verify JSON file exists in pressed/ directory
+	// Verify the run JSON landed in pressed/. The progress JSONL file
+	// is co-located (one-per-press) so we filter by suffix here.
 	pressedDir := filepath.Join(env.home, "buttons", "test", "pressed")
 	entries, _ := os.ReadDir(pressedDir)
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 file in pressed/, got %d", len(entries))
+	jsonFiles := 0
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".json") && !strings.HasSuffix(e.Name(), ".progress.jsonl") {
+			jsonFiles++
+		}
+	}
+	if jsonFiles != 1 {
+		t.Fatalf("expected 1 history .json file, got %d (entries: %v)", jsonFiles, entries)
 	}
 }
 

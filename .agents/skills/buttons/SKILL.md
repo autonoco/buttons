@@ -192,6 +192,38 @@ buttons delete [flags]
 |------|------|-------------|
 | `-F, --force` | bool | delete without confirmation |
 
+### `buttons dlq`
+
+Inspect and replay final-failed runs (dead letter queue)
+
+```
+buttons dlq [command]
+```
+
+#### `buttons dlq list`
+
+List final-failed runs
+
+```
+buttons dlq list
+```
+
+#### `buttons dlq remove`
+
+Delete a DLQ entry (after out-of-band resolution)
+
+```
+buttons dlq remove
+```
+
+#### `buttons dlq replay`
+
+Replay a DLQ entry (prints the original command to run)
+
+```
+buttons dlq replay
+```
+
 ### `buttons drawer`
 
 Manage drawer workflows (chains of buttons)
@@ -256,6 +288,8 @@ buttons press [flags]
 |------|------|-------------|
 | `--arg` | stringArray | argument as key=value |
 | `--dry-run` | bool | show what would execute without running |
+| `--idempotency-key` | string | reuse the cached result for this key if present (cross-run dedup) |
+| `--idempotency-ttl` | duration | how long idempotency entries stay valid (e.g. 1h, 24h) |
 | `--timeout` | int | override timeout in seconds |
 
 ### `buttons smash`
@@ -285,6 +319,18 @@ buttons summary [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `--deep` | bool | inline full schemas + all recent runs |
+
+### `buttons tail`
+
+Follow the progress JSONL of a press
+
+```
+buttons tail [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `-f, --follow` | bool | keep tailing as new lines arrive |
 
 ### `buttons update`
 
