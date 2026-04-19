@@ -192,38 +192,6 @@ buttons delete [flags]
 |------|------|-------------|
 | `-F, --force` | bool | delete without confirmation |
 
-### `buttons dlq`
-
-Inspect and replay final-failed runs (dead letter queue)
-
-```
-buttons dlq [command]
-```
-
-#### `buttons dlq list`
-
-List final-failed runs
-
-```
-buttons dlq list
-```
-
-#### `buttons dlq remove`
-
-Delete a DLQ entry (after out-of-band resolution)
-
-```
-buttons dlq remove
-```
-
-#### `buttons dlq replay`
-
-Replay a DLQ entry (prints the original command to run)
-
-```
-buttons dlq replay
-```
-
 ### `buttons drawer`
 
 Manage drawer workflows (chains of buttons)

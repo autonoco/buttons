@@ -8,11 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"encoding/json"
-
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
-	"github.com/autonoco/buttons/internal/deadletter"
 	"github.com/autonoco/buttons/internal/engine"
 	"github.com/autonoco/buttons/internal/history"
 	"github.com/autonoco/buttons/internal/idempotency"
@@ -196,21 +193,10 @@ Examples:
 			}
 		}
 
-		// Final failure → Dead Letter Queue. Single-press has no retry
-		// policy at the engine layer (that's drawer-level); any
-		// failure here is therefore "final" by definition. Agents
-		// triage via `buttons dlq list`.
-		if result.Status != "ok" {
-			raw, _ := json.Marshal(result)
-			_ = deadletter.Record(deadletter.Entry{
-				Target:   "button/" + btn.Name,
-				FailedAt: time.Now().UTC(),
-				Code:     firstNonEmpty(result.ErrorType, "SCRIPT_ERROR"),
-				Message:  strings.TrimSpace(result.Stderr),
-				Inputs:   stringMapToAny(parsedArgs),
-				Raw:      raw,
-			})
-		}
+		// Failures are recorded in history (handled above). Agents
+		// triage via `buttons summary --json` which aggregates
+		// recent_failures across every button + drawer, or
+		// `buttons history <name>` for per-button drill-in.
 
 		if jsonOutput {
 			if result.Status == "ok" {
@@ -303,26 +289,6 @@ func readPrompt(buttonName string) string {
 		return ""
 	}
 	return content
-}
-
-// firstNonEmpty returns the first non-empty string, or "".
-func firstNonEmpty(xs ...string) string {
-	for _, s := range xs {
-		if s != "" {
-			return s
-		}
-	}
-	return ""
-}
-
-// stringMapToAny copies a string map into an any map. Used when
-// DLQ entries need to carry press args in their generic form.
-func stringMapToAny(in map[string]string) map[string]any {
-	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
 }
 
 func buildEnvMap(btn *button.Button, args map[string]string) map[string]string {

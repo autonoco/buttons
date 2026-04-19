@@ -31,7 +31,6 @@ buttons [flags]
 * [buttons config](buttons_config.md)	 - Read and write per-user settings
 * [buttons create](buttons_create.md)	 - Create a new button
 * [buttons delete](buttons_delete.md)	 - Delete a button
-* [buttons dlq](buttons_dlq.md)	 - Inspect and replay final-failed runs (dead letter queue)
 * [buttons drawer](buttons_drawer.md)	 - Manage drawer workflows (chains of buttons)
 * [buttons history](buttons_history.md)	 - Show run history
 * [buttons init](buttons_init.md)	 - Initialize a project-local .buttons directory

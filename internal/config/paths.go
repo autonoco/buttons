@@ -133,16 +133,6 @@ func QueuesDir() (string, error) {
 	return filepath.Join(base, "queues"), nil
 }
 
-// DeadLetterDir holds final-failed runs that exhausted their retry
-// policy. `buttons dlq list|replay` reads from here.
-func DeadLetterDir() (string, error) {
-	base, err := DataDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(base, "dead_letter"), nil
-}
-
 func EnsureDataDir() error {
 	base, err := DataDir()
 	if err != nil {

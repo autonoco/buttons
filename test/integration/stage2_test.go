@@ -90,9 +90,11 @@ func TestProgressPath_ExportsEnvVar(t *testing.T) {
 	}
 }
 
-// TestDLQ_CapturesFailure verifies a failed press lands in the DLQ
-// and the list command surfaces it.
-func TestDLQ_CapturesFailure(t *testing.T) {
+// TestFailure_ShowsInSummary verifies a failed press lands in the
+// button's history and is surfaced by `buttons summary --json`
+// under recent_failures. No separate DLQ — failures live where
+// the rest of history lives.
+func TestFailure_ShowsInSummary(t *testing.T) {
 	env := newTestEnv(t)
 	env.run("create", "always-fail",
 		"--runtime", "shell",
@@ -105,12 +107,15 @@ func TestDLQ_CapturesFailure(t *testing.T) {
 		t.Fatalf("expected failure, got success")
 	}
 
-	r = env.run("dlq", "list", "--json")
+	r = env.run("summary", "--json")
 	if r.ExitCode != 0 {
-		t.Fatalf("dlq list: exit %d", r.ExitCode)
+		t.Fatalf("summary: exit %d", r.ExitCode)
 	}
-	if !strings.Contains(r.Stdout, "button/always-fail") {
-		t.Errorf("dlq should list the failure: %s", r.Stdout)
+	if !strings.Contains(r.Stdout, "always-fail") {
+		t.Errorf("summary should mention the failed button: %s", r.Stdout)
+	}
+	if !strings.Contains(r.Stdout, "recent_failures") {
+		t.Errorf("summary should have a recent_failures bucket: %s", r.Stdout)
 	}
 }
 
