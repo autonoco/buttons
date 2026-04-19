@@ -30,6 +30,17 @@ import (
 // from the repo surface as test failures.
 var update = flag.Bool("update", false, "rewrite testdata/*.golden instead of comparing")
 
+// TestMain pins the runtime's local timezone to UTC for every test in
+// this package. LogsModel renders timestamps via `.Local().Format(...)`,
+// so without this a golden captured on a developer machine (EDT, say)
+// wouldn't match CI (UTC) even though the underlying time value is
+// identical. Setting time.Local early means every test sees the same
+// local-time formatting regardless of the host's TZ.
+func TestMain(m *testing.M) {
+	time.Local = time.UTC
+	os.Exit(m.Run())
+}
+
 // assertSnapshot compares got (a raw View string) against the
 // recorded golden for name. On -update, rewrites the golden instead
 // of asserting. Strips ANSI so the stored files are plain text and
