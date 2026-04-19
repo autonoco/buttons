@@ -5,7 +5,23 @@ description: "CLI reference for buttons drawer"
 
 ## buttons drawer
 
-Manage button groups (drawers)
+Manage drawer workflows (chains of buttons)
+
+### Synopsis
+
+Manage drawers — typed workflows that chain buttons with
+${ref} references between steps.
+
+Usage:
+  buttons drawer create NAME
+  buttons drawer list
+  buttons drawer NAME add BUTTON [BUTTON...]
+  buttons drawer NAME connect A to B
+  buttons drawer NAME connect A.output.x to B.args.y
+  buttons drawer NAME press [key=value ...]
+  buttons drawer NAME remove
+  buttons drawer NAME                  (show drawer summary)
+  buttons drawer schema                (print JSON Schema)
 
 ```
 buttons drawer [flags]
@@ -22,12 +38,10 @@ buttons drawer [flags]
 ```
       --json       output in JSON format
       --no-input   disable all interactive prompts
+      --summary    show a read-only plan/snapshot instead of mutating
 ```
 
 ### SEE ALSO
 
 * [buttons](buttons.md)	 - Deterministic workflow engine for agents
-* [buttons drawer add](buttons_drawer_add.md)	 - Add a button to a drawer
-* [buttons drawer create](buttons_drawer_create.md)	 - Create a new drawer
-* [buttons drawer list](buttons_drawer_list.md)	 - List all drawers
 

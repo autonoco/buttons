@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"text/tabwriter"
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
@@ -36,47 +35,15 @@ var rootCmd = &cobra.Command{
 		return config.EnsureDataDir()
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// If an arg was passed that isn't a subcommand, check if it's a button name
+		// If a positional arg was passed and it isn't a subcommand,
+		// fall back to per-button detail — preserves existing
+		// `buttons <name>` shorthand.
 		if len(args) > 0 {
 			return showButtonDetail(args[0])
 		}
-
-		// No args: show the board (list all buttons for now)
-		svc := button.NewService()
-		buttons, err := svc.List()
-		if err != nil {
-			return handleServiceError(err)
-		}
-
-		if jsonOutput {
-			return config.WriteJSON(buttons)
-		}
-
-		if len(buttons) == 0 {
-			fmt.Fprintln(os.Stderr, "No buttons found. Create one with: buttons create <name> --code '<script>'")
-			return nil
-		}
-
-		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tDESCRIPTION\tRUNTIME\tARGS")
-		for _, btn := range buttons {
-			argSummary := ""
-			for i, arg := range btn.Args {
-				if i > 0 {
-					argSummary += ", "
-				}
-				argSummary += arg.Name
-				if arg.Required {
-					argSummary += "*"
-				}
-			}
-			desc := btn.Description
-			if desc == "" {
-				desc = "-"
-			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", btn.Name, desc, btn.Runtime, argSummary)
-		}
-		return w.Flush()
+		// No args: show the workspace summary. One tool call, full
+		// orientation — the canonical agent cold-start command.
+		return runSummary()
 	},
 }
 

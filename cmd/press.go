@@ -75,8 +75,8 @@ Examples:
 			timeout = pressTimeout
 		}
 
-		// Dry run
-		if pressDryRun {
+		// Dry run (either --dry-run or --summary).
+		if pressDryRun || SummaryRequested() {
 			return dryRun(btn, parsedArgs, timeout)
 		}
 

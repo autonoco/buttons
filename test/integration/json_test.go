@@ -23,20 +23,17 @@ func TestBoard_JSONNotApplicable(t *testing.T) {
 	}
 }
 
-func TestStub_DrawerCreateReturnsJSON(t *testing.T) {
+func TestDrawerCreateReturnsJSON(t *testing.T) {
 	env := newTestEnv(t)
 
 	res := env.run("drawer", "create", "test", "--json")
-	if res.ExitCode == 0 {
-		t.Fatal("expected non-zero exit for stub command")
+	if res.ExitCode != 0 {
+		t.Fatalf("expected zero exit, got %d, stderr=%s", res.ExitCode, res.Stderr)
 	}
 
 	resp := parseJSON(t, res.Stdout)
-	if resp.OK {
-		t.Fatal("expected ok: false")
-	}
-	if resp.Error.Code != "NOT_IMPLEMENTED" {
-		t.Errorf("code = %q, want NOT_IMPLEMENTED", resp.Error.Code)
+	if !resp.OK {
+		t.Fatalf("expected ok: true, got %+v", resp.Error)
 	}
 }
 

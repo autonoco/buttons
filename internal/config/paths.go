@@ -98,6 +98,22 @@ func DrawersDir() (string, error) {
 	return filepath.Join(base, "drawers"), nil
 }
 
+// DrawerDir returns the path to a specific drawer's folder. Mirrors
+// ButtonDir's path-escape rejection: even if a caller forgets to
+// sanitize the drawer name, we won't let it traverse outside the
+// drawers data directory.
+func DrawerDir(name string) (string, error) {
+	dir, err := DrawersDir()
+	if err != nil {
+		return "", err
+	}
+	p := filepath.Join(dir, name)
+	if !strings.HasPrefix(p, dir+string(filepath.Separator)) {
+		return "", fmt.Errorf("drawer name resolves outside data directory: %q", name)
+	}
+	return p, nil
+}
+
 func EnsureDataDir() error {
 	base, err := DataDir()
 	if err != nil {
