@@ -1,33 +1,35 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://buttons.sh/schemas/drawer.schema.json",
   "$defs": {
     "Backoff": {
+      "additionalProperties": false,
       "properties": {
-        "strategy": {
-          "type": "string",
-          "enum": [
-            "exponential",
-            "fixed"
-          ]
+        "factor": {
+          "type": "number"
         },
         "initial_ms": {
           "type": "integer"
         },
-        "factor": {
-          "type": "number"
+        "jitter": {
+          "type": "boolean"
         },
         "max_ms": {
           "type": "integer"
         },
-        "jitter": {
-          "type": "boolean"
+        "strategy": {
+          "enum": [
+            "exponential",
+            "fixed"
+          ],
+          "type": "string"
         }
       },
-      "additionalProperties": false,
+      "required": [
+        "strategy"
+      ],
       "type": "object"
     },
     "ErrorHandler": {
+      "additionalProperties": false,
       "properties": {
         "drawer": {
           "type": "string"
@@ -36,57 +38,67 @@
           "type": "object"
         }
       },
-      "additionalProperties": false,
+      "required": [
+        "drawer"
+      ],
       "type": "object"
     },
     "ErrorPolicy": {
+      "additionalProperties": false,
       "properties": {
         "action": {
-          "type": "string",
           "enum": [
             "stop",
             "continue",
             "retry"
-          ]
-        },
-        "max_attempts": {
-          "type": "integer"
+          ],
+          "type": "string"
         },
         "backoff": {
           "$ref": "#/$defs/Backoff"
+        },
+        "compensate_with": {
+          "type": "string"
+        },
+        "max_attempts": {
+          "type": "integer"
         },
         "retry_on": {
           "items": {
             "type": "string"
           },
           "type": "array"
-        },
-        "compensate_with": {
-          "type": "string"
         }
       },
-      "additionalProperties": false,
+      "required": [
+        "action"
+      ],
       "type": "object"
     },
     "InputDef": {
+      "additionalProperties": false,
       "properties": {
+        "description": {
+          "type": "string"
+        },
         "name": {
-          "type": "string",
-          "description": "Input name (referenced as ${inputs.\u003cname\u003e})"
+          "description": "Input name (referenced as ${inputs.\u003cname\u003e})",
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "secret": {
+          "description": "Redact this input from traces",
+          "type": "boolean"
         },
         "type": {
-          "type": "string",
           "enum": [
             "string",
             "int",
             "bool",
             "enum"
-          ]
-        },
-        "required": {
-          "type": "boolean"
-        },
-        "description": {
+          ],
           "type": "string"
         },
         "values": {
@@ -94,23 +106,34 @@
             "type": "string"
           },
           "type": "array"
-        },
-        "secret": {
-          "type": "boolean",
-          "description": "Redact this input from traces"
         }
       },
-      "additionalProperties": false,
+      "required": [
+        "name",
+        "type"
+      ],
       "type": "object"
     },
     "Step": {
+      "additionalProperties": false,
       "properties": {
+        "args": {
+          "description": "Arg values or ${ref} strings to pass to the button",
+          "type": "object"
+        },
+        "bindings": {
+          "type": "object"
+        },
+        "button": {
+          "description": "Button name to invoke (kind=button only)",
+          "type": "string"
+        },
         "id": {
-          "type": "string",
-          "description": "Unique step id (referenced as ${\u003cid\u003e.output.*})"
+          "description": "Unique step id (referenced as ${\u003cid\u003e.output.*})",
+          "type": "string"
         },
         "kind": {
-          "type": "string",
+          "description": "Step kind (default: button)",
           "enum": [
             "button",
             "switch",
@@ -122,75 +145,73 @@
             "transform",
             "batch"
           ],
-          "description": "Step kind (default: button)"
-        },
-        "button": {
-          "type": "string",
-          "description": "Button name to invoke (kind=button only)"
-        },
-        "args": {
-          "type": "object",
-          "description": "Arg values or ${ref} strings to pass to the button"
+          "type": "string"
         },
         "on_failure": {
           "$ref": "#/$defs/ErrorPolicy"
         },
         "timeout_seconds": {
           "type": "integer"
-        },
-        "bindings": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "type": "object"
         }
       },
-      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
       "type": "object"
     }
   },
+  "$id": "https://buttons.sh/schemas/drawer.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Buttons drawer: a typed workflow chaining buttons with ${ref} references between steps.",
   "properties": {
-    "schema_version": {
-      "type": "integer",
-      "description": "Drawer spec version"
-    },
-    "name": {
-      "type": "string",
-      "description": "Drawer name (kebab-case)"
+    "created_at": {
+      "format": "date-time",
+      "type": "string"
     },
     "description": {
-      "type": "string",
-      "description": "Human-readable one-liner"
+      "description": "Human-readable one-liner",
+      "type": "string"
     },
     "inputs": {
+      "description": "Top-level inputs supplied at press time",
       "items": {
         "$ref": "#/$defs/InputDef"
       },
-      "type": "array",
-      "description": "Top-level inputs supplied at press time"
+      "type": "array"
     },
-    "steps": {
-      "items": {
-        "$ref": "#/$defs/Step"
-      },
-      "type": "array",
-      "description": "Ordered list of steps (depth-first execution)"
+    "name": {
+      "description": "Drawer name (kebab-case)",
+      "type": "string"
     },
     "on_error": {
       "$ref": "#/$defs/ErrorHandler",
       "description": "Drawer to run on unhandled step failure"
     },
-    "created_at": {
-      "type": "string",
-      "format": "date-time"
+    "schema_version": {
+      "const": 1,
+      "description": "Drawer spec version",
+      "type": "integer"
+    },
+    "steps": {
+      "description": "Ordered list of steps (depth-first execution)",
+      "items": {
+        "$ref": "#/$defs/Step"
+      },
+      "type": "array"
     },
     "updated_at": {
-      "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "type": "string"
     }
   },
-  "additionalProperties": false,
-  "type": "object",
+  "required": [
+    "schema_version",
+    "name",
+    "steps",
+    "created_at",
+    "updated_at"
+  ],
   "title": "Drawer",
-  "description": "Buttons drawer: a typed workflow chaining buttons with ${ref} references between steps."
+  "type": "object"
 }
