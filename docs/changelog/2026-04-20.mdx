@@ -1,0 +1,38 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-20" description="Drawer workflows, CEL expressions, idempotency, and progress streaming">
+## Drawer workflows, CEL expressions, idempotency, and progress streaming
+
+Drawers turn a sequence of buttons into a typed, composable workflow. This release ships the full drawer engine along with CEL expressions, idempotency, concurrency queues, and structured progress streaming.
+
+### New features
+
+- **Drawer workflows** — chain buttons into multi-step workflows with `buttons drawer create`, then add steps with `buttons drawer NAME add`. Each step's output is available to downstream steps via `${ref}` references (e.g. `${build.output.version}`), so data flows between buttons without glue scripts. Run the whole chain with `buttons drawer NAME press`. See the [CLI reference](/cli/buttons_drawer).
+
+- **Connect step outputs to inputs** — use `buttons drawer NAME connect A to B` to auto-match output fields to input arguments by name, or `buttons drawer NAME connect A.output.x to B.args.y` for explicit wiring. Connect validates types at wire time and reports mismatches before you press.
+
+- **CEL expressions in drawer refs** — `${...}` references now support full [CEL](https://cel.dev) syntax. String concatenation (`${'v' + build.output.version}`), arithmetic (`${inputs.count * 2}`), and conditionals (`${has(b.output.x) ? b.output.x : inputs.fallback}`) all work inside drawer step arguments. Plain dotted paths still work as before.
+
+- **`buttons summary` command** — get a single-call snapshot of your entire workspace: every button, every drawer, recent runs, active runs, and recent failures. Pass `--json` for structured output agents can parse, or `--deep` to inline full schemas and run history. See the [CLI reference](/cli/buttons_summary).
+
+- **`--summary` flag on mutating commands** — add `--summary` to any `press`, `drawer add`, `drawer connect`, or `drawer remove` command to preview what would happen without executing. Never mutates, never touches the network.
+
+- **Cross-run idempotency** — pass `--idempotency-key=release-1.2.3` on `buttons press` to cache successful results. A second press with the same key returns the cached result instantly. Failed runs always retry. Set the cache lifetime with `--idempotency-ttl` (defaults to 24 hours). See the [CLI reference](/cli/buttons_press).
+
+- **Concurrency queues** — buttons can declare a named queue with a concurrency limit (e.g. three concurrent presses on the "openai" queue). Multiple buttons sharing the same queue name share the pool. Add a key to scope concurrency per dimension, like one slot per user.
+
+- **Structured progress streaming** — scripts can write structured JSONL events to `$BUTTONS_PROGRESS_PATH` during a press. Use `buttons tail NAME` to follow progress in real time, or `buttons tail NAME -f` to keep tailing after the press finishes. See the [CLI reference](/cli/buttons_tail).
+
+- **Failure triage via logs** — `buttons NAME logs --failed` filters to just failed runs for a single button. `buttons logs` (no name) surfaces recent failures across every button and drawer in the workspace. See the [CLI reference](/cli/buttons_logs).
+
+### Updates
+
+- **Retry policies on drawer steps** — each step in a drawer can define an error policy with exponential backoff, so transient failures retry automatically before the workflow fails.
+
+- **Drawer run history** — every drawer press records a full run log with per-step results, timing, and errors. Secret-flagged inputs are redacted before writing to disk. History is pruned to the last 100 runs, matching button conventions.
+
+- **Drawer JSON Schema** — run `buttons drawer schema` to print the canonical JSON Schema for drawer specs. The schema is also published for editor autocompletion and validation.
+</Update>
