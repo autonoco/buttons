@@ -7,49 +7,52 @@ import (
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
+	"github.com/autonoco/buttons/internal/drawer"
+	"github.com/autonoco/buttons/internal/history"
 	"github.com/autonoco/buttons/internal/tui"
 )
 
 var logsArgs []string
+var logsFailed bool
+var logsLimit int
+var logsFollow bool
 
 var logsCmd = &cobra.Command{
 	Use:   "logs [name]",
-	Short: "Press a button and watch its output stream live",
-	Long: `Press a button in a full-screen viewer that tails every line of
-stdout / stderr as the child writes it.
+	Short: "View a button's past runs, or press and stream live",
+	Long: `View a button's run history. Preferred form is name-first to
+match the rest of the CLI:
 
-The viewer stays open after the press completes so you can scroll
-the output at leisure. Press esc or q to dismiss; ctrl+c cancels an
-in-flight press (the child's process group is killed).
+  buttons BUTTONNAME logs           — past runs for this button
+  buttons BUTTONNAME logs --follow  — press + stream live
+  buttons BUTTONNAME logs --failed  — just failures
+  buttons drawer DRAWERNAME logs    — past runs for this drawer
 
-Scope is one press. If the button takes required args, pass them with
---arg key=value the same way 'buttons press' does.
-
-Only shell and code buttons stream today. HTTP and prompt buttons
-still use 'buttons press' for now — their execution is request /
-response, not a long-running process.
-
-Examples:
-  buttons logs deploy
-  buttons logs deploy --arg env=staging
-  buttons logs etl --arg file=/tmp/x.csv`,
-	Args: exactArgs(1),
+The verb-first form (buttons logs NAME) still works as an alias.
+buttons logs (no name) dumps recent failures across every button
+and drawer — same shape as summary.recent_failures.`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runLogs,
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
-	if jsonOutput {
-		_ = config.WriteJSONError("NOT_APPLICABLE", "logs is an interactive TUI; --json is not supported")
-		return errSilent
-	}
-	if config.IsNonTTY() {
-		// Piped / CI — the TUI can't render. Tell the user to use
-		// 'buttons press --json' instead of dropping into a broken state.
-		fmt.Fprintln(cmd.ErrOrStderr(), "logs requires a TTY. For programmatic output, use: buttons press --json")
-		return errSilent
+	// Workspace-level: no name → recent failures across everything.
+	if len(args) == 0 {
+		return logsWorkspaceFailures()
 	}
 
-	name := args[0]
+	// Per-button: if --follow AND TTY AND not --json, drop into the
+	// live-stream TUI. Otherwise return the structured past-runs
+	// view — this is the agent path and also the default non-TTY
+	// path. Failures live in history, so `buttons NAME logs --failed`
+	// is the triage call.
+	if logsFollow && !jsonOutput && !config.IsNonTTY() {
+		return runLogsTUI(cmd, args[0])
+	}
+	return logsButtonJSON(args[0])
+}
+
+func runLogsTUI(cmd *cobra.Command, name string) error {
 	svc := button.NewService()
 
 	btn, err := svc.Get(name)
@@ -109,7 +112,124 @@ func runtimeLabel(btn *button.Button) string {
 	return btn.Runtime
 }
 
+// logsButtonJSON prints past runs for one button. Honors --failed
+// (filter to non-ok) and --limit (default 20). Used by agents for
+// triage — a single call shows the last N runs with full structured
+// errors, args, and stderr, so drill-in doesn't need a second command.
+func logsButtonJSON(name string) error {
+	n := logsLimit
+	if n <= 0 {
+		n = 20
+	}
+	runs, err := history.List(name, n)
+	if err != nil {
+		return handleServiceError(err)
+	}
+	if logsFailed {
+		kept := runs[:0]
+		for _, r := range runs {
+			if r.Status != "ok" {
+				kept = append(kept, r)
+			}
+		}
+		runs = kept
+	}
+	return config.WriteJSON(runs)
+}
+
+// logsWorkspaceFailures aggregates recent failures across every
+// button + drawer so agents can triage in one tool call. Same bucket
+// that `buttons summary --json` surfaces under recent_failures, but
+// this command is the "show me what broke" direct path.
+func logsWorkspaceFailures() error {
+	n := logsLimit
+	if n <= 0 {
+		n = 20
+	}
+
+	type failure struct {
+		Target     string `json:"target"`
+		RunID      string `json:"run_id,omitempty"`
+		StartedAt  any    `json:"started_at"`
+		Status     string `json:"status"`
+		ExitCode   int    `json:"exit_code,omitempty"`
+		ErrorType  string `json:"error_type,omitempty"`
+		Stderr     string `json:"stderr,omitempty"`
+		FailedStep string `json:"failed_step,omitempty"`
+	}
+
+	out := []failure{}
+
+	// Button runs.
+	allButtonRuns, _ := history.ListAll(n * 4) // overfetch; filter below
+	for _, r := range allButtonRuns {
+		if r.Status == "ok" {
+			continue
+		}
+		out = append(out, failure{
+			Target:    "button/" + r.ButtonName,
+			StartedAt: r.StartedAt,
+			Status:    r.Status,
+			ExitCode:  r.ExitCode,
+			ErrorType: r.ErrorType,
+			Stderr:    truncateForSummary(r.Stderr, 400),
+		})
+		if len(out) >= n {
+			break
+		}
+	}
+
+	// Drawer runs — scan each drawer's history.
+	if len(out) < n {
+		dsvc := drawer.NewService()
+		drawers, _ := dsvc.List()
+		for _, d := range drawers {
+			runs, _ := drawer.ListRuns(d.Name, n)
+			for _, r := range runs {
+				if r.Status == "ok" {
+					continue
+				}
+				out = append(out, failure{
+					Target:     "drawer/" + d.Name,
+					RunID:      r.RunID,
+					StartedAt:  r.StartedAt,
+					Status:     r.Status,
+					ErrorType:  r.ErrorType,
+					FailedStep: lastFailedStep(r),
+				})
+				if len(out) >= n {
+					break
+				}
+			}
+			if len(out) >= n {
+				break
+			}
+		}
+	}
+
+	return config.WriteJSON(out)
+}
+
+func lastFailedStep(r drawer.Run) string {
+	for i := len(r.Steps) - 1; i >= 0; i-- {
+		if r.Steps[i].Status != "ok" {
+			return r.Steps[i].ID
+		}
+	}
+	return ""
+}
+
+func truncateForSummary(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}
+
 func init() {
-	logsCmd.Flags().StringArrayVar(&logsArgs, "arg", nil, "argument as key=value (repeatable; validated against the button spec)")
+	logsCmd.Flags().StringArrayVar(&logsArgs, "arg", nil, "argument as key=value (with --follow, passed through to the press)")
+	logsCmd.Flags().BoolVar(&logsFailed, "failed", false, "only return runs that failed")
+	logsCmd.Flags().IntVar(&logsLimit, "limit", 20, "max runs to return")
+	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "press the button and stream live output in a TUI")
 	rootCmd.AddCommand(logsCmd)
 }

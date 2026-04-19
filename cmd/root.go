@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
@@ -35,6 +36,15 @@ var rootCmd = &cobra.Command{
 		return config.EnsureDataDir()
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// NAME-first verb form matching `buttons drawer NAME add/...`
+		//
+		//   buttons BUTTONNAME logs [--follow] [--failed] [--limit N]
+		//
+		// Routes through the existing logs command so every flag
+		// keeps working.
+		if len(args) >= 2 && args[1] == "logs" {
+			return runLogs(cmd, []string{args[0]})
+		}
 		// If a positional arg was passed and it isn't a subcommand,
 		// fall back to per-button detail — preserves existing
 		// `buttons <name>` shorthand.
@@ -51,6 +61,26 @@ var rootCmd = &cobra.Command{
 func Root() *cobra.Command { return rootCmd }
 
 func Execute() {
+	// NAME-first rewriting. Cobra routes by subcommand name in arg
+	// position 1, so `buttons BUTTONNAME logs ...` doesn't reach
+	// logsCmd naturally. We rewrite it to `buttons logs BUTTONNAME
+	// ...` before Cobra sees it. Same pattern intentionally NOT
+	// applied to `buttons drawer NAME logs` because drawerCmd
+	// already does its own NAME-first dispatch internally.
+	if len(os.Args) >= 3 && os.Args[2] == "logs" && !strings.HasPrefix(os.Args[1], "-") {
+		switch os.Args[1] {
+		case "drawer", "create", "press", "list", "delete", "rm", "remove",
+			"batteries", "board", "config", "history", "init", "logs",
+			"smash", "store", "summary", "tail", "update", "version":
+			// Already a subcommand; don't rewrite.
+		default:
+			rewritten := make([]string, 0, len(os.Args))
+			rewritten = append(rewritten, os.Args[0], "logs", os.Args[1])
+			rewritten = append(rewritten, os.Args[3:]...)
+			os.Args = rewritten
+		}
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		if !errors.Is(err, errSilent) {
 			fmt.Fprintln(os.Stderr, err)

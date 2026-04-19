@@ -197,8 +197,13 @@ buttons delete [flags]
 Manage drawer workflows (chains of buttons)
 
 ```
-buttons drawer
+buttons drawer [flags]
 ```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--failed` | bool | only return runs that failed (for `NAME logs`) |
+| `--limit` | int | max runs to return (for `NAME logs`) |
 
 ### `buttons history`
 
@@ -234,7 +239,7 @@ buttons list
 
 ### `buttons logs`
 
-Press a button and watch its output stream live
+View a button's past runs, or press and stream live
 
 ```
 buttons logs [flags]
@@ -242,7 +247,10 @@ buttons logs [flags]
 
 | Flag | Type | Description |
 |------|------|-------------|
-| `--arg` | stringArray | argument as key=value (repeatable; validated against the button spec) |
+| `--arg` | stringArray | argument as key=value (with --follow, passed through to the press) |
+| `--failed` | bool | only return runs that failed |
+| `-f, --follow` | bool | press the button and stream live output in a TUI |
+| `--limit` | int | max runs to return |
 
 ### `buttons press`
 

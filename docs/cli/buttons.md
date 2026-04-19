@@ -35,7 +35,7 @@ buttons [flags]
 * [buttons history](buttons_history.md)	 - Show run history
 * [buttons init](buttons_init.md)	 - Initialize a project-local .buttons directory
 * [buttons list](buttons_list.md)	 - List all buttons
-* [buttons logs](buttons_logs.md)	 - Press a button and watch its output stream live
+* [buttons logs](buttons_logs.md)	 - View a button's past runs, or press and stream live
 * [buttons press](buttons_press.md)	 - Run a button
 * [buttons smash](buttons_smash.md)	 - Run multiple buttons in parallel
 * [buttons store](buttons_store.md)	 - Marketplace (search/install/import/publish)

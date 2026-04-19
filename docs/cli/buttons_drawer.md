@@ -30,7 +30,9 @@ buttons drawer [flags]
 ### Options
 
 ```
-  -h, --help   help for drawer
+      --failed NAME logs   only return runs that failed (for NAME logs)
+  -h, --help               help for drawer
+      --limit NAME logs    max runs to return (for NAME logs) (default 20)
 ```
 
 ### Options inherited from parent commands
