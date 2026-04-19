@@ -39,6 +39,13 @@ func (m LogsModel) View() tea.View {
 	parts = append(parts, "")
 	parts = append(parts, m.renderLogsFooter())
 
+	// Bottom chrome strip — same pattern as board and detail. Badges on
+	// the right reflect the view's current mode: FOLLOW on while
+	// tailing a live press, EXIT N once the press is done, TAIL when
+	// scrolled away from the bottom.
+	parts = append(parts, "")
+	parts = append(parts, m.renderLogsChrome())
+
 	content := strings.Join(parts, "\n")
 
 	v := tea.NewView(content)
@@ -51,8 +58,9 @@ func (m LogsModel) View() tea.View {
 }
 
 // renderLogsHeader draws the identity row + elapsed counter. Left
-// side names the button and press; right side shows live elapsed
-// while running, or "exit N / duration" once done.
+// side names the button and press; right side shows a live elapsed
+// counter with an `● follow` indicator while tailing, or the final
+// "exit N / duration" once done.
 func (m LogsModel) renderLogsHeader() string {
 	// Left — button identity
 	name := m.styles.Wordmark.Render(m.btn.Name)
@@ -60,7 +68,10 @@ func (m LogsModel) renderLogsHeader() string {
 	press := m.styles.Muted.Render("  ·  press " + m.pressID)
 	left := name + rt + press
 
-	// Right — elapsed + spinner, or final exit line
+	// Right — while tailing: `● follow` (orange dot + label) next to
+	// elapsed counter + spinner. Spec station 09: the indicator is
+	// the affordance that says "this view is following the tail."
+	// Once done: colored exit-N / duration summary.
 	var right string
 	if m.done && m.result != nil {
 		exitFmt := fmt.Sprintf("exit %d · %s", m.result.ExitCode, formatElapsed(m.elapsed()))
@@ -72,7 +83,49 @@ func (m LogsModel) renderLogsHeader() string {
 	} else {
 		spinner := m.styles.indicator(true, m.spinnerFrame)
 		elapsed := m.styles.Muted.Render(formatElapsed(m.elapsed()))
-		right = spinner + " " + elapsed
+		if m.follow {
+			followTag := m.styles.ChromeActiveBadge.Render("● follow")
+			right = followTag + m.styles.Muted.Render("  ·  ") + spinner + " " + elapsed
+		} else {
+			right = spinner + " " + elapsed
+		}
+	}
+
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	gap := w - lipgloss.Width(left) - lipgloss.Width(right) - leftPad*2
+	if gap < 2 {
+		gap = 2
+	}
+	return strings.Repeat(" ", leftPad) + left + strings.Repeat(" ", gap) + right
+}
+
+// renderLogsChrome paints the bottom status strip for the logs view.
+// Runs in the same pattern as board + detail:
+//
+//	while tailing    ● FOLLOW · PRESS <id>              (orange badge)
+//	scroll-locked    TAIL · PRESS <id>                  (muted chrome)
+//	done             EXIT N · <duration>                (colored summary)
+func (m LogsModel) renderLogsChrome() string {
+	left := strings.Join([]string{"TTY 1", "UTF-8", "256-COLOR"}, m.styles.Muted.Render(" · "))
+	left = m.styles.Chrome.Render(left)
+
+	var right string
+	switch {
+	case m.done && m.result != nil:
+		status := m.styles.StatusOK
+		if m.result.Status != "ok" {
+			status = m.styles.StatusError
+		}
+		right = status.Render(fmt.Sprintf("EXIT %d · %s", m.result.ExitCode, formatElapsed(m.elapsed())))
+	case m.follow:
+		right = m.styles.ChromeActiveBadge.Render("● FOLLOW") +
+			m.styles.Muted.Render(" · ") +
+			m.styles.Chrome.Render("PRESS "+m.pressID)
+	default:
+		right = m.styles.Chrome.Render("TAIL · PRESS " + m.pressID)
 	}
 
 	w := m.width
