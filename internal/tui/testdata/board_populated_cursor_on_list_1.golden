@@ -1,14 +1,15 @@
   ● buttons                                                     btn—03 · board
 ────────────────────────────────────────────────────────────────────────────────
 
-  □   deploy                                              shell · 300s · 1 arg
-  □ › weather                                     http · 60s · GET wttr.in/NYC
-  □   notify                       http · 60s · POST hooks.example.com/webhook
+  ┌────────────────┐  ┏━━━━━━━━━━━━━━┓  ┌──────────────┐
+  │   deploy       │  ┃  weather     ┃  │  notify      │
+  │  SHELL · 300s  │  ┃  HTTP · 60s  ┃  │  HTTP · 60s  │
+  └────────────────┘  ┗━━━━━━━━━━━━━━┛  └──────────────┘
 
 ────────────────────────────────────────────────────────────────────────────────
 
-  ┌─────────┐                                                                 
-  │  press  │                  ↑↓  nav  ·   ↵  press  ·   L  logs  ·   ?  help
-  └─────────┘                                                                 
+  ┏━━━━━━━━━━━━━┓                                                             
+  ┃   ● press   ┃              ↑↓  nav  ·   ↵  press  ·   L  logs  ·   ?  help
+  ┗━━━━━━━━━━━━━┛                                                             
 
   TTY 1 · UTF-8 · 256-COLOR                                              ● REC
