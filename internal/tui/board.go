@@ -42,9 +42,11 @@ type Model struct {
 
 	buttons []button.Button
 
-	section      section
-	cursorPinned int
-	cursorList   int
+	// cursor is the selected index into the card grid. The grid is the
+	// pinned-first ordering returned by cardOrder() — pinned buttons
+	// float to the front, unpinned follow. up/down nav moves by one
+	// grid row (cardsPerRow() cells); left/right moves by 1.
+	cursor int
 
 	status map[string]runStatus
 
@@ -65,6 +67,20 @@ type Model struct {
 	// footer. Pane shows recent run history for the focused button.
 	logsOpen bool
 
+	// logsPaneCursor is the selected run row inside the logs pane.
+	// Meaningful only while logsOpen; reset to 0 whenever the focused
+	// button changes or the pane closes.
+	logsPaneCursor int
+
+	// logsDetail, when non-nil, replaces the board's main content with
+	// a full-screen view of a single historical run's stdout/stderr.
+	// Opened by pressing ↵ on a pane row; dismissed with esc.
+	logsDetail    *history.Run
+	logsDetailBtn string
+	// logsDetailScroll is the top line index for the detail view's
+	// scrollable body. Clamped in movePaneCursor / handleKey.
+	logsDetailScroll int
+
 	// argForm, when non-nil, is the inline press-with-args prompt
 	// replacing the board's content area. Opened automatically when
 	// the user presses a button with required args; dismissed on
@@ -81,13 +97,6 @@ type Model struct {
 
 	width, height int
 }
-
-type section int
-
-const (
-	sectionPinned section = iota
-	sectionList
-)
 
 type pressDoneMsg struct {
 	name   string
@@ -143,10 +152,6 @@ func New(svc *button.Service, initial string) (*Model, error) {
 		buttons:        buttons,
 		status:         map[string]runStatus{},
 		pressStartedAt: map[string]time.Time{},
-		section:        sectionList,
-	}
-	if m.hasPinned() {
-		m.section = sectionPinned
 	}
 	if initial != "" {
 		m.focusByName(initial)
@@ -214,9 +219,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// press in flight keeps its spinner.
 		if buttons, err := m.svc.List(); err == nil {
 			m.buttons = buttons
-			// Keep the cursor in bounds if the list shrank.
-			if m.cursorList >= len(m.buttons) && len(m.buttons) > 0 {
-				m.cursorList = len(m.buttons) - 1
+			if m.cursor >= len(m.buttons) && len(m.buttons) > 0 {
+				m.cursor = len(m.buttons) - 1
 			}
 		}
 		return m, refreshCmd()
@@ -254,37 +258,64 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		return m, tea.Quit
 
-	case "up", "k":
-		return m.moveCursor(-1), nil
-
-	case "down", "j":
-		return m.moveCursor(1), nil
-
-	case "left", "h":
-		if m.section == sectionPinned {
-			return m.movePinnedCursor(-1), nil
+	case "esc":
+		// Peel back one layer of modal state per press: detail → pane
+		// → nothing. Matches the vim / less mental model where esc
+		// always shrinks context.
+		if m.logsDetail != nil {
+			m.logsDetail = nil
+			m.logsDetailBtn = ""
+			m.logsDetailScroll = 0
+			return m, nil
 		}
-		if m.hasPinned() {
-			m.section = sectionPinned
+		if m.logsOpen {
+			m.logsOpen = false
+			m.logsPaneCursor = 0
 			return m, nil
 		}
 		return m, nil
 
-	case "right", "l":
-		if m.section == sectionPinned {
-			return m.movePinnedCursor(1), nil
+	case "up", "k":
+		if m.logsDetail != nil {
+			if m.logsDetailScroll > 0 {
+				m.logsDetailScroll--
+			}
+			return m, nil
 		}
-		return m, nil
+		if m.logsOpen {
+			return m.movePaneCursor(-1), nil
+		}
+		return m.moveByRow(-1), nil
+
+	case "down", "j":
+		if m.logsDetail != nil {
+			m.logsDetailScroll++
+			return m, nil
+		}
+		if m.logsOpen {
+			return m.movePaneCursor(1), nil
+		}
+		return m.moveByRow(1), nil
+
+	case "left", "h":
+		m.logsPaneCursor = 0
+		return m.moveCursor(-1), nil
+
+	case "right", "l":
+		m.logsPaneCursor = 0
+		return m.moveCursor(1), nil
 
 	case "tab":
-		if m.section == sectionList && m.hasPinned() {
-			m.section = sectionPinned
-		} else {
-			m.section = sectionList
-		}
-		return m, nil
+		m.logsPaneCursor = 0
+		return m.moveCursor(1), nil
 
 	case "enter", " ":
+		// Pane-open mode: ↵ opens the detail view for the selected
+		// run rather than firing a press. The press CTA belongs to
+		// the card grid, not the history pane.
+		if m.logsOpen && m.logsDetail == nil {
+			return m.openLogDetail(), nil
+		}
 		name := m.currentButtonName()
 		if name == "" {
 			return m, nil
@@ -296,10 +327,55 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// to "move cursor right" (vim convention), so logs takes the
 		// shifted variant; the hint chip surfaces the capital.
 		m.logsOpen = !m.logsOpen
+		if !m.logsOpen {
+			m.logsPaneCursor = 0
+		}
 		return m, nil
 	}
 
 	return m, nil
+}
+
+// movePaneCursor shifts the logs-pane row cursor with wrap. Clamped to
+// the number of runs actually fetched for the focused button so we
+// never point past the visible list.
+func (m Model) movePaneCursor(delta int) tea.Model {
+	target := m.currentButtonName()
+	if target == "" {
+		return m
+	}
+	runs, err := history.List(target, logsPaneLimit)
+	if err != nil || len(runs) == 0 {
+		return m
+	}
+	n := len(runs)
+	m.logsPaneCursor = ((m.logsPaneCursor+delta)%n + n) % n
+	return m
+}
+
+// openLogDetail fetches the focused button's recent runs, picks the
+// one the pane cursor points at, and stashes it on the model as the
+// active detail view. A fresh List call is cheap (5 JSON reads) and
+// guarantees the detail reflects runs completed since the pane first
+// opened.
+func (m Model) openLogDetail() tea.Model {
+	target := m.currentButtonName()
+	if target == "" {
+		return m
+	}
+	runs, err := history.List(target, logsPaneLimit)
+	if err != nil || len(runs) == 0 {
+		return m
+	}
+	idx := m.logsPaneCursor
+	if idx < 0 || idx >= len(runs) {
+		idx = 0
+	}
+	run := runs[idx]
+	m.logsDetail = &run
+	m.logsDetailBtn = target
+	m.logsDetailScroll = 0
+	return m
 }
 
 // handleArgFormKey dispatches a key to the inline form and, on
@@ -354,30 +430,41 @@ func toArgList(values map[string]string) []string {
 	return out
 }
 
+// moveCursor shifts the grid cursor by delta cells with wrap. Used for
+// left/right (±1) and tab (forward).
 func (m Model) moveCursor(delta int) tea.Model {
-	switch m.section {
-	case sectionPinned:
-		return m.movePinnedCursor(delta)
-	case sectionList:
-		return m.moveListCursor(delta)
+	n := len(m.buttons)
+	if n == 0 {
+		return m
 	}
+	m.cursor = ((m.cursor+delta)%n + n) % n
 	return m
 }
 
-func (m Model) movePinnedCursor(delta int) tea.Model {
-	pinned := m.pinned()
-	if len(pinned) == 0 {
+// moveByRow shifts the cursor up/down by one grid row — which is
+// cardsPerRow() cells away. Clamps so the cursor never lands on a
+// non-existent cell past the end of the last row.
+func (m Model) moveByRow(delta int) tea.Model {
+	n := len(m.buttons)
+	if n == 0 {
 		return m
 	}
-	m.cursorPinned = (m.cursorPinned + delta + len(pinned)) % len(pinned)
-	return m
-}
-
-func (m Model) moveListCursor(delta int) tea.Model {
-	if len(m.buttons) == 0 {
-		return m
+	cols := m.cardsPerRow()
+	target := m.cursor + delta*cols
+	if target < 0 {
+		target = m.cursor % cols
 	}
-	m.cursorList = (m.cursorList + delta + len(m.buttons)) % len(m.buttons)
+	if target >= n {
+		// Same column, last row. If that column is out of range in the
+		// last (possibly partial) row, fall back to the last card.
+		col := m.cursor % cols
+		last := ((n - 1) / cols) * cols
+		target = last + col
+		if target >= n {
+			target = n - 1
+		}
+	}
+	m.cursor = target
 	return m
 }
 
@@ -400,28 +487,14 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Pinned row.
-	pinned := m.pinned()
-	if len(pinned) > 0 && y >= l.pinnedY0 && y <= l.pinnedY1 {
-		idx := pinnedIndexAtX(pinned, x)
+	order := m.cardOrder()
+	if len(order) > 0 && y >= l.cardsY0 && y <= l.cardsY1 {
+		idx := m.cardIndexAt(x, y, l.cardsY0)
 		if idx >= 0 {
-			m.section = sectionPinned
-			m.cursorPinned = idx
-			return m.pressButton(pinned[idx].Name)
-		}
-		return m, nil
-	}
-
-	// List row.
-	if len(m.buttons) > 0 && y >= l.listY0 && y <= l.listY1 {
-		rowIdx := y - l.listY0
-		if rowIdx >= 0 && rowIdx < len(m.buttons) {
-			m.section = sectionList
-			m.cursorList = rowIdx
-			return m.pressButton(m.buttons[rowIdx].Name)
+			m.cursor = idx
+			return m.pressButton(order[idx].Name)
 		}
 	}
-
 	return m, nil
 }
 
@@ -588,8 +661,7 @@ func (m Model) handlePressDone(msg pressDoneMsg) Model {
 // state, so the two stay in lockstep without stashing mutable layout
 // state on the model (which Bubble Tea's value-receiver pattern fights).
 type layout struct {
-	pinnedY0, pinnedY1 int
-	listY0, listY1     int
+	cardsY0, cardsY1   int
 	footerY0, footerY1 int
 	pressX0, pressX1   int
 	pressEnabled       bool
@@ -597,10 +669,11 @@ type layout struct {
 
 const (
 	leftPad = 2
-	// pinnedHeight is the rendered height of a pinned card: top border
-	// + text line + bottom border = 3 rows. Was 5 before the
-	// visual-fidelity pass tightened the vertical padding.
-	pinnedHeight  = 3
+	// cardHeightIdle is the rendered height of an idle card: top border
+	// + name line + meta line + bottom border = 4 rows.
+	cardHeightIdle = 4
+	// cardGutter is the vertical blank between card grid rows.
+	cardGutter    = 1
 	footerHeight  = 3 // bordered action pill height
 	actionGap     = 2 // spaces between quit and press pills
 	headerHeight  = 1
@@ -615,33 +688,109 @@ func (m Model) computeLayout() layout {
 	y := headerHeight + dividerHeight + sectionBlank
 
 	if len(m.buttons) == 0 {
-		// Empty hero: variable height, but we only need footer Y for clicks.
 		hero := m.renderEmptyHero()
 		y += countLines(hero) + sectionBlank + dividerHeight + sectionBlank
 	} else {
-		if m.hasPinned() {
-			l.pinnedY0 = y
-			l.pinnedY1 = y + pinnedHeight - 1
-			y = l.pinnedY1 + 1 + sectionBlank + dividerHeight + sectionBlank
+		cols := m.cardsPerRow()
+		rows := (len(m.buttons) + cols - 1) / cols
+		// Each row = card height + gutter between rows. Active cards
+		// are 1 taller (badge above) — but the layout math just needs
+		// a rough bound for hit-testing; hit-test accepts the larger
+		// Y1.
+		rowHeight := cardHeightIdle + cardGutter
+		gridHeight := rows*rowHeight - cardGutter
+		if gridHeight < cardHeightIdle {
+			gridHeight = cardHeightIdle
 		}
-		l.listY0 = y
-		l.listY1 = y + len(m.buttons) - 1
-		y = l.listY1 + 1 + sectionBlank + dividerHeight + sectionBlank
+		l.cardsY0 = y
+		l.cardsY1 = y + gridHeight - 1
+		y = l.cardsY1 + 1 + sectionBlank + dividerHeight + sectionBlank
 	}
 
 	l.footerY0 = y
 	l.footerY1 = y + footerHeight - 1
 
-	// Footer has only the primary press action — quit is not a UI
-	// concept on the board. Action pill width = padding(2) + label +
-	// padding(2) + border(2) = label + 6.
-	pressW := len("press") + 6
+	// Press pill width = label("● press" = 7) + padding(6) + border(2).
+	pressW := 7 + 6 + 2
 	l.pressX0 = leftPad
 	l.pressX1 = l.pressX0 + pressW
 
 	l.pressEnabled = m.currentButtonName() != ""
 
 	return l
+}
+
+// cardsPerRow returns how many cards fit on a single grid row given
+// the current terminal width and the longest button name (cards share
+// a common width so the grid aligns).
+func (m Model) cardsPerRow() int {
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	cardW := m.cardOuterWidth()
+	avail := w - leftPad*2
+	if avail < cardW {
+		return 1
+	}
+	// cardW + 2 accounts for the 2-space gutter between cards; + 2 in
+	// the numerator makes the divisor fit exactly when the row ends
+	// flush against the right margin without a trailing gutter.
+	cols := (avail + 2) / (cardW + 2)
+	if cols < 1 {
+		cols = 1
+	}
+	return cols
+}
+
+// cardOuterWidth is the rendered width of a single card: inner label
+// width + padding(4) + border(2). The inner label is normalized to the
+// longest name in the grid so all cards align.
+func (m Model) cardOuterWidth() int {
+	return m.maxNameWidth() + 6
+}
+
+// maxNameWidth returns the display width to pad every card's name
+// line to. Floors at 10 so short grids don't produce claustrophobic
+// cards.
+func (m Model) maxNameWidth() int {
+	w := 10
+	for _, b := range m.buttons {
+		if n := lipgloss.Width(b.Name); n > w {
+			w = n
+		}
+	}
+	return w
+}
+
+// cardIndexAt converts a click at (x, y) inside the card-grid region
+// into the index of the card that was clicked, or -1 if the click
+// landed in a gutter. y0 is the row where the grid starts.
+func (m Model) cardIndexAt(x, y, y0 int) int {
+	order := m.cardOrder()
+	if len(order) == 0 {
+		return -1
+	}
+	cols := m.cardsPerRow()
+	rowHeight := cardHeightIdle + cardGutter
+	row := (y - y0) / rowHeight
+	// Reject clicks inside the gutter between rows.
+	if (y-y0)%rowHeight >= cardHeightIdle {
+		return -1
+	}
+	cardW := m.cardOuterWidth()
+	if x < leftPad {
+		return -1
+	}
+	col := (x - leftPad) / (cardW + 2)
+	if (x-leftPad)%(cardW+2) >= cardW {
+		return -1
+	}
+	idx := row*cols + col
+	if idx < 0 || idx >= len(order) {
+		return -1
+	}
+	return idx
 }
 
 // ------------------------------------------------------------------
@@ -655,24 +804,24 @@ func (m Model) View() tea.View {
 	parts = append(parts, m.renderDivider())
 	parts = append(parts, "") // blank before content
 
-	if m.argForm != nil {
-		// Modal-ish content: form replaces the list / hero block but
+	switch {
+	case m.logsDetail != nil:
+		// Detail view takes the full center column; other chrome
+		// (header / divider / footer) still renders so the user
+		// stays oriented.
+		parts = append(parts, m.renderLogDetail())
+	case m.argForm != nil:
+		// Modal-ish content: form replaces the grid / hero block but
 		// the board's header + divider + footer scaffold stays so the
 		// user never loses their visual orientation.
 		parts = append(parts, m.argForm.render(m.styles, m.width))
-	} else if len(m.buttons) == 0 {
+	case len(m.buttons) == 0:
 		parts = append(parts, m.renderEmptyHero())
-	} else {
-		if m.hasPinned() {
-			parts = append(parts, m.renderPinned())
-			parts = append(parts, "")
-			parts = append(parts, m.renderDivider())
-			parts = append(parts, "")
-		}
-		parts = append(parts, m.renderList())
+	default:
+		parts = append(parts, m.renderCards())
 	}
 
-	if m.argForm == nil && m.logsOpen && len(m.buttons) > 0 {
+	if m.argForm == nil && m.logsDetail == nil && m.logsOpen && len(m.buttons) > 0 {
 		parts = append(parts, "")
 		parts = append(parts, m.renderDivider())
 		parts = append(parts, "")
@@ -733,29 +882,46 @@ func (m Model) renderDivider() string {
 	return m.styles.Divider.Render(strings.Repeat("─", w))
 }
 
-func (m Model) renderPinned() string {
-	pinned := m.pinned()
-	if len(pinned) == 0 {
+// renderCards draws the full card grid. Every button renders as a
+// bordered box; the grid wraps to multiple rows based on terminal
+// width. Pinned buttons sort to the front via cardOrder().
+func (m Model) renderCards() string {
+	order := m.cardOrder()
+	if len(order) == 0 {
 		return ""
 	}
+	cols := m.cardsPerRow()
 
-	cards := make([]string, 0, len(pinned)*2)
-	for i, btn := range pinned {
-		if i > 0 {
-			cards = append(cards, "  ")
+	rows := make([]string, 0)
+	for i := 0; i < len(order); i += cols {
+		end := i + cols
+		if end > len(order) {
+			end = len(order)
 		}
-		cards = append(cards, m.renderPinnedCard(btn, i == m.cursorPinned && m.section == sectionPinned))
+		cells := make([]string, 0, (end-i)*2)
+		for j, btn := range order[i:end] {
+			if j > 0 {
+				cells = append(cells, "  ")
+			}
+			cells = append(cells, m.renderCard(btn, i+j == m.cursor))
+		}
+		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, cells...))
 	}
 
-	row := lipgloss.JoinHorizontal(lipgloss.Top, cards...)
-	return indentBlock(row, leftPad)
+	// Blank line between grid rows keeps cards feeling like distinct
+	// objects rather than a packed contact sheet.
+	return indentBlock(strings.Join(rows, "\n\n"), leftPad)
 }
 
-func (m Model) renderPinnedCard(btn button.Button, selected bool) string {
-	// Priority order: running (persistent state) > fire pulse (2nd
-	// choreography frame) > keydown pulse (1st frame) > selected >
-	// idle. Running beats fire so a long-running press doesn't flicker
-	// back to idle once the 180ms release timer fires.
+// renderCard paints one bordered button cell. Layout is two interior
+// lines: name on top, meta ("SHELL · 300S") or elapsed toast beneath.
+// Active presses get a "↵ TAIL" badge floating above the top-right
+// corner so users know ↵ will open the live log stream.
+func (m Model) renderCard(btn button.Button, selected bool) string {
+	// State → style priority: running > fire pulse > keydown pulse >
+	// selected > idle. Matches the logic that was on renderPinnedCard
+	// so a long press doesn't flicker back to idle once the 180ms
+	// release timer fires.
 	style := m.styles.PinnedIdle
 	switch {
 	case m.status[btn.Name] == statusRunning:
@@ -767,129 +933,47 @@ func (m Model) renderPinnedCard(btn button.Button, selected bool) string {
 	case selected:
 		style = m.styles.PinnedSelected
 	}
-	label := btn.Name
-	if len(label) < 10 {
-		label = fmt.Sprintf("%-10s", label)
-	}
-	// Idle cards: single-line label inside the bordered box.
-	if m.status[btn.Name] != statusRunning {
-		return style.Render(label)
+
+	nameWidth := m.maxNameWidth()
+	name := btn.Name
+	if lipgloss.Width(name) < nameWidth {
+		name = fmt.Sprintf("%-*s", nameWidth, name)
 	}
 
-	// Active cards: two-line interior (label + elapsed toast) and a
-	// right-aligned "↵ TAIL" badge pinned to the line ABOVE the card's
-	// top border — matches spec station 02 where a running pinned card
-	// gets the badge floating just outside its top-right corner, hinting
-	// that pressing ↵ on the selected row opens the live log stream.
-	sub := m.styles.Indicator.Render("● ACTIVE") + m.styles.Muted.Render(" · "+formatElapsed(m.elapsedFor(btn.Name)))
-	card := style.Render(label + "\n" + sub)
-
-	cardWidth := lipgloss.Width(card)
-	badge := m.styles.BadgeActive.Render("↵ TAIL")
-	badgeOffset := cardWidth - lipgloss.Width(badge)
-	if badgeOffset < 0 {
-		badgeOffset = 0
-	}
-	return strings.Repeat(" ", badgeOffset) + badge + "\n" + card
-}
-
-func (m Model) renderList() string {
-	if len(m.buttons) == 0 {
-		return ""
-	}
-	lines := make([]string, len(m.buttons))
-	for i, btn := range m.buttons {
-		lines[i] = m.renderListRow(btn, i)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (m Model) renderListRow(btn button.Button, idx int) string {
-	return m.renderListRowFull(btn, idx)
-}
-
-func (m Model) renderListRowFull(btn button.Button, idx int) string {
-	active := m.status[btn.Name] == statusRunning
-	done := m.status[btn.Name] == statusOK
-	failed := m.status[btn.Name] == statusFailed
-	selected := m.section == sectionList && idx == m.cursorList
-
-	// Glyph selection — priority matches renderPinnedCard so a pulse
-	// flashed on a row already resolves seamlessly into running-active.
-	//   running       spinner (braille frame)
-	//   fire pulse    ◉ in indicator (orange)
-	//   keydown pulse ▣ in primary
-	//   ok            ✓ in status-ok
-	//   failed        ✗ in status-error
-	//   idle          □ in muted
-	pulsing := m.pressPulse == btn.Name
-	var glyph string
-	switch {
-	case active:
-		glyph = m.styles.indicator(true, m.spinnerFrame)
-	case pulsing && m.pressPulseFire:
-		glyph = m.styles.Indicator.Render("◉")
-	case pulsing:
-		glyph = m.styles.ButtonNameSelected.Render("▣")
-	case done:
-		glyph = m.styles.StatusOK.Render("✓")
-	case failed:
-		glyph = m.styles.StatusError.Render("✗")
-	default:
-		glyph = m.styles.indicator(false, -1)
-	}
-
-	// Double-chevron cursor when the row is focused: one "section" marker
-	// (› ) directly after the glyph, and one "row" marker (› ) before
-	// the name. Matches the spec's "› ›" affordance and reads more
-	// clearly than a single chevron packed against the name.
-	var rowCursor string
-	if selected {
-		rowCursor = m.styles.ButtonNameSelected.Render("› ")
+	var sub string
+	if m.status[btn.Name] == statusRunning {
+		sub = m.styles.Indicator.Render("● ACTIVE") +
+			m.styles.Muted.Render(" · "+formatElapsed(m.elapsedFor(btn.Name)))
 	} else {
-		rowCursor = "  "
+		sub = m.styles.Muted.Render(cardMeta(btn))
 	}
 
-	var name string
-	switch {
-	case active:
-		name = m.styles.ButtonNameActive.Render(btn.Name)
-	case selected:
-		name = m.styles.ButtonNameSelected.Render(btn.Name)
-	default:
-		name = m.styles.ButtonName.Render(btn.Name)
-	}
+	// Center-align the sub line within the card's interior width so
+	// short meta strings (e.g., "HTTP · 60S") sit under the name
+	// instead of hard-left against the border.
+	card := style.Render(name + "\n" + sub)
 
-	meta := m.styles.Secondary.Render(metaFor(btn))
-
-	// Right-align the meta: the left side is `<pad><glyph> <cursor>name`,
-	// the right side is the meta. Width minus both gives the filler. This
-	// makes the board read as a proper table instead of a prose line —
-	// spec style.
-	left := strings.Repeat(" ", leftPad) + glyph + " " + rowCursor + name
-
-	// Active: add the [↵ LOGS] badge on the far right so users know
-	// enter opens the log-tail view. The elapsed counter sits between
-	// the meta and the badge.
-	right := meta
-	if active {
-		right += "  " + m.styles.Muted.Render(formatElapsed(m.elapsedFor(btn.Name)))
-		if selected {
-			right += "  " + m.styles.BadgeActive.Render("↵ LOGS")
-		} else {
-			right += "  " + m.styles.BadgeActive.Render("ACTIVE")
+	if m.status[btn.Name] == statusRunning {
+		cardW := lipgloss.Width(card)
+		badge := m.styles.BadgeActive.Render("↵ TAIL")
+		offset := cardW - lipgloss.Width(badge)
+		if offset < 0 {
+			offset = 0
 		}
+		return strings.Repeat(" ", offset) + badge + "\n" + card
 	}
+	return card
+}
 
-	w := m.width
-	if w <= 0 {
-		w = 80
+// cardMeta is the tiny caption printed on the second interior line of
+// each card — "SHELL · 300S", "HTTP · 60S". Upper-cased so it reads as
+// a chip, not a sentence.
+func cardMeta(b button.Button) string {
+	rt := strings.ToUpper(b.Runtime)
+	if rt == "" {
+		rt = "SHELL"
 	}
-	gap := w - visibleLen(left) - visibleLen(right) - leftPad
-	if gap < 2 {
-		gap = 2
-	}
-	return left + strings.Repeat(" ", gap) + right
+	return fmt.Sprintf("%s · %ds", rt, b.TimeoutSeconds)
 }
 
 // elapsedFor returns how long the press has been running, or 0 when
@@ -962,7 +1046,7 @@ func (m Model) renderFooter() string {
 	if !m.pressIsEnabled() {
 		pressStyle = m.styles.ActionPrimaryDisabled
 	}
-	press := pressStyle.Render("press")
+	press := pressStyle.Render("● press")
 
 	hints := m.composeHints()
 
@@ -992,11 +1076,17 @@ func (m Model) composeHints() string {
 		return m.styles.KeyChip.Render(key) + m.styles.Muted.Render(" "+label)
 	}
 	sep := m.styles.Muted.Render("  ·  ")
-	logsLabel := "logs"
-	if m.logsOpen {
-		logsLabel = "hide"
+
+	// Hints flip to match the mode the user is currently in. In the
+	// detail view they need to know scroll + back; in pane mode they
+	// need ↵ = details, not press. Keeps the chip row honest.
+	if m.logsDetail != nil {
+		return pair("↑↓", "scroll") + sep + pair("esc", "back")
 	}
-	return pair("↑↓", "nav") + sep + pair("↵", "press") + sep + pair("L", logsLabel) + sep + pair("?", "help")
+	if m.logsOpen {
+		return pair("↑↓", "run") + sep + pair("↵", "details") + sep + pair("L", "hide") + sep + pair("esc", "close")
+	}
+	return pair("↑↓", "nav") + sep + pair("↵", "press") + sep + pair("L", "logs") + sep + pair("?", "help")
 }
 
 // renderChrome is the bottom status strip that mirrors the spec
@@ -1021,6 +1111,8 @@ func (m Model) renderChrome() string {
 				break
 			}
 		}
+	case m.logsDetail != nil:
+		right = m.styles.Chrome.Render("DETAIL · " + m.logsDetailBtn)
 	case m.argForm != nil:
 		right = m.styles.Chrome.Render(fmt.Sprintf("ARGS %d · DRY-RUN READY", len(m.argForm.fields)))
 	case m.logsOpen:
@@ -1079,13 +1171,23 @@ func (m Model) renderLogs() string {
 	if previewBudget < 20 {
 		previewBudget = 20
 	}
-	for _, r := range runs {
-		lines = append(lines, m.renderLogRow(r, previewBudget))
+	cursor := m.logsPaneCursor
+	if cursor >= len(runs) {
+		cursor = len(runs) - 1
 	}
+	for i, r := range runs {
+		lines = append(lines, m.renderLogRow(r, previewBudget, i == cursor))
+	}
+	// Footer hint tells the user ↵ is now bound to "details" instead
+	// of "press" — the same chip the bottom hint row surfaces, echoed
+	// here so pane focus is unambiguous.
+	lines = append(lines, "",
+		m.styles.Muted.Render("  ↵ open details   esc close"),
+	)
 	return indentBlock(strings.Join(lines, "\n"), leftPad)
 }
 
-func (m Model) renderLogRow(r history.Run, previewBudget int) string {
+func (m Model) renderLogRow(r history.Run, previewBudget int, selected bool) string {
 	var glyph string
 	switch r.Status {
 	case "ok":
@@ -1111,7 +1213,96 @@ func (m Model) renderLogRow(r history.Run, previewBudget int) string {
 	timeCol := m.styles.Muted.Render(localTime)
 	metaCol := m.styles.Muted.Render(meta)
 
-	return fmt.Sprintf("  %s  %s  %s  %s", glyph, timeCol, metaCol, preview)
+	cur := "  "
+	if selected {
+		cur = m.styles.ButtonNameSelected.Render("› ")
+	}
+	return fmt.Sprintf("%s%s  %s  %s  %s", cur, glyph, timeCol, metaCol, preview)
+}
+
+// renderLogDetail is the full-screen historical-run view shown when
+// the user hits ↵ on a pane row. Layout: identity row + metadata row
+// + streamed body (stdout, then stderr if any). Scrolls via up/down
+// while the detail is open.
+func (m Model) renderLogDetail() string {
+	if m.logsDetail == nil {
+		return ""
+	}
+	r := m.logsDetail
+
+	// Identity row — button name on the left, run timestamp on the
+	// right. Matches the logs view's header rhythm so users switching
+	// between live and historical views never feel lost.
+	name := m.styles.Wordmark.Render(m.logsDetailBtn)
+	press := m.styles.Muted.Render("  ·  " + r.StartedAt.Local().Format("2006-01-02 15:04:05"))
+	left := name + press
+
+	var statusCol string
+	if r.Status == "ok" {
+		statusCol = m.styles.StatusOK.Render(fmt.Sprintf("✓ exit %d · %dms", r.ExitCode, r.DurationMs))
+	} else {
+		statusCol = m.styles.StatusError.Render(fmt.Sprintf("✗ %s · exit %d · %dms", r.Status, r.ExitCode, r.DurationMs))
+	}
+	right := statusCol
+
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	gap := w - visibleLen(left) - visibleLen(right) - leftPad*2
+	if gap < 2 {
+		gap = 2
+	}
+	header := strings.Repeat(" ", leftPad) + left + strings.Repeat(" ", gap) + right
+
+	// Body — stdout first, then stderr if present. Both are shown
+	// unmodified (aside from styling) so copy-paste into a bug report
+	// round-trips cleanly. Each section gets a muted label.
+	bodyLines := []string{}
+	if strings.TrimSpace(r.Stdout) != "" {
+		bodyLines = append(bodyLines, m.styles.Muted.Render("─ stdout ─"))
+		for _, line := range strings.Split(strings.TrimRight(r.Stdout, "\n"), "\n") {
+			bodyLines = append(bodyLines, m.styles.ButtonName.Render(line))
+		}
+	}
+	if strings.TrimSpace(r.Stderr) != "" {
+		if len(bodyLines) > 0 {
+			bodyLines = append(bodyLines, "")
+		}
+		bodyLines = append(bodyLines, m.styles.Muted.Render("─ stderr ─"))
+		for _, line := range strings.Split(strings.TrimRight(r.Stderr, "\n"), "\n") {
+			bodyLines = append(bodyLines, m.styles.StatusError.Render(line))
+		}
+	}
+	if len(bodyLines) == 0 {
+		bodyLines = append(bodyLines, m.styles.Muted.Render("(no output recorded)"))
+	}
+
+	// Clamp scroll so we never render past the end of the body. Keep
+	// at least one line in view — scrolling into an empty tail makes
+	// the pane feel broken.
+	visibleHeight := m.height - 10
+	if visibleHeight < 5 {
+		visibleHeight = 5
+	}
+	scroll := m.logsDetailScroll
+	maxScroll := len(bodyLines) - visibleHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	end := scroll + visibleHeight
+	if end > len(bodyLines) {
+		end = len(bodyLines)
+	}
+	body := indentBlock(strings.Join(bodyLines[scroll:end], "\n"), leftPad*2)
+
+	return header + "\n" + m.renderDivider() + "\n\n" + body
 }
 
 // firstLineTrimmed returns the first non-empty line of s with leading/
@@ -1185,19 +1376,21 @@ func (m Model) pressIsEnabled() bool {
 // Helpers
 // ------------------------------------------------------------------
 
-func (m Model) hasPinned() bool {
-	for _, b := range m.buttons {
-		if b.Pinned {
-			return true
-		}
+// cardOrder returns m.buttons with pinned entries floated to the
+// front while preserving each bucket's original order. The cursor
+// indexes into this slice, not m.buttons directly.
+func (m Model) cardOrder() []button.Button {
+	if len(m.buttons) == 0 {
+		return nil
 	}
-	return false
-}
-
-func (m Model) pinned() []button.Button {
 	out := make([]button.Button, 0, len(m.buttons))
 	for _, b := range m.buttons {
 		if b.Pinned {
+			out = append(out, b)
+		}
+	}
+	for _, b := range m.buttons {
+		if !b.Pinned {
 			out = append(out, b)
 		}
 	}
@@ -1205,27 +1398,22 @@ func (m Model) pinned() []button.Button {
 }
 
 func (m Model) currentButtonName() string {
-	switch m.section {
-	case sectionPinned:
-		pinned := m.pinned()
-		if len(pinned) == 0 {
-			return ""
-		}
-		return pinned[m.cursorPinned%len(pinned)].Name
-	case sectionList:
-		if len(m.buttons) == 0 {
-			return ""
-		}
-		return m.buttons[m.cursorList%len(m.buttons)].Name
+	order := m.cardOrder()
+	if len(order) == 0 {
+		return ""
 	}
-	return ""
+	idx := m.cursor
+	if idx < 0 || idx >= len(order) {
+		idx = 0
+	}
+	return order[idx].Name
 }
 
 func (m *Model) focusByName(name string) {
-	for i, b := range m.buttons {
+	order := m.cardOrder()
+	for i, b := range order {
 		if b.Name == name {
-			m.section = sectionList
-			m.cursorList = i
+			m.cursor = i
 			return
 		}
 	}
@@ -1238,37 +1426,6 @@ func (m Model) anyRunning() bool {
 		}
 	}
 	return false
-}
-
-// metaFor returns the right-hand metadata string shown next to each
-// button in the list view, condensed to one line: runtime + timeout +
-// the most informative extra (URL for http, arg count otherwise).
-func metaFor(b button.Button) string {
-	parts := []string{b.Runtime, fmt.Sprintf("%ds", b.TimeoutSeconds)}
-	switch b.Runtime {
-	case "http":
-		if b.URL != "" {
-			method := b.Method
-			if method == "" {
-				method = "GET"
-			}
-			parts = append(parts, method+" "+shortenURL(b.URL))
-		}
-	default:
-		if n := len(b.Args); n > 0 {
-			parts = append(parts, fmt.Sprintf("%d arg", n))
-		}
-	}
-	return strings.Join(parts, " · ")
-}
-
-func shortenURL(u string) string {
-	for _, prefix := range []string{"https://", "http://"} {
-		if strings.HasPrefix(u, prefix) {
-			return u[len(prefix):]
-		}
-	}
-	return u
 }
 
 // visibleLen returns the number of terminal cells a string occupies
@@ -1295,22 +1452,3 @@ func countLines(s string) int {
 	return strings.Count(s, "\n") + 1
 }
 
-// pinnedIndexAtX returns the index of the pinned card whose horizontal
-// span contains x, or -1. Cards start at column leftPad and are
-// separated by two-space gutters.
-func pinnedIndexAtX(pinned []button.Button, x int) int {
-	col := leftPad
-	for i, b := range pinned {
-		label := b.Name
-		if len(label) < 10 {
-			label = fmt.Sprintf("%-10s", label)
-		}
-		// card width = padding(6 = 3 each side) + label + border(2)
-		cardWidth := len(label) + 8
-		if x >= col && x < col+cardWidth {
-			return i
-		}
-		col += cardWidth + 2 // 2-space gutter between cards
-	}
-	return -1
-}

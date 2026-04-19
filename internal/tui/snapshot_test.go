@@ -81,7 +81,6 @@ func fixtureModel(buttons []button.Button) Model {
 		buttons:        buttons,
 		status:         map[string]runStatus{},
 		pressStartedAt: map[string]time.Time{},
-		section:        sectionList,
 		width:          80,
 		height:         24,
 	}
@@ -98,7 +97,7 @@ func TestSnapshot_BoardPopulatedIdle(t *testing.T) {
 		{Name: "weather", Runtime: "http", URL: "https://wttr.in/NYC", TimeoutSeconds: 60},
 		{Name: "notify", Runtime: "http", URL: "https://hooks.example.com/webhook", Method: "POST", TimeoutSeconds: 60},
 	})
-	m.cursorList = 1
+	m.cursor = 1
 	assertSnapshot(t, "board_populated_cursor_on_list_1", m.View().Content)
 }
 
@@ -108,8 +107,7 @@ func TestSnapshot_BoardWithPinned(t *testing.T) {
 		{Name: "weather", Runtime: "http", URL: "https://wttr.in/NYC", TimeoutSeconds: 60},
 		{Name: "notify", Runtime: "http", URL: "https://hooks.example.com/webhook", Method: "POST", TimeoutSeconds: 60},
 	})
-	m.section = sectionPinned
-	m.cursorPinned = 0
+	m.cursor = 0
 	assertSnapshot(t, "board_pinned_row_focused", m.View().Content)
 }
 
@@ -118,7 +116,7 @@ func TestSnapshot_BoardLogsOpen(t *testing.T) {
 		{Name: "deploy", Runtime: "shell", TimeoutSeconds: 300},
 	})
 	m.logsOpen = true
-	m.cursorList = 0
+	m.cursor = 0
 	// history.List will return [] for unknown buttons in the test
 	// env — that's fine, the empty-state branch of renderLogs gives
 	// us a deterministic snapshot.
@@ -126,15 +124,14 @@ func TestSnapshot_BoardLogsOpen(t *testing.T) {
 }
 
 func TestSnapshot_BoardPinnedActive(t *testing.T) {
-	// Pinned button mid-press: spec shows thick orange border, two-line
-	// interior (name + "● ACTIVE · <elapsed>"), and a "↵ TAIL" badge
-	// floating above the card's top-right corner.
+	// Active card: thick orange border, two-line interior (name + "●
+	// ACTIVE · <elapsed>"), and a "↵ TAIL" badge floating above the
+	// card's top-right corner.
 	m := fixtureModel([]button.Button{
 		{Name: "deploy", Runtime: "shell", TimeoutSeconds: 300, Pinned: true},
 		{Name: "weather", Runtime: "http", URL: "https://wttr.in/NYC", TimeoutSeconds: 60},
 	})
-	m.section = sectionPinned
-	m.cursorPinned = 0
+	m.cursor = 0
 	m.status["deploy"] = statusRunning
 	// Freeze elapsed at a known instant so the golden is deterministic.
 	m.pressStartedAt["deploy"] = time.Now().Add(-3*time.Second - 200*time.Millisecond)
