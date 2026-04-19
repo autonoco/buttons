@@ -193,6 +193,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.MouseWheelMsg:
+		// Scroll wheel drives log-detail scroll when open. Elsewhere
+		// it's currently a no-op; could drive pane-cursor movement
+		// later if we want the board to feel list-like under wheel.
+		if m.logsDetail != nil {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				m.logsDetailScroll = clampScroll(m.logsDetailScroll-3, m.logsDetailMaxScroll())
+			case tea.MouseWheelDown:
+				m.logsDetailScroll = clampScroll(m.logsDetailScroll+3, m.logsDetailMaxScroll())
+			}
+		}
+		return m, nil
+
 	case pressDoneMsg:
 		return m.handlePressDone(msg), nil
 
@@ -289,9 +303,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "up", "k":
 		if m.logsDetail != nil {
-			if m.logsDetailScroll > 0 {
-				m.logsDetailScroll--
-			}
+			m.logsDetailScroll = clampScroll(m.logsDetailScroll-1, m.logsDetailMaxScroll())
 			return m, nil
 		}
 		if m.logsOpen {
@@ -301,13 +313,37 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "down", "j":
 		if m.logsDetail != nil {
-			m.logsDetailScroll++
+			m.logsDetailScroll = clampScroll(m.logsDetailScroll+1, m.logsDetailMaxScroll())
 			return m, nil
 		}
 		if m.logsOpen {
 			return m.movePaneCursor(1), nil
 		}
 		return m.moveByRow(1), nil
+
+	case "pgup", "ctrl+b":
+		if m.logsDetail != nil {
+			m.logsDetailScroll = clampScroll(m.logsDetailScroll-m.logsDetailPage(), m.logsDetailMaxScroll())
+		}
+		return m, nil
+
+	case "pgdown", "ctrl+f":
+		if m.logsDetail != nil {
+			m.logsDetailScroll = clampScroll(m.logsDetailScroll+m.logsDetailPage(), m.logsDetailMaxScroll())
+		}
+		return m, nil
+
+	case "g", "home":
+		if m.logsDetail != nil {
+			m.logsDetailScroll = 0
+			return m, nil
+		}
+
+	case "G", "end":
+		if m.logsDetail != nil {
+			m.logsDetailScroll = m.logsDetailMaxScroll()
+			return m, nil
+		}
 
 	case "left", "h":
 		m.logsPaneCursor = 0
@@ -1197,7 +1233,10 @@ func (m Model) composeHints() string {
 	// detail view they need to know scroll + back; in pane mode they
 	// need ↵ = details, not press. Keeps the chip row honest.
 	if m.logsDetail != nil {
-		return pair("↑↓", "scroll") + sep + pair("esc", "back")
+		return pair("↑↓", "scroll") + sep +
+			pair("pgup/pgdn", "page") + sep +
+			pair("g/G", "top/end") + sep +
+			pair("esc", "back")
 	}
 	if m.logsOpen {
 		return pair("↑↓", "run") + sep + pair("↵", "details") + sep + pair("L", "hide") + sep + pair("esc", "close")
@@ -1343,6 +1382,84 @@ func (m Model) renderLogRow(r history.Run, previewBudget int, selected bool) str
 	return fmt.Sprintf("%s%s  %s  %s  %s", cur, glyph, timeCol, metaCol, preview)
 }
 
+// clampScroll bounds a scroll index to [0, max]. max is the largest
+// valid starting line so the viewport still has content at its top.
+func clampScroll(v, max int) int {
+	if max < 0 {
+		max = 0
+	}
+	if v < 0 {
+		return 0
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+// logsDetailBodyLines materializes the full rendered body of the
+// detail view. Used by the scroll helpers so their math agrees with
+// what renderLogDetail slices.
+func (m Model) logsDetailBodyLines() []string {
+	if m.logsDetail == nil {
+		return nil
+	}
+	r := m.logsDetail
+	lines := []string{}
+	if strings.TrimSpace(r.Stdout) != "" {
+		lines = append(lines, m.styles.Muted.Render("─ stdout ─"))
+		for _, line := range strings.Split(strings.TrimRight(r.Stdout, "\n"), "\n") {
+			lines = append(lines, m.styles.ButtonName.Render(line))
+		}
+	}
+	if strings.TrimSpace(r.Stderr) != "" {
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, m.styles.Muted.Render("─ stderr ─"))
+		for _, line := range strings.Split(strings.TrimRight(r.Stderr, "\n"), "\n") {
+			lines = append(lines, m.styles.StatusError.Render(line))
+		}
+	}
+	if len(lines) == 0 {
+		lines = append(lines, m.styles.Muted.Render("(no output recorded)"))
+	}
+	return lines
+}
+
+// logsDetailViewport is the number of body lines that fit on screen
+// given the current window size. Matches the height reserved in
+// renderLogDetail.
+func (m Model) logsDetailViewport() int {
+	h := m.height - 10
+	if h < 5 {
+		h = 5
+	}
+	return h
+}
+
+// logsDetailMaxScroll is the largest valid scrollTop so the viewport
+// still has content at its top edge.
+func (m Model) logsDetailMaxScroll() int {
+	total := len(m.logsDetailBodyLines())
+	max := total - m.logsDetailViewport()
+	if max < 0 {
+		max = 0
+	}
+	return max
+}
+
+// logsDetailPage returns the page size used by pgup / pgdn. One page
+// minus one line of overlap so users never lose their visual place
+// between pages.
+func (m Model) logsDetailPage() int {
+	p := m.logsDetailViewport() - 1
+	if p < 1 {
+		p = 1
+	}
+	return p
+}
+
 // renderLogDetail is the full-screen historical-run view shown when
 // the user hits ↵ on a pane row. Layout: identity row + metadata row
 // + streamed body (stdout, then stderr if any). Scrolls via up/down
@@ -1366,7 +1483,29 @@ func (m Model) renderLogDetail() string {
 	} else {
 		statusCol = m.styles.StatusError.Render(fmt.Sprintf("✗ %s · exit %d · %dms", r.Status, r.ExitCode, r.DurationMs))
 	}
-	right := statusCol
+
+	bodyLines := m.logsDetailBodyLines()
+	viewport := m.logsDetailViewport()
+	maxScroll := m.logsDetailMaxScroll()
+	scroll := clampScroll(m.logsDetailScroll, maxScroll)
+
+	// Scroll indicator: "42/318" if truncated, percentage, or "all".
+	// Gives users a sense of where they are and whether there's more
+	// to see — without it, the view reads as static even when most of
+	// the output is below the fold.
+	var indicator string
+	total := len(bodyLines)
+	if total <= viewport {
+		indicator = m.styles.Muted.Render("all")
+	} else {
+		last := scroll + viewport
+		if last > total {
+			last = total
+		}
+		pct := (last * 100) / total
+		indicator = m.styles.Muted.Render(fmt.Sprintf("%d–%d/%d · %d%%", scroll+1, last, total, pct))
+	}
+	right := statusCol + m.styles.Muted.Render("  ·  ") + indicator
 
 	w := m.width
 	if w <= 0 {
@@ -1378,50 +1517,9 @@ func (m Model) renderLogDetail() string {
 	}
 	header := strings.Repeat(" ", leftPad) + left + strings.Repeat(" ", gap) + right
 
-	// Body — stdout first, then stderr if present. Both are shown
-	// unmodified (aside from styling) so copy-paste into a bug report
-	// round-trips cleanly. Each section gets a muted label.
-	bodyLines := []string{}
-	if strings.TrimSpace(r.Stdout) != "" {
-		bodyLines = append(bodyLines, m.styles.Muted.Render("─ stdout ─"))
-		for _, line := range strings.Split(strings.TrimRight(r.Stdout, "\n"), "\n") {
-			bodyLines = append(bodyLines, m.styles.ButtonName.Render(line))
-		}
-	}
-	if strings.TrimSpace(r.Stderr) != "" {
-		if len(bodyLines) > 0 {
-			bodyLines = append(bodyLines, "")
-		}
-		bodyLines = append(bodyLines, m.styles.Muted.Render("─ stderr ─"))
-		for _, line := range strings.Split(strings.TrimRight(r.Stderr, "\n"), "\n") {
-			bodyLines = append(bodyLines, m.styles.StatusError.Render(line))
-		}
-	}
-	if len(bodyLines) == 0 {
-		bodyLines = append(bodyLines, m.styles.Muted.Render("(no output recorded)"))
-	}
-
-	// Clamp scroll so we never render past the end of the body. Keep
-	// at least one line in view — scrolling into an empty tail makes
-	// the pane feel broken.
-	visibleHeight := m.height - 10
-	if visibleHeight < 5 {
-		visibleHeight = 5
-	}
-	scroll := m.logsDetailScroll
-	maxScroll := len(bodyLines) - visibleHeight
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	if scroll > maxScroll {
-		scroll = maxScroll
-	}
-	if scroll < 0 {
-		scroll = 0
-	}
-	end := scroll + visibleHeight
-	if end > len(bodyLines) {
-		end = len(bodyLines)
+	end := scroll + viewport
+	if end > total {
+		end = total
 	}
 	body := indentBlock(strings.Join(bodyLines[scroll:end], "\n"), leftPad*2)
 
