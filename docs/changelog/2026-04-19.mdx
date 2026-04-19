@@ -1,0 +1,66 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-19" description="Full-screen log streaming">
+## Full-screen log streaming
+
+You can now watch a button's output stream in real time from a dedicated terminal view.
+
+### New features
+
+- **`buttons logs <name>` command** — press a button and watch every line of stdout and stderr stream into a full-screen viewer as the script runs. The viewer stays open after the press finishes so you can scroll through the output. Press `f` to toggle auto-follow, `g`/`G` to jump to top or bottom, and `Esc` or `q` to dismiss. `Ctrl+C` cancels an in-flight press. See the [CLI reference](/cli/buttons_board).
+
+- **Real-time line streaming** — output from button presses is now streamed line-by-line as the child process writes it, rather than buffered until completion. This powers the log viewer and makes long-running scripts much easier to monitor.
+</Update>
+
+<Update label="2026-04-19" description="Button detail view">
+## Button detail view
+
+You can now inspect any button's full configuration in a scannable terminal page.
+
+### New features
+
+- **`buttons <name>` detail page** — run a button name as a subcommand to open a detail view showing its runtime, method, timeout, arguments, usage examples, and last run status. Press `e` to open the button's script in your `$EDITOR`. Non-TTY and `--json` output paths work the same as before. See the [CLI reference](/cli/buttons).
+</Update>
+
+<Update label="2026-04-19" description="Enum argument type">
+## Enum argument type
+
+You can now restrict an argument to a fixed set of valid values.
+
+### New features
+
+- **`enum` argument type** — declare an argument with a closed set of allowed values using the syntax `name:enum:required:value1|value2|value3`. Useful for environments (`staging|prod|canary`), log levels, regions, or any input where only specific values make sense. Invalid values are rejected at press time with a clear error message listing the allowed options. See [arguments](/concepts/arguments).
+</Update>
+
+<Update label="2026-04-19" description="Press buttons with arguments from the board">
+## Press buttons with arguments from the board
+
+Buttons with required arguments can now be pressed directly from the board without dropping to the CLI.
+
+### New features
+
+- **Inline argument form** — pressing a button that has required arguments now opens an inline form on the board. Fill in each field, press `Enter` to submit, or `Esc` to cancel. Validation runs through the same path as `buttons press`, so type checking and error messages are identical. See the [CLI reference](/cli/buttons_board).
+</Update>
+
+<Update label="2026-04-19" description="Card grid layout and board polish">
+## Card grid layout and board polish
+
+The board gets a visual overhaul — every button is now a card, and the layout adapts to your terminal width.
+
+### Updates
+
+- **Card grid layout** — every button on the board now renders as a bordered card in a responsive grid that wraps to fit your terminal. Pinned buttons sort to the front but share the same card treatment, so the board reads as a collection of pressable objects rather than a log listing. Navigate with arrow keys, `Tab` to advance, and `Enter` to press.
+
+- **Run detail drill-down** — the logs pane now supports row navigation. Press `Enter` on a past run to open its full stdout and stderr in a detail view. Press `Esc` to return to the logs pane.
+
+- **Chrome status bar** — the board, detail page, and log viewer now display a bottom chrome strip with contextual status badges (active press, follow mode, exit code, runtime info). All three views share the same visual vocabulary so you always know what state you're in.
+
+- **Follow indicator in log viewer** — while tailing a live press, the log viewer header shows an orange `● follow` badge next to the elapsed timer. The badge disappears when the press completes.
+
+- **Pinned card active state** — pinned buttons that are mid-press now show an orange border and a live elapsed timer inside the card, with a `↵ TAIL` badge to open the log-tail view.
+
+- **Improved dark terminal contrast** — dividers and muted text are now more legible on dark terminal backgrounds.
+</Update>
