@@ -1,0 +1,24 @@
+  weather  — get current weather for a city via wttr.in JSON API                            detail
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    runtime       http
+    method        GET
+    url           https://wttr.in/{{city}}?format=j1
+    max resp      10.0 MB
+    private net   blocked
+    timeout       60s
+
+    args
+    
+    city  string · required
+
+    usage
+    
+    buttons press weather --arg city=<string>
+    buttons press weather --arg city=<string> --json
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+   ↵  back
+
+  TTY 1 · UTF-8 · 256-COLOR                                        HTTP GET · 10.0 MB · NET PUBLIC
