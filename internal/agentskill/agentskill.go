@@ -139,8 +139,10 @@ Refs inside step args: ` + "`${step_id.output.field}`" + `, ` + "`${inputs.<name
 ## Webhook-triggered drawers
 
 - ` + "`buttons webhook setup`" + ` — one-time: Cloudflare login + pick hostname
-- ` + "`buttons drawer <name> trigger webhook [/path]`" + ` — default path = /<name>
+- ` + "`buttons drawer <name> trigger webhook [/path] [--auth TYPE ...]`" + ` — default path = /<name>
 - ` + "`buttons webhook listen`" + ` — foreground dispatcher
+
+Auth types (match n8n's four): ` + "`none`" + ` (default) / ` + "`basic`" + ` (` + "`--auth-user --auth-pass`" + `) / ` + "`header`" + ` (` + "`--auth-header-name --auth-header-value`" + `) / ` + "`jwt`" + ` (` + "`--jwt-secret [--jwt-algorithm HS256|HS384|HS512] [--jwt-issuer ...] [--jwt-audience ...]`" + `). Secret fields accept ` + "`$ENV{VAR}`" + ` resolved at match time so drawer.json stays commit-safe.
 
 In a triggered drawer, the POST is available as ` + "`${inputs.webhook.body}`" + ` (+ headers, query, method, path, received_at). ` + "`${webhooks.<drawer-name>}`" + ` resolves to another drawer's full public URL — use it to configure upstream services with the correct callback URL.
 
@@ -190,8 +192,20 @@ Refs between steps use ` + "`${step_id.output.field}`" + `; ` + "`${inputs.<name
 Drawers can be invoked automatically by incoming HTTP POSTs.
 
     buttons webhook setup                              # one-time: CF login + pick hostname
-    buttons drawer <name> trigger webhook [/path]      # default path = /<drawer-name>
+    buttons drawer <name> trigger webhook [/path] [--auth <type> ...]
     buttons webhook listen                             # runs the dispatcher (foreground)
+
+Auth types (mirror n8n's four built-in options):
+
+    --auth none                                        # default, open endpoint
+    --auth basic --auth-user U --auth-pass P
+    --auth header --auth-header-name X-Foo --auth-header-value V
+    --auth jwt --jwt-secret S [--jwt-algorithm HS256|HS384|HS512]
+                               [--jwt-issuer I] [--jwt-audience A]
+
+Any secret field accepts '$ENV{VAR_NAME}' — the listener resolves it
+at match time against its environment, so committed drawer.json never
+carries raw secrets.
 
 A triggered drawer gets the request body/headers/query/method materialized as:
 

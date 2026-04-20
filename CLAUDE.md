@@ -63,7 +63,7 @@ Workspace introspection: `buttons summary [--json]` dumps buttons, drawers, rece
 Drawers can be invoked automatically by incoming HTTP POSTs. Architecture: `cloudflared` tunnel → local listener → dispatch by path → press drawer with request body/headers/query as `${inputs.webhook.*}`.
 
 - **Setup:** `buttons webhook setup` — one-time Cloudflare login + pick hostname. Quick-tunnel mode (no config) works for ephemeral URLs; named mode for stable hostnames.
-- **Register:** `buttons drawer <name> trigger webhook [PATH] [--secret TOKEN]` — default path `/<drawer-name>`. Secret, when set, is verified via `X-Buttons-Token` header or `?token=`.
+- **Register:** `buttons drawer <name> trigger webhook [PATH] [--auth TYPE ...]` — default path `/<drawer-name>`. Auth types mirror n8n's four: `none` | `basic` (`--auth-user --auth-pass`) | `header` (`--auth-header-name --auth-header-value`) | `jwt` (`--jwt-secret [--jwt-algorithm HS256|HS384|HS512] [--jwt-issuer] [--jwt-audience]`). Any secret field accepts `$ENV{VAR}` resolved at match time. All comparisons are constant-time (`crypto/subtle`).
 - **Listen:** `buttons webhook listen` — foreground dispatcher. Responds `202 Accepted` immediately; drawer presses asynchronously.
 - **Input shape:** `${inputs.webhook.body}` (+ `body.<field>`, `headers.<Name>`, `query.<param>`, `method`, `path`, `received_at`).
 - **Cross-drawer refs:** `${webhooks.<drawer-name>}` → that drawer's full public URL. Use when one drawer configures an upstream with another drawer's webhook URL.

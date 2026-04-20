@@ -68,16 +68,49 @@ type Drawer struct {
 // even before the corresponding listener ships.
 type Trigger struct {
 	Kind string `json:"kind" jsonschema:"enum=webhook,enum=cron,enum=file,enum=mcp,description=Trigger source"`
-	// Path is the URL path the `buttons serve` listener binds for this
-	// trigger. Must start with '/'. Mutually exclusive across drawers —
-	// two drawers cannot register the same path. Only used for
-	// kind=webhook today.
+	// Path is the URL path the `buttons webhook listen` listener binds
+	// for this trigger. Must start with '/'. Mutually exclusive across
+	// drawers — two drawers cannot register the same path. Only used
+	// for kind=webhook today.
 	Path string `json:"path,omitempty" jsonschema:"description=URL path on the webhook listener (kind=webhook only); e.g. /apify"`
-	// Secret is an optional shared token. When set, the listener
-	// compares against the X-Buttons-Token header (or ?token= query
-	// parameter) and rejects requests without a match. Keeps third
-	// parties who learn the URL from invoking the drawer.
-	Secret string `json:"secret,omitempty" jsonschema:"description=Shared token; if set, required via X-Buttons-Token header or ?token query param"`
+	// Auth configures how the listener verifies incoming POSTs. When
+	// nil (or Type==none), the path is open — anyone who knows the URL
+	// can press the drawer. See TriggerAuth for per-type semantics.
+	Auth *TriggerAuth `json:"auth,omitempty" jsonschema:"description=Authentication for incoming webhooks"`
+}
+
+// TriggerAuth is the incoming-webhook authentication configuration.
+// Matches n8n's four built-in auth modes (none / basic / header / jwt)
+// so agents familiar with n8n webhook nodes map 1:1.
+//
+// All secret-bearing string fields accept $ENV{VAR_NAME} references —
+// the listener resolves them at match time against its own environment
+// so credentials can stay out of version-controlled drawer.json.
+type TriggerAuth struct {
+	// Type selects the auth mechanism. "none" is equivalent to
+	// omitting Auth entirely; kept so drawer.json can record an
+	// explicit "no auth" decision.
+	Type string `json:"type" jsonschema:"enum=none,enum=basic,enum=header,enum=jwt,description=Auth mechanism"`
+
+	// --- Type == "basic" ---
+	Username string `json:"username,omitempty" jsonschema:"description=HTTP Basic username (type=basic); $ENV{VAR} supported"`
+	Password string `json:"password,omitempty" jsonschema:"description=HTTP Basic password (type=basic); $ENV{VAR} supported"`
+
+	// --- Type == "header" ---
+	// Match an arbitrary header name (e.g. "X-Buttons-Token",
+	// "Authorization") against an expected value, constant-time.
+	HeaderName  string `json:"header_name,omitempty" jsonschema:"description=Header name to check (type=header); e.g. X-Buttons-Token"`
+	HeaderValue string `json:"header_value,omitempty" jsonschema:"description=Expected header value (type=header); $ENV{VAR} supported"`
+
+	// --- Type == "jwt" ---
+	// Verify the request's bearer token as a JWT signed with
+	// JWTSecret. Algorithm is one of HS256 | HS384 | HS512 (default
+	// HS256). JWTIssuer and JWTAudience are optional extra claims; empty
+	// = skip. `exp` is always enforced if present on the token.
+	JWTSecret    string `json:"jwt_secret,omitempty" jsonschema:"description=HS-family signing secret (type=jwt); $ENV{VAR} supported"`
+	JWTAlgorithm string `json:"jwt_algorithm,omitempty" jsonschema:"enum=HS256,enum=HS384,enum=HS512,description=JWT signing algorithm (default: HS256)"`
+	JWTIssuer    string `json:"jwt_issuer,omitempty" jsonschema:"description=Expected iss claim (type=jwt); optional"`
+	JWTAudience  string `json:"jwt_audience,omitempty" jsonschema:"description=Expected aud claim (type=jwt); optional"`
 }
 
 // InputDef declares a drawer-level input. Mirrors button.ArgDef so

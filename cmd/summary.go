@@ -158,6 +158,17 @@ func buttonSummary(b button.Button, recent []history.Run) map[string]any {
 	return entry
 }
 
+// triggerAuthType returns the auth mechanism name ("none", "basic",
+// "header", "jwt") for summary rendering. Nil auth blocks are treated
+// as "none" — matches the on-disk normalisation done in
+// drawer.Service.SetWebhookTrigger.
+func triggerAuthType(a *drawer.TriggerAuth) string {
+	if a == nil || a.Type == "" {
+		return "none"
+	}
+	return a.Type
+}
+
 // buildWebhookSummaryBlock rolls up webhook-listener state into the
 // workspace summary. Agents use this to answer "should I start the
 // listener?" and "what's my base URL?" without learning a second
@@ -178,9 +189,9 @@ func buildWebhookSummaryBlock(drawers []drawer.Drawer) map[string]any {
 				continue
 			}
 			entry := map[string]any{
-				"drawer":     d.Name,
-				"path":       t.Path,
-				"has_secret": t.Secret != "",
+				"drawer":    d.Name,
+				"path":      t.Path,
+				"auth_type": triggerAuthType(t.Auth),
 			}
 			if hostname != "" {
 				entry["url"] = "https://" + hostname + t.Path

@@ -239,6 +239,10 @@
     "Trigger": {
       "additionalProperties": false,
       "properties": {
+        "auth": {
+          "$ref": "#/$defs/TriggerAuth",
+          "description": "Authentication for incoming webhooks"
+        },
         "kind": {
           "description": "Trigger source",
           "enum": [
@@ -252,14 +256,66 @@
         "path": {
           "description": "URL path on the webhook listener (kind=webhook only); e.g. /apify",
           "type": "string"
-        },
-        "secret": {
-          "description": "Shared token; if set",
-          "type": "string"
         }
       },
       "required": [
         "kind"
+      ],
+      "type": "object"
+    },
+    "TriggerAuth": {
+      "additionalProperties": false,
+      "properties": {
+        "header_name": {
+          "description": "Header name to check (type=header); e.g. X-Buttons-Token",
+          "type": "string"
+        },
+        "header_value": {
+          "description": "Expected header value (type=header); $ENV{VAR} supported",
+          "type": "string"
+        },
+        "jwt_algorithm": {
+          "description": "JWT signing algorithm (default: HS256)",
+          "enum": [
+            "HS256",
+            "HS384",
+            "HS512"
+          ],
+          "type": "string"
+        },
+        "jwt_audience": {
+          "description": "Expected aud claim (type=jwt); optional",
+          "type": "string"
+        },
+        "jwt_issuer": {
+          "description": "Expected iss claim (type=jwt); optional",
+          "type": "string"
+        },
+        "jwt_secret": {
+          "description": "HS-family signing secret (type=jwt); $ENV{VAR} supported",
+          "type": "string"
+        },
+        "password": {
+          "description": "HTTP Basic password (type=basic); $ENV{VAR} supported",
+          "type": "string"
+        },
+        "type": {
+          "description": "Auth mechanism",
+          "enum": [
+            "none",
+            "basic",
+            "header",
+            "jwt"
+          ],
+          "type": "string"
+        },
+        "username": {
+          "description": "HTTP Basic username (type=basic); $ENV{VAR} supported",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
       ],
       "type": "object"
     }

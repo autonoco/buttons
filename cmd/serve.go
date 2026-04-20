@@ -152,12 +152,34 @@ func runListen(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// toAuthConfig adapts a drawer-layer TriggerAuth into the webhook
+// package's verifier struct. Kept as a thin copy so the verifier has
+// no dependency on the drawer package (avoids an import cycle if the
+// drawer ever grows webhook-aware validation logic).
+func toAuthConfig(a *drawer.TriggerAuth) *webhook.TriggerAuthConfig {
+	if a == nil {
+		return nil
+	}
+	return &webhook.TriggerAuthConfig{
+		Type:         a.Type,
+		Username:     a.Username,
+		Password:     a.Password,
+		HeaderName:   a.HeaderName,
+		HeaderValue:  a.HeaderValue,
+		JWTSecret:    a.JWTSecret,
+		JWTAlgorithm: a.JWTAlgorithm,
+		JWTIssuer:    a.JWTIssuer,
+		JWTAudience:  a.JWTAudience,
+	}
+}
+
 // route maps one webhook path to the drawer that owns it plus the
-// optional shared-token secret.
+// auth configuration. Auth is kept as a pointer so a nil route.auth
+// is the "open endpoint" case — matching the on-disk normalisation.
 type route struct {
 	path       string
 	drawerName string
-	secret     string
+	auth       *drawer.TriggerAuth
 }
 
 func collectWebhookRoutes(ds []drawer.Drawer) []route {
@@ -167,7 +189,7 @@ func collectWebhookRoutes(ds []drawer.Drawer) []route {
 			if t.Kind != "webhook" || t.Path == "" {
 				continue
 			}
-			out = append(out, route{path: t.Path, drawerName: d.Name, secret: t.Secret})
+			out = append(out, route{path: t.Path, drawerName: d.Name, auth: t.Auth})
 		}
 	}
 	return out
@@ -181,11 +203,15 @@ func printServeBanner(publicBase string, routes []route, tunnel *webhook.Tunnel)
 		}
 		rs := payload["routes"].([]map[string]any)
 		for _, r := range routes {
+			authType := "none"
+			if r.auth != nil && r.auth.Type != "" {
+				authType = r.auth.Type
+			}
 			rs = append(rs, map[string]any{
-				"path":       r.path,
-				"drawer":     r.drawerName,
-				"has_secret": r.secret != "",
-				"url":        publicBase + r.path,
+				"path":      r.path,
+				"drawer":    r.drawerName,
+				"auth_type": authType,
+				"url":       publicBase + r.path,
 			})
 		}
 		payload["routes"] = rs
@@ -200,11 +226,11 @@ func printServeBanner(publicBase string, routes []route, tunnel *webhook.Tunnel)
 	fmt.Fprintf(os.Stderr, "  listening at: %s\n", publicBase)
 	fmt.Fprintf(os.Stderr, "\nroutes:\n")
 	for _, r := range routes {
-		lock := ""
-		if r.secret != "" {
-			lock = "  (token-protected)"
+		authLabel := ""
+		if r.auth != nil && r.auth.Type != "" && r.auth.Type != "none" {
+			authLabel = "  (auth: " + r.auth.Type + ")"
 		}
-		fmt.Fprintf(os.Stderr, "  %s%s  →  %s%s\n", publicBase, r.path, r.drawerName, lock)
+		fmt.Fprintf(os.Stderr, "  %s%s  →  %s%s\n", publicBase, r.path, r.drawerName, authLabel)
 	}
 	fmt.Fprintf(os.Stderr, "\nCtrl-C to stop.\n\n")
 }
@@ -249,16 +275,25 @@ func (h *serveHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Shared-token check. Either X-Buttons-Token header or ?token=.
-	if matched.secret != "" {
-		got := r.Header.Get("X-Buttons-Token")
-		if got == "" {
-			got = r.URL.Query().Get("token")
+	// Auth gate. Matches n8n's trigger-webhook auth types (none,
+	// basic, header, jwt). Every string compare inside VerifyAuth
+	// uses crypto/subtle.ConstantTimeCompare so timing side-channels
+	// don't leak the configured secret.
+	if res := webhook.VerifyAuth(toAuthConfig(matched.auth), r); !res.OK {
+		w.Header().Set("Content-Type", "application/json")
+		// WWW-Authenticate for Basic helps browsers/clients re-prompt;
+		// harmless to emit for other types but only strictly correct
+		// for basic.
+		if matched.auth != nil && matched.auth.Type == "basic" {
+			w.Header().Set("WWW-Authenticate", `Basic realm="buttons webhook"`)
 		}
-		if got != matched.secret {
-			http.Error(w, `{"ok":false,"error":"invalid_token"}`, http.StatusUnauthorized)
-			return
-		}
+		w.WriteHeader(res.Status)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": res.Code,
+			"detail": res.Detail,
+		})
+		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20)) // 8 MiB cap
