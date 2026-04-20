@@ -33,14 +33,23 @@ import (
 //	args:     {"user": "alice&admin=true"}
 //	result:   "https://api.example.com/users/alice%26admin%3Dtrue"  (safe)
 func SubstituteURL(template string, args map[string]string) string {
-	// Split on the first `#` to find the fragment, then on the first `?`
-	// to find the query. Using strings.Index here rather than url.Parse
-	// because the template contains `{{arg}}` placeholders which a
-	// strict parser may choke on.
+	// Split into a locked scheme+host prefix and a substitutable
+	// suffix (path + query + fragment). {{arg}} placeholders in the
+	// prefix are deliberately NOT touched — button.Service validates
+	// at create time that scheme and host are literal, so if we see
+	// placeholders here it means a hand-edited button.json slipped
+	// through; leave them in place so validateHTTPTarget in engine
+	// can surface a VALIDATION_ERROR rather than silently making an
+	// exfil-friendly request.
+	prefix, suffix := splitSchemeHost(template)
+
+	// Split suffix on the first `#` to find the fragment, then on
+	// the first `?` for the query. We substitute in each with the
+	// context-appropriate encoder.
 	var path, query, fragment string
 	var hasQuery, hasFragment bool
 
-	rest := template
+	rest := suffix
 	if i := strings.Index(rest, "#"); i != -1 {
 		hasFragment = true
 		fragment = rest[i+1:]
@@ -60,7 +69,7 @@ func SubstituteURL(template string, args map[string]string) string {
 		fragment = strings.ReplaceAll(fragment, placeholder, url.PathEscape(v))
 	}
 
-	result := path
+	result := prefix + path
 	if hasQuery {
 		result += "?" + query
 	}
@@ -68,6 +77,26 @@ func SubstituteURL(template string, args map[string]string) string {
 		result += "#" + fragment
 	}
 	return result
+}
+
+// splitSchemeHost returns (prefix, suffix) where prefix is everything
+// up to and including the authority (scheme://host[:port]) and suffix
+// is everything after — the first /, ?, or # boundary. A template
+// that doesn't start with http:// or https:// gets an empty prefix
+// (validateHTTPTarget will reject it downstream).
+func splitSchemeHost(template string) (string, string) {
+	schemeEnd := strings.Index(template, "://")
+	if schemeEnd < 0 {
+		return "", template
+	}
+	authStart := schemeEnd + 3
+	sepOffset := strings.IndexAny(template[authStart:], "/?#")
+	if sepOffset < 0 {
+		// URL is just scheme://host with nothing after.
+		return template, ""
+	}
+	boundary := authStart + sepOffset
+	return template[:boundary], template[boundary:]
 }
 
 // SubstituteBody replaces every {{arg}} placeholder in a request body

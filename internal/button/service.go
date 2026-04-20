@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,6 +13,59 @@ import (
 
 	"github.com/autonoco/buttons/internal/config"
 )
+
+// extractLockedHost parses the scheme + authority portion of an HTTP
+// button URL template and returns a lowercased host (including port
+// when present). The template may contain {{arg}} placeholders in its
+// path, query, or fragment — those are tolerated — but placeholders
+// in the scheme or host are rejected so the URL is bound to a concrete
+// destination at create time.
+//
+// Existing patterns that stay valid:
+//   https://api.example.com/users/{{user}}
+//   https://api.example.com/things?filter={{filter}}
+//
+// Patterns rejected (with remediation):
+//   https://{{host}}.example.com/x      // host templating
+//   {{scheme}}://api.example.com/x      // scheme templating
+//   https://api.{{tenant}}/foo          // mid-host templating
+//
+// Returns the literal lowercased host on success. "*" as the whole
+// URL is reserved — not used here.
+func extractLockedHost(rawTemplate string) (string, error) {
+	// Split off path/query/fragment — everything after the first '/'
+	// following the scheme. What's left is scheme://host[:port].
+	schemeEnd := strings.Index(rawTemplate, "://")
+	if schemeEnd < 0 {
+		return "", fmt.Errorf("URL must start with http:// or https://")
+	}
+	rest := rawTemplate[schemeEnd+3:]
+	hostPart := rest
+	if slash := strings.IndexAny(rest, "/?#"); slash >= 0 {
+		hostPart = rest[:slash]
+	}
+	scheme := rawTemplate[:schemeEnd]
+	if strings.Contains(scheme, "{{") || strings.Contains(scheme, "}}") {
+		return "", fmt.Errorf("URL scheme cannot contain {{arg}} placeholders; use a literal http:// or https:// prefix")
+	}
+	if strings.Contains(hostPart, "{{") || strings.Contains(hostPart, "}}") {
+		return "", fmt.Errorf("URL host cannot contain {{arg}} placeholders (got %q); put variable parts in the path/query instead, or create a separate button per host", hostPart)
+	}
+	// Sanity-check parseability now that we know scheme+host are
+	// literal — catches malformed authority sections (e.g. missing
+	// host after scheme).
+	parsed, err := neturl.Parse(scheme + "://" + hostPart)
+	if err != nil {
+		return "", fmt.Errorf("invalid URL: %w", err)
+	}
+	if parsed.Host == "" {
+		return "", fmt.Errorf("URL is missing a host")
+	}
+	if parsed.User != nil {
+		return "", fmt.Errorf("URL with embedded user:pass is not allowed; put credentials in --header")
+	}
+	return strings.ToLower(parsed.Host), nil
+}
 
 const maxCodeBytes = 65536 // 64KB
 
@@ -98,10 +152,20 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 
 	// Validate URL
 	method := strings.ToUpper(opts.Method)
+	var allowedHost string
 	if hasURL {
 		if !strings.HasPrefix(opts.URL, "http://") && !strings.HasPrefix(opts.URL, "https://") {
 			return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "URL must start with http:// or https://"}
 		}
+		// Lock scheme + host at create time so {{arg}} substitution
+		// later can only touch path/query/fragment. Parsing out the
+		// host without resolving template variables means literal
+		// URLs auto-derive their AllowedHost here.
+		host, hostErr := extractLockedHost(opts.URL)
+		if hostErr != nil {
+			return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: hostErr.Error()}
+		}
+		allowedHost = host
 		if method == "" {
 			method = "GET"
 		}
@@ -168,6 +232,7 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 		TimeoutSeconds:       timeout,
 		MaxResponseBytes:     maxResponseBytes,
 		AllowPrivateNetworks: opts.AllowPrivateNetworks,
+		AllowedHost:          allowedHost,
 		MCPEnabled:           false,
 		CreatedAt:            now,
 		UpdatedAt:            now,

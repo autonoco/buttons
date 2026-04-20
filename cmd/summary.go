@@ -12,6 +12,7 @@ import (
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/drawer"
 	"github.com/autonoco/buttons/internal/history"
+	"github.com/autonoco/buttons/internal/webhook"
 )
 
 // summaryFlag is the universal --summary flag. When set on a mutating
@@ -107,6 +108,11 @@ func runSummary() error {
 		drawerEntries = append(drawerEntries, drawerSummaryEntry(d, recent))
 	}
 
+	// Webhook block: mode, hostname, and count of drawers routed.
+	// Keeps the agent aware of whether the listener needs to run and
+	// what URL prefix to expect.
+	webhookBlock := buildWebhookSummaryBlock(drawers)
+
 	resp := map[string]any{
 		"version":  version,
 		"data_dir": dataDir,
@@ -121,6 +127,7 @@ func runSummary() error {
 		"active_runs":      []any{}, // v1 executor is sync; nothing is ever active between commands
 		"recent_failures":  failures,
 		"schedules":        []any{}, // stage 3
+		"webhook":          webhookBlock,
 	}
 
 	if jsonOutput {
@@ -151,6 +158,61 @@ func buttonSummary(b button.Button, recent []history.Run) map[string]any {
 	return entry
 }
 
+// triggerAuthType returns the auth mechanism name ("none", "basic",
+// "header", "jwt") for summary rendering. Nil auth blocks are treated
+// as "none" — matches the on-disk normalisation done in
+// drawer.Service.SetWebhookTrigger.
+func triggerAuthType(a *drawer.TriggerAuth) string {
+	if a == nil || a.Type == "" {
+		return "none"
+	}
+	return a.Type
+}
+
+// buildWebhookSummaryBlock rolls up webhook-listener state into the
+// workspace summary. Agents use this to answer "should I start the
+// listener?" and "what's my base URL?" without learning a second
+// command.
+func buildWebhookSummaryBlock(drawers []drawer.Drawer) map[string]any {
+	cfg, _ := webhook.LoadConfig()
+	mode := string(webhook.ModeQuick)
+	hostname := ""
+	if cfg != nil && cfg.Mode == webhook.ModeNamed {
+		mode = string(webhook.ModeNamed)
+		hostname = cfg.Hostname
+	}
+
+	routes := make([]map[string]any, 0)
+	for _, d := range drawers {
+		for _, t := range d.Triggers {
+			if t.Kind != "webhook" || t.Path == "" {
+				continue
+			}
+			entry := map[string]any{
+				"drawer":    d.Name,
+				"path":      t.Path,
+				"auth_type": triggerAuthType(t.Auth),
+			}
+			if hostname != "" {
+				entry["url"] = "https://" + hostname + t.Path
+			}
+			routes = append(routes, entry)
+		}
+	}
+
+	block := map[string]any{
+		"mode":         mode,
+		"routes":       routes,
+		"route_count":  len(routes),
+		"listen_hint":  "buttons webhook listen",
+	}
+	if hostname != "" {
+		block["hostname"] = hostname
+		block["base_url"] = "https://" + hostname
+	}
+	return block
+}
+
 func drawerSummaryEntry(d drawer.Drawer, recent []drawer.Run) map[string]any {
 	topology := make([]string, 0, len(d.Steps))
 	for _, s := range d.Steps {
@@ -164,6 +226,9 @@ func drawerSummaryEntry(d drawer.Drawer, recent []drawer.Run) map[string]any {
 	}
 	if summaryDeep {
 		entry["steps"] = d.Steps
+	}
+	if triggers := summarizeDrawerTriggers(&d); len(triggers) > 0 {
+		entry["triggers"] = triggers
 	}
 	entry["recent_runs"] = summarizeDrawerRuns(recent)
 	return entry

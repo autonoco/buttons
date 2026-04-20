@@ -423,6 +423,117 @@ func (s *Service) save(d *Drawer) error {
 	return nil
 }
 
+// validateTriggerAuth enforces the per-type field requirements for an
+// incoming-webhook auth configuration. Nil and Type=="none" are valid
+// (open endpoint). Other types need their corresponding fields set so
+// agents can't persist a useless half-configured auth block.
+func validateTriggerAuth(a *TriggerAuth) error {
+	if a == nil || a.Type == "" || a.Type == "none" {
+		return nil
+	}
+	switch a.Type {
+	case "basic":
+		if a.Username == "" || a.Password == "" {
+			return fmt.Errorf("auth type=basic requires username and password")
+		}
+	case "header":
+		if a.HeaderName == "" || a.HeaderValue == "" {
+			return fmt.Errorf("auth type=header requires header_name and header_value")
+		}
+	case "jwt":
+		if a.JWTSecret == "" {
+			return fmt.Errorf("auth type=jwt requires jwt_secret")
+		}
+		switch a.JWTAlgorithm {
+		case "", "HS256", "HS384", "HS512":
+			// OK — empty defaults to HS256 at verification time.
+		default:
+			return fmt.Errorf("auth type=jwt: algorithm must be HS256, HS384, or HS512 (got %q)", a.JWTAlgorithm)
+		}
+	default:
+		return fmt.Errorf("unknown auth type %q (valid: none, basic, header, jwt)", a.Type)
+	}
+	return nil
+}
+
+// SetWebhookTrigger declares (or replaces) the webhook trigger on a
+// drawer. Returns an error if `path` collides with another drawer that
+// already owns the same path — listener dispatch must be unambiguous.
+// Pass auth=nil (or auth.Type=="none") for an open endpoint.
+func (s *Service) SetWebhookTrigger(drawerName, path string, auth *TriggerAuth) (*Drawer, error) {
+	if path == "" {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "trigger path required (e.g. /apify-done)"}
+	}
+	if path[0] != '/' {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "trigger path must start with '/'"}
+	}
+	if err := validateTriggerAuth(auth); err != nil {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: err.Error()}
+	}
+	// Reject collision with any other drawer that already owns this path.
+	others, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	for _, od := range others {
+		if od.Name == drawerName {
+			continue
+		}
+		for _, t := range od.Triggers {
+			if t.Kind == "webhook" && t.Path == path {
+				return nil, &ServiceError{
+					Code:    "TRIGGER_PATH_CONFLICT",
+					Message: fmt.Sprintf("path %q is already bound to drawer %q", path, od.Name),
+				}
+			}
+		}
+	}
+
+	d, err := s.Get(drawerName)
+	if err != nil {
+		return nil, err
+	}
+	// Replace any existing webhook trigger (we only allow one per drawer
+	// today; non-webhook triggers pass through).
+	filtered := make([]Trigger, 0, len(d.Triggers)+1)
+	for _, t := range d.Triggers {
+		if t.Kind != "webhook" {
+			filtered = append(filtered, t)
+		}
+	}
+	// Normalise: treat auth.Type=="none" as no auth — saves a noisy
+	// block in every drawer.json that doesn't actually use auth.
+	if auth != nil && auth.Type == "none" {
+		auth = nil
+	}
+	filtered = append(filtered, Trigger{Kind: "webhook", Path: path, Auth: auth})
+	d.Triggers = filtered
+	d.UpdatedAt = time.Now().UTC()
+	if err := s.save(d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// FindByWebhookPath returns the drawer registered for a given webhook
+// path, or (nil, nil) if nothing matches.
+func (s *Service) FindByWebhookPath(path string) (*Drawer, error) {
+	ds, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range ds {
+		for _, t := range d.Triggers {
+			if t.Kind == "webhook" && t.Path == path {
+				// Return the full drawer (List might return summaries —
+				// follow up with Get to be safe).
+				return s.Get(d.Name)
+			}
+		}
+	}
+	return nil, nil
+}
+
 // PressedDir returns the path to a drawer's pressed/ directory —
 // parallels button.Service.PressedDir so the history package can
 // write trace files there.

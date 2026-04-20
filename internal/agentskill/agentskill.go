@@ -127,6 +127,27 @@ Common commands:
 - ` + "`buttons press <name> --arg key=value`" + ` — with args
 - ` + "`buttons create <name>`" + ` — scaffold a shell button (edit ~/.buttons/buttons/<name>/main.sh)
 
+## Drawers chain buttons into workflows
+
+- ` + "`buttons drawer create <name>`" + `
+- ` + "`buttons drawer <name> add <button> [<button>...]`" + `
+- ` + "`buttons drawer <name> connect A to B`" + ` — auto-match output→args
+- ` + "`buttons drawer <name> press [field=value...]`" + `
+
+Refs inside step args: ` + "`${step_id.output.field}`" + `, ` + "`${inputs.<name>}`" + `, ` + "`${env.VAR}`" + `. Contents of ` + "`${...}`" + ` are CEL (arithmetic, ternary, ` + "`??`" + ` null-coalesce).
+
+## Webhook-triggered drawers
+
+- ` + "`buttons webhook setup`" + ` — one-time: Cloudflare login + pick hostname
+- ` + "`buttons drawer <name> trigger webhook [/path] [--auth TYPE ...]`" + ` — default path = /<name>
+- ` + "`buttons webhook listen`" + ` — foreground dispatcher
+
+Auth types (match n8n's four): ` + "`none`" + ` (default) / ` + "`basic`" + ` (` + "`--auth-user --auth-pass`" + `) / ` + "`header`" + ` (` + "`--auth-header-name --auth-header-value`" + `) / ` + "`jwt`" + ` (` + "`--jwt-secret [--jwt-algorithm HS256|HS384|HS512] [--jwt-issuer ...] [--jwt-audience ...]`" + `). Secret fields accept ` + "`$ENV{VAR}`" + ` resolved at match time so drawer.json stays commit-safe.
+
+In a triggered drawer, the POST is available as ` + "`${inputs.webhook.body}`" + ` (+ headers, query, method, path, received_at). ` + "`${webhooks.<drawer-name>}`" + ` resolves to another drawer's full public URL — use it to configure upstream services with the correct callback URL.
+
+Dry-run a webhook drawer without the listener: ` + "`buttons drawer <name> press --webhook-body '{...}'`" + ` or ` + "`--webhook-body @fixture.json`" + `.
+
 See ` + "`.buttons/AGENT.md`" + ` for more detail.`
 
 // AgentMDBody is the always-installed `.buttons/AGENT.md` content.
@@ -153,6 +174,55 @@ Common commands:
     buttons create <name>           scaffold a shell button you can edit
 
 Project-local buttons (in this folder) and global buttons (at ~/.buttons/) are both visible to ` + "`buttons list`" + `.
+
+## Drawers
+
+Drawers chain buttons into workflows. Spec at ` + "`~/.buttons/drawers/<name>/drawer.json`" + `.
+
+    buttons drawer create <name>
+    buttons drawer <name> add <button> [<button>...]
+    buttons drawer <name> connect A to B          # auto-match output→args
+    buttons drawer <name> set step.args.field=<literal-or-${ref}>
+    buttons drawer <name> press [field=value...]
+
+Refs between steps use ` + "`${step_id.output.field}`" + `; ` + "`${inputs.<name>}`" + ` pulls drawer-level inputs; ` + "`${env.VAR}`" + ` pulls environment at execution time. Everything inside ` + "`${...}`" + ` is CEL (arithmetic, string concat, ternary, null coalescing with ` + "`??`" + `).
+
+## Webhooks
+
+Drawers can be invoked automatically by incoming HTTP POSTs.
+
+    buttons webhook setup                              # one-time: CF login + pick hostname
+    buttons drawer <name> trigger webhook [/path] [--auth <type> ...]
+    buttons webhook listen                             # runs the dispatcher (foreground)
+
+Auth types (mirror n8n's four built-in options):
+
+    --auth none                                        # default, open endpoint
+    --auth basic --auth-user U --auth-pass P
+    --auth header --auth-header-name X-Foo --auth-header-value V
+    --auth jwt --jwt-secret S [--jwt-algorithm HS256|HS384|HS512]
+                               [--jwt-issuer I] [--jwt-audience A]
+
+Any secret field accepts '$ENV{VAR_NAME}' — the listener resolves it
+at match time against its environment, so committed drawer.json never
+carries raw secrets.
+
+A triggered drawer gets the request body/headers/query/method materialized as:
+
+    ${inputs.webhook.body}              parsed JSON body
+    ${inputs.webhook.body.<field>}      drill into it
+    ${inputs.webhook.headers.X-Foo}     single-value headers
+    ${inputs.webhook.query.<param>}
+    ${inputs.webhook.method}
+    ${inputs.webhook.path}
+    ${inputs.webhook.received_at}       RFC3339 UTC
+
+Cross-drawer reference: ` + "`${webhooks.<drawer-name>}`" + ` resolves to that drawer's full public URL. Use it when one drawer configures a third-party service with another drawer's webhook URL (e.g. set ` + "`start-scrape.args.webhook_url=${webhooks.on-scrape-done}`" + `).
+
+Dry-run a webhook drawer without running the listener:
+
+    buttons drawer <name> press --webhook-body '{"foo":1}'
+    buttons drawer <name> press --webhook-body @fixture.json
 
 Full docs: run ` + "`buttons --help`" + ` or see https://buttons.sh
 `

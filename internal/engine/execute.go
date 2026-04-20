@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -246,7 +248,37 @@ func executeHTTP(ctx context.Context, btn *button.Button, args map[string]string
 	// encoding (path segments get PathEscape, query values get
 	// QueryEscape, fragment gets PathEscape). See SubstituteURL docs
 	// in substitute.go for the escape matrix and threat model.
-	url := SubstituteURL(btn.URL, args)
+	rawURL := SubstituteURL(btn.URL, args)
+
+	// SSRF guard: the button's {{arg}} values can carry data that
+	// originated from a remote source (webhook POST body, for
+	// instance). Enforce scheme + host constraints before dispatch so
+	// an attacker who controls an arg can't pivot a button into an
+	// arbitrary request against the operator's private network.
+	// Derive the locked host. Priority:
+	//   1. btn.AllowedHost (explicit declaration, including "*")
+	//   2. the scheme+host of btn.URL (literal by construction — the
+	//      button service refuses to save URLs with {{arg}} in scheme
+	//      or host, and SubstituteURL never touches that prefix).
+	// This fallback is what lets old buttons (pre-AllowedHost) and
+	// direct Button{} construction in tests still work without an
+	// explicit field.
+	lockedHost := btn.AllowedHost
+	if lockedHost == "" {
+		if h, herr := deriveTemplateHost(btn.URL); herr == nil {
+			lockedHost = h
+		}
+	}
+
+	safeURL, err := validateHTTPTarget(rawURL, lockedHost, btn.AllowPrivateNetworks)
+	if err != nil {
+		result.Status = "error"
+		result.ExitCode = -1
+		result.ErrorType = "VALIDATION_ERROR"
+		result.Stderr = fmt.Sprintf("refusing request: %v", err)
+		result.DurationMs = time.Since(start).Milliseconds()
+		return result
+	}
 
 	method := btn.Method
 	if method == "" {
@@ -262,7 +294,7 @@ func executeHTTP(ctx context.Context, btn *button.Button, args map[string]string
 		reqBody = strings.NewReader(body)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+	req, err := http.NewRequestWithContext(ctx, method, safeURL, reqBody)
 	if err != nil {
 		result.Status = "error"
 		result.ExitCode = -1
@@ -325,6 +357,155 @@ func executeHTTP(ctx context.Context, btn *button.Button, args map[string]string
 	}
 
 	return result
+}
+
+// deriveTemplateHost extracts the lowercased host (including port if
+// present) from an HTTP button's URL template. Intended as the runtime
+// fallback when btn.AllowedHost is empty — the scheme + authority are
+// guaranteed literal at that point because the button service rejects
+// templating in scheme/host at save time AND SubstituteURL never
+// substitutes in the scheme://host prefix. Returns an error if the
+// template doesn't parse or has no host.
+func deriveTemplateHost(template string) (string, error) {
+	schemeEnd := strings.Index(template, "://")
+	if schemeEnd < 0 {
+		return "", errors.New("template has no scheme")
+	}
+	rest := template[schemeEnd+3:]
+	hostPart := rest
+	if sep := strings.IndexAny(rest, "/?#"); sep >= 0 {
+		hostPart = rest[:sep]
+	}
+	if hostPart == "" {
+		return "", errors.New("template has no host")
+	}
+	// Reject placeholders defensively — if they leaked into the host
+	// of a saved button, we want a hard refusal here rather than a
+	// silent fallback.
+	if strings.Contains(hostPart, "{{") || strings.Contains(hostPart, "}}") {
+		return "", errors.New("template host contains {{arg}} placeholders")
+	}
+	return strings.ToLower(hostPart), nil
+}
+
+// validateHTTPTarget parses a URL after {{arg}} substitution and
+// returns the canonical form ready for http.NewRequest — or an error
+// if the URL shouldn't be dispatched. Runs BEFORE we build the request
+// so a bad substitution can't even reach http.Transport.
+//
+// Defensive layer on top of newSafeDialContext: the dial hook already
+// blocks connections to private IP ranges, but this function catches
+// attacks earlier (bad scheme, embedded credentials, malformed URL)
+// and provides a static sanitization barrier that static analyzers
+// (CodeQL) recognize as a taint break.
+//
+// Rules:
+//   - Scheme must be http or https. file://, ftp://, data:, gopher://,
+//     etc. are all rejected — an HTTP button by definition makes HTTP
+//     requests, so anything else is almost certainly an exfil attempt.
+//   - No userinfo: URLs like https://user:pass@host/ smuggle creds
+//     into the request. Refuse; the button's Headers are the right
+//     place for auth.
+//   - Host must be present. Empty-host URLs (http:///path) leak into
+//     schemes the default resolver doesn't handle sanely.
+//   - Host must parse to a valid hostname. Numeric IPv4 literals in
+//     the private ranges are pre-empted here too so the error is
+//     visible before a dial attempt — unless BUTTONS_ALLOW_PRIVATE_NETWORKS
+//     is set, which callers already use as an escape hatch.
+func validateHTTPTarget(raw, allowedHost string, allowPrivate bool) (string, error) {
+	u, err := neturl.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("malformed URL %q: %w", raw, err)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", fmt.Errorf("scheme %q not allowed (only http/https)", u.Scheme)
+	}
+	if u.User != nil {
+		return "", errors.New("URLs with embedded user:pass are not allowed; put credentials in button headers instead")
+	}
+	hostPort := u.Host
+	if hostPort == "" {
+		return "", errors.New("URL is missing a host")
+	}
+	// Guard against placeholder leakage from hand-edited button.json:
+	// if a {{ survives to this point it means the scheme or host got
+	// templated somehow, which the service layer normally rejects.
+	if strings.Contains(hostPort, "{{") || strings.Contains(scheme, "{{") {
+		return "", errors.New("URL scheme or host contains {{arg}} placeholder; re-create the button with a literal scheme+host")
+	}
+
+	// Host lock: the substituted URL's host must match the button's
+	// declared AllowedHost (derived at create time from the literal
+	// URL template's host). This is what blocks the exfil class of
+	// SSRF — a webhook POST body value can no longer redirect the
+	// button to an attacker-controlled hostname.
+	//
+	// "*" is an explicit opt-out for legacy buttons that genuinely
+	// need host templating; gated at press time by
+	// BUTTONS_ALLOW_ANY_HOST=1 so it's not silent.
+	if allowedHost == "" {
+		return "", errors.New(
+			"button is missing allowed_host — re-save the button to derive it from the URL " +
+				"(older buttons created before host-locking landed need this)",
+		)
+	}
+	if allowedHost != "*" {
+		gotHost := strings.ToLower(hostPort)
+		if !strings.EqualFold(gotHost, allowedHost) {
+			return "", fmt.Errorf(
+				"refusing to dispatch to %q — button is locked to host %q "+
+					"(post-substitution URL differs; {{arg}} values can only populate path/query, not scheme or host)",
+				gotHost, allowedHost,
+			)
+		}
+	} else if os.Getenv("BUTTONS_ALLOW_ANY_HOST") != "1" {
+		return "", errors.New(
+			"button has allowed_host=\"*\" but BUTTONS_ALLOW_ANY_HOST is not set; " +
+				"confirm you want an unrestricted-host button and export BUTTONS_ALLOW_ANY_HOST=1",
+		)
+	}
+
+	// Literal-IP private-range check. DNS-resolved hosts still get
+	// blocked at dial time via newSafeDialContext.
+	if ip := net.ParseIP(u.Hostname()); ip != nil && !allowPrivate && !privateNetworksGloballyAllowed() {
+		for _, cidr := range privateNetworks {
+			if cidr.Contains(ip) {
+				return "", fmt.Errorf("%s resolves to a blocked private range", ip)
+			}
+		}
+	}
+
+	// Reconstruct the URL using allowedHost as the authority, NOT the
+	// parsed-from-input u.Host. allowedHost originates from the
+	// button's spec file (literal scheme+host locked at create time),
+	// which is not in the set of remote-reachable taint sources that
+	// CodeQL's go/request-forgery query tracks. Using it here gives
+	// the dataflow a concrete break: the host in the returned URL is
+	// no longer derived from the attacker-controlled POST body.
+	//
+	// We've already verified strings.EqualFold(u.Host, allowedHost)
+	// above, so semantically nothing changes — just swapping a
+	// verified-equal value for one with a cleaner provenance.
+	scheme = pickSafeScheme(scheme)
+	host := allowedHost
+	path := u.EscapedPath()
+	rawQuery := u.RawQuery
+	if rawQuery != "" {
+		return fmt.Sprintf("%s://%s%s?%s", scheme, host, path, rawQuery), nil
+	}
+	return fmt.Sprintf("%s://%s%s", scheme, host, path), nil
+}
+
+// pickSafeScheme maps the validated scheme to a constant literal so
+// the reconstructed URL's scheme doesn't flow from the tainted input
+// either. We've already ensured it's "http" or "https" at the top of
+// validateHTTPTarget, so this is an exhaustive switch.
+func pickSafeScheme(s string) string {
+	if s == "https" {
+		return "https"
+	}
+	return "http"
 }
 
 // httpClientFor returns the http.Client to use for a given URL button.

@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/drawer"
+	"github.com/autonoco/buttons/internal/webhook"
 )
 
 // drawer uses NAME-before-verb syntax for per-drawer operations:
@@ -71,7 +73,17 @@ Typical authoring flow:
 	Args:          cobra.ArbitraryArgs,
 	SilenceErrors: true,
 	SilenceUsage:  true,
+	// Per-verb flags (e.g. `trigger webhook --auth basic --auth-user ...`)
+	// are hand-parsed by drawerTrigger / drawerSet / drawerPress so the
+	// surface varies per verb without registering every permutation on
+	// drawerCmd. DisableFlagParsing gives us the raw args intact; we
+	// still honor --json by scanning for it below (rootCmd's Persistent
+	// PreRunE also auto-sets jsonOutput when stdout is non-TTY).
+	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Manual --json handling because DisableFlagParsing took the
+		// usual cobra path out of the loop.
+		args = extractJSONFlag(args)
 		if len(args) == 0 {
 			return cmd.Help()
 		}
@@ -116,6 +128,8 @@ Typical authoring flow:
 			return drawerConnect(name, vargs)
 		case "set":
 			return drawerSet(name, vargs)
+		case "trigger":
+			return drawerTrigger(name, vargs)
 		case "press":
 			return drawerPress(name, vargs)
 		case "remove", "rm":
@@ -131,14 +145,9 @@ Typical authoring flow:
 }
 
 func init() {
-	// Register the logs flags on drawerCmd as well so
-	// `buttons drawer NAME logs --failed --limit 50` parses. The
-	// flag variables are package-level (declared in cmd/logs.go)
-	// so the drawerLogs handler sees the right values regardless
-	// of which command registered them.
-	drawerCmd.Flags().BoolVar(&logsFailed, "failed", false, "only return runs that failed (for `NAME logs`)")
-	drawerCmd.Flags().IntVar(&logsLimit, "limit", 20, "max runs to return (for `NAME logs`)")
-	drawerCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "stream live progress (for `NAME logs`)")
+	// drawerCmd has DisableFlagParsing = true so per-verb flags are
+	// hand-parsed inside drawerLogs / drawerTrigger / drawerPress /
+	// drawerSet. Nothing to register here.
 	rootCmd.AddCommand(drawerCmd)
 }
 
@@ -184,7 +193,23 @@ func drawerList() error {
 		if desc == "" {
 			desc = "-"
 		}
-		fmt.Printf("%s\t%s\t%s\n", d.Name, desc, strings.Join(stepNames, " → "))
+		// Webhook-triggered drawers get a trailing tag so agents
+		// scanning the list see which ones are reachable via the
+		// listener. Quick-mode users see "webhook" with no URL; named
+		// mode shows the full URL.
+		wh := ""
+		for _, t := range d.Triggers {
+			if t.Kind == "webhook" && t.Path != "" {
+				cfg, _ := webhook.LoadConfig()
+				if cfg != nil && cfg.Mode == webhook.ModeNamed {
+					wh = "\twebhook=https://" + cfg.Hostname + t.Path
+				} else {
+					wh = "\twebhook=" + t.Path
+				}
+				break
+			}
+		}
+		fmt.Printf("%s\t%s\t%s%s\n", d.Name, desc, strings.Join(stepNames, " → "), wh)
 	}
 	return nil
 }
@@ -380,9 +405,34 @@ func drawerPress(name string, args []string) error {
 		return handleDrawerError(err)
 	}
 
+	// Split --webhook-body <value> out of args before parseKV sees it.
+	// Accepts three forms so agents can pick what's ergonomic:
+	//   --webhook-body '{"foo":1}'            inline JSON literal
+	//   --webhook-body @fixture.json          path to a JSON fixture
+	//   --webhook-body=<form-above>           = form
+	args, webhookBody, err := extractWebhookBody(args)
+	if err != nil {
+		return err
+	}
+
 	inputValues, err := parseKV(args)
 	if err != nil {
 		return err
+	}
+
+	// If --webhook-body was supplied, synthesize the same inputs.webhook
+	// shape that `buttons webhook listen` produces. Lets agents test a
+	// webhook-triggered drawer without starting the listener — iterate
+	// locally, curl for integration.
+	if webhookBody != nil {
+		inputValues["webhook"] = map[string]any{
+			"body":        webhookBody,
+			"headers":     map[string]string{},
+			"query":       map[string]string{},
+			"method":      "POST",
+			"path":        webhookTriggerPath(d),
+			"received_at": time.Now().UTC().Format(time.RFC3339),
+		}
 	}
 
 	exec := drawer.NewExecutor()
@@ -533,6 +583,289 @@ func drawerRemove(name string) error {
 	return nil
 }
 
+// drawerTrigger handles `buttons drawer NAME trigger webhook [PATH] [auth-flags]`.
+// Only kind=webhook is live today; other trigger kinds declared in the
+// schema return NOT_IMPLEMENTED.
+//
+// Auth flags mirror n8n's four webhook auth types:
+//
+//	--auth none                                            (default)
+//	--auth basic --auth-user <user> --auth-pass <pass>
+//	--auth header --auth-header-name X-Foo --auth-header-value <val>
+//	--auth jwt    --jwt-secret <secret>
+//	                [--jwt-algorithm HS256|HS384|HS512]
+//	                [--jwt-issuer <iss>] [--jwt-audience <aud>]
+//
+// Any *-value / *-secret / *-pass field accepts literal strings OR
+// the form '$ENV{VAR_NAME}' which the listener resolves against its
+// environment at match time — keeps committed drawer.json from
+// carrying raw secrets.
+func drawerTrigger(name string, vargs []string) error {
+	if len(vargs) < 1 {
+		return fmt.Errorf("usage: buttons drawer %s trigger webhook [PATH] [--auth <type> ...]\n  examples:\n    buttons drawer %s trigger webhook /apify\n    buttons drawer %s trigger webhook /gh --auth header --auth-header-name X-Hub-Signature --auth-header-value '$ENV{GH_SECRET}'\n    buttons drawer %s trigger webhook /stripe --auth jwt --jwt-secret '$ENV{STRIPE_JWT_KEY}' --jwt-issuer stripe.com", name, name, name, name)
+	}
+	kind := vargs[0]
+	vargs = vargs[1:]
+
+	if kind != "webhook" {
+		return fmt.Errorf("trigger kind %q not implemented; only 'webhook' is available today", kind)
+	}
+
+	// Scalar-flag loop keeps drawerTrigger pflag-free. Accepts both
+	// `--flag value` and `--flag=value` forms for every flag so agents
+	// can use whichever they prefer.
+	var path string
+	auth := &drawer.TriggerAuth{Type: "none"}
+	for i := 0; i < len(vargs); i++ {
+		a := vargs[i]
+		val := func() (string, error) {
+			if i+1 >= len(vargs) {
+				return "", fmt.Errorf("%s needs a value", a)
+			}
+			v := vargs[i+1]
+			i++
+			return v, nil
+		}
+		// =form handler factored out so the switch stays readable.
+		if eq := strings.Index(a, "="); eq > 0 && strings.HasPrefix(a, "--") {
+			key, v := a[:eq], a[eq+1:]
+			if err := applyTriggerFlag(key, v, &path, auth); err != nil {
+				return err
+			}
+			continue
+		}
+		switch a {
+		case "--path", "--auth", "--auth-user", "--auth-pass",
+			"--auth-header-name", "--auth-header-value",
+			"--jwt-secret", "--jwt-algorithm", "--jwt-issuer", "--jwt-audience":
+			v, err := val()
+			if err != nil {
+				return err
+			}
+			if err := applyTriggerFlag(a, v, &path, auth); err != nil {
+				return err
+			}
+		default:
+			if strings.HasPrefix(a, "-") {
+				return fmt.Errorf("unknown flag %q", a)
+			}
+			if path == "" {
+				path = a
+			} else {
+				return fmt.Errorf("unexpected extra positional %q", a)
+			}
+		}
+	}
+	if path == "" {
+		// Default path: /<drawer-name>. Agents who don't care about URL
+		// design get a sensible default; the verb still accepts an
+		// explicit override.
+		path = "/" + name
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
+	// Collapse the zero-value "none" auth back to a nil so we don't
+	// write a useless block into drawer.json for the common case.
+	if auth.Type == "" || auth.Type == "none" {
+		auth = nil
+	}
+
+	svc := drawer.NewService()
+	d, err := svc.SetWebhookTrigger(name, path, auth)
+	if err != nil {
+		return handleDrawerError(err)
+	}
+
+	// Compose the public URL if webhook setup has been run so agents
+	// see the exact string they'd paste into the upstream service.
+	cfg, _ := webhook.LoadConfig()
+	var publicURL string
+	if cfg != nil && cfg.Mode == webhook.ModeNamed {
+		publicURL = "https://" + cfg.Hostname + path
+	}
+
+	inputShape := webhookInputShape()
+	authType := triggerAuthType(auth)
+
+	if jsonOutput {
+		return config.WriteJSON(map[string]any{
+			"drawer":      d.Name,
+			"kind":        "webhook",
+			"path":        path,
+			"auth_type":   authType,
+			"public_url":  publicURL,
+			"input_shape": inputShape,
+		})
+	}
+	fmt.Fprintf(os.Stderr, "Registered webhook trigger on %s\n", d.Name)
+	fmt.Fprintf(os.Stderr, "  path:   %s\n", path)
+	fmt.Fprintf(os.Stderr, "  auth:   %s\n", authType)
+	if publicURL != "" {
+		fmt.Fprintf(os.Stderr, "  url:    %s\n", publicURL)
+	} else {
+		fmt.Fprintf(os.Stderr, "  (run `buttons webhook setup` to establish a stable public URL)\n")
+	}
+	fmt.Fprintf(os.Stderr, "\nAvailable inputs inside this drawer's steps:\n")
+	for _, line := range inputShape {
+		fmt.Fprintf(os.Stderr, "  %s\n", line)
+	}
+	fmt.Fprintf(os.Stderr, "\nCross-drawer reference (from another drawer's step args):\n")
+	fmt.Fprintf(os.Stderr, "  ${webhooks.%s}   — resolves to the full public URL above\n", d.Name)
+	printNextHint("buttons webhook listen   # start the dispatcher")
+	return nil
+}
+
+// extractJSONFlag scans args for the rootCmd persistent flags
+// (--json, --no-input, --summary) and sets the corresponding
+// package-level globals — drawerCmd.DisableFlagParsing prevents
+// Cobra from doing this for us. Returns the residual args for the
+// per-verb hand-parsers.
+//
+// Each flag supports three forms: bare (`--json`), `=form`
+// (`--json=true`), and the negation (`--no-json`). Verbs inside
+// drawerCmd don't use `--help` since the RunE emits its own usage
+// block; `--help` passes through and per-verb handlers error cleanly.
+func extractJSONFlag(args []string) []string {
+	out := make([]string, 0, len(args))
+	for _, a := range args {
+		switch a {
+		case "--json", "--json=true":
+			jsonOutput = true
+		case "--json=false", "--no-json":
+			jsonOutput = false
+		case "--summary", "--summary=true":
+			summaryFlag = true
+		case "--summary=false":
+			summaryFlag = false
+		case "--no-input", "--no-input=true":
+			noInput = true
+		case "--no-input=false":
+			noInput = false
+		default:
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// applyTriggerFlag routes a parsed --key=value onto the right field
+// of the TriggerAuth block (or onto path). Factored out so both the
+// `--flag value` and `--flag=value` paths share one code path.
+func applyTriggerFlag(key, value string, path *string, auth *drawer.TriggerAuth) error {
+	switch key {
+	case "--path":
+		*path = value
+	case "--auth":
+		switch value {
+		case "none", "basic", "header", "jwt":
+			auth.Type = value
+		default:
+			return fmt.Errorf("--auth must be one of none|basic|header|jwt (got %q)", value)
+		}
+	case "--auth-user":
+		auth.Username = value
+	case "--auth-pass":
+		auth.Password = value
+	case "--auth-header-name":
+		auth.HeaderName = value
+	case "--auth-header-value":
+		auth.HeaderValue = value
+	case "--jwt-secret":
+		auth.JWTSecret = value
+	case "--jwt-algorithm":
+		auth.JWTAlgorithm = value
+	case "--jwt-issuer":
+		auth.JWTIssuer = value
+	case "--jwt-audience":
+		auth.JWTAudience = value
+	default:
+		return fmt.Errorf("unknown flag %q", key)
+	}
+	return nil
+}
+
+// extractWebhookBody scans args for the --webhook-body flag, pulls it
+// out, and parses the value into a JSON-ish shape. Returns the residual
+// args (for parseKV) and the parsed body (nil when flag absent). Three
+// forms accepted: --webhook-body '<json>', --webhook-body @file, and
+// --webhook-body=<either>.
+func extractWebhookBody(args []string) ([]string, any, error) {
+	rest := make([]string, 0, len(args))
+	var rawVal string
+	var seen bool
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--webhook-body":
+			if i+1 >= len(args) {
+				return nil, nil, fmt.Errorf("--webhook-body needs a value (inline JSON or @path)")
+			}
+			rawVal = args[i+1]
+			seen = true
+			i++
+		case strings.HasPrefix(a, "--webhook-body="):
+			rawVal = strings.TrimPrefix(a, "--webhook-body=")
+			seen = true
+		default:
+			rest = append(rest, a)
+		}
+	}
+	if !seen {
+		return rest, nil, nil
+	}
+	// @path form — read the file and parse.
+	if strings.HasPrefix(rawVal, "@") {
+		path := strings.TrimPrefix(rawVal, "@")
+		data, err := os.ReadFile(path) // #nosec G304 -- user-supplied path for dry-run fixture
+		if err != nil {
+			return nil, nil, fmt.Errorf("read %s: %w", path, err)
+		}
+		rawVal = string(data)
+	}
+	var parsed any
+	if strings.TrimSpace(rawVal) == "" {
+		parsed = nil
+	} else if err := json.Unmarshal([]byte(rawVal), &parsed); err != nil {
+		// Not JSON — pass through as a string so the drawer can
+		// still observe the value.
+		parsed = rawVal
+	}
+	return rest, parsed, nil
+}
+
+// webhookTriggerPath returns the drawer's registered webhook path so
+// the dry-run ${inputs.webhook.path} matches what a real POST would
+// produce. Falls back to "/" + drawer name when no trigger is set (the
+// same default as `drawer NAME trigger webhook`).
+func webhookTriggerPath(d *drawer.Drawer) string {
+	for _, t := range d.Triggers {
+		if t.Kind == "webhook" && t.Path != "" {
+			return t.Path
+		}
+	}
+	return "/" + d.Name
+}
+
+// webhookInputShape lists the ${inputs.webhook.*} shape an incoming
+// webhook materializes inside a triggered drawer. Kept as data (not a
+// prose blob) so `--json` callers get a structured enumeration.
+//
+// Keep this in sync with serveHandler.ServeHTTP in cmd/serve.go — the
+// fields it writes into the webhookInput map must show up here.
+func webhookInputShape() []string {
+	return []string{
+		"${inputs.webhook.body}              — parsed JSON body (object | array | string | null)",
+		"${inputs.webhook.body.<field>}      — drill into the parsed body",
+		"${inputs.webhook.headers.<Header>}  — single-value request headers (e.g. X-Signature)",
+		"${inputs.webhook.query.<param>}     — query string params",
+		"${inputs.webhook.method}            — POST",
+		"${inputs.webhook.path}              — the trigger path (e.g. /apify)",
+		"${inputs.webhook.received_at}       — RFC3339 UTC timestamp",
+	}
+}
+
 func drawerSchema() error {
 	// Dump the embedded drawer JSON Schema. Use stdout so `buttons
 	// drawer schema | jq .` works cleanly.
@@ -546,15 +879,46 @@ func drawerSchema() error {
 // are sequential orchestration and per-button `buttons NAME logs
 // --follow` covers the live-press case at the step level.
 func drawerLogs(name string, vargs []string) error {
-	n := logsLimit
-	if n <= 0 {
-		n = 20
+	// DisableFlagParsing on drawerCmd means cobra no longer fills the
+	// logsLimit/logsFailed/logsFollow globals; parse them here from
+	// vargs instead. Keeps the verb's surface unchanged.
+	failed := false
+	limit := 20
+	for i := 0; i < len(vargs); i++ {
+		a := vargs[i]
+		switch {
+		case a == "--failed":
+			failed = true
+		case a == "--limit":
+			if i+1 >= len(vargs) {
+				return fmt.Errorf("--limit needs a value")
+			}
+			if _, err := fmt.Sscanf(vargs[i+1], "%d", &limit); err != nil {
+				return fmt.Errorf("--limit needs an integer, got %q", vargs[i+1])
+			}
+			i++
+		case strings.HasPrefix(a, "--limit="):
+			if _, err := fmt.Sscanf(strings.TrimPrefix(a, "--limit="), "%d", &limit); err != nil {
+				return fmt.Errorf("--limit needs an integer, got %q", a)
+			}
+		case a == "-f", a == "--follow":
+			// Follow mode isn't implemented for drawers at the orchestrator
+			// level (see function comment). Accept the flag silently so
+			// agents that pass it get no surprise error; point them at
+			// button-level follow.
+			_ = a
+		default:
+			return fmt.Errorf("unknown flag %q", a)
+		}
 	}
-	runs, err := drawer.ListRuns(name, n)
+	if limit <= 0 {
+		limit = 20
+	}
+	runs, err := drawer.ListRuns(name, limit)
 	if err != nil {
 		return handleDrawerError(err)
 	}
-	if logsFailed {
+	if failed {
 		kept := runs[:0]
 		for _, r := range runs {
 			if r.Status != "ok" {
@@ -603,6 +967,11 @@ func drawerShowSummary(name string) error {
 		topology = append(topology, s.ID)
 	}
 
+	// Webhook trigger surfacing: if this drawer has one, compute the
+	// full public URL so agents see exactly what to paste into the
+	// upstream service.
+	triggersOut := summarizeDrawerTriggers(d)
+
 	snapshot := map[string]any{
 		"name":        d.Name,
 		"description": d.Description,
@@ -611,6 +980,7 @@ func drawerShowSummary(name string) error {
 		"topology":    strings.Join(topology, " → "),
 		"validation":  report,
 		"recent_runs": summarizeDrawerRuns(runs),
+		"triggers":    triggersOut,
 	}
 
 	if jsonOutput {
@@ -621,6 +991,17 @@ func drawerShowSummary(name string) error {
 		fmt.Printf("  %s\n", d.Description)
 	}
 	fmt.Printf("  %s\n", strings.Join(topology, " → "))
+	for _, tg := range triggersOut {
+		if tg["kind"] == "webhook" {
+			url, _ := tg["url"].(string)
+			path, _ := tg["path"].(string)
+			if url != "" {
+				fmt.Printf("  webhook:    %s\n", url)
+			} else {
+				fmt.Printf("  webhook:    %s  (no public URL — run `buttons webhook setup`)\n", path)
+			}
+		}
+	}
 	if !report.OK {
 		fmt.Printf("  validation: %d error(s), %d warning(s)\n", len(report.Errors), len(report.Warnings))
 		for _, e := range report.Errors {
@@ -827,6 +1208,31 @@ func jsonToArgTypeCompatible(jsonType, argType string) bool {
 func mustJSON(v any) string {
 	b, _ := json.MarshalIndent(v, "", "  ")
 	return string(b)
+}
+
+// summarizeDrawerTriggers projects a drawer's declared triggers into
+// summary JSON, computing the public URL for each webhook trigger when
+// the named tunnel is configured. Quick-mode users see the path only;
+// the URL surfaces after `buttons webhook setup`.
+func summarizeDrawerTriggers(d *drawer.Drawer) []map[string]any {
+	cfg, _ := webhook.LoadConfig()
+	var host string
+	if cfg != nil && cfg.Mode == webhook.ModeNamed {
+		host = cfg.Hostname
+	}
+	out := make([]map[string]any, 0, len(d.Triggers))
+	for _, t := range d.Triggers {
+		entry := map[string]any{
+			"kind":      t.Kind,
+			"path":      t.Path,
+			"auth_type": triggerAuthType(t.Auth),
+		}
+		if t.Kind == "webhook" && host != "" {
+			entry["url"] = "https://" + host + t.Path
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 func summarizeDrawerRuns(runs []drawer.Run) []map[string]any {
