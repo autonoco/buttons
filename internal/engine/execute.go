@@ -476,17 +476,36 @@ func validateHTTPTarget(raw, allowedHost string, allowPrivate bool) (string, err
 		}
 	}
 
-	// Rebuild the URL from explicitly-validated scalars. Going through
-	// fmt.Sprintf with a literal format string gives static analyzers
-	// a clear break in the taint chain — the host component was
-	// explicitly compared against allowedHost above, so CodeQL's
-	// request-forgery tracker sees the constant-comparison sanitizer.
+	// Reconstruct the URL using allowedHost as the authority, NOT the
+	// parsed-from-input u.Host. allowedHost originates from the
+	// button's spec file (literal scheme+host locked at create time),
+	// which is not in the set of remote-reachable taint sources that
+	// CodeQL's go/request-forgery query tracks. Using it here gives
+	// the dataflow a concrete break: the host in the returned URL is
+	// no longer derived from the attacker-controlled POST body.
+	//
+	// We've already verified strings.EqualFold(u.Host, allowedHost)
+	// above, so semantically nothing changes — just swapping a
+	// verified-equal value for one with a cleaner provenance.
+	scheme = pickSafeScheme(scheme)
+	host := allowedHost
 	path := u.EscapedPath()
 	rawQuery := u.RawQuery
 	if rawQuery != "" {
-		return fmt.Sprintf("%s://%s%s?%s", scheme, hostPort, path, rawQuery), nil
+		return fmt.Sprintf("%s://%s%s?%s", scheme, host, path, rawQuery), nil
 	}
-	return fmt.Sprintf("%s://%s%s", scheme, hostPort, path), nil
+	return fmt.Sprintf("%s://%s%s", scheme, host, path), nil
+}
+
+// pickSafeScheme maps the validated scheme to a constant literal so
+// the reconstructed URL's scheme doesn't flow from the tainted input
+// either. We've already ensured it's "http" or "https" at the top of
+// validateHTTPTarget, so this is an exhaustive switch.
+func pickSafeScheme(s string) string {
+	if s == "https" {
+		return "https"
+	}
+	return "http"
 }
 
 // httpClientFor returns the http.Client to use for a given URL button.
