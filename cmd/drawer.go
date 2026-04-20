@@ -470,13 +470,12 @@ func drawerSet(name string, vargs []string) error {
 			}
 		case strings.HasPrefix(path, "steps."):
 			rest := strings.TrimPrefix(path, "steps.")
-			idxStr := rest
-			if i := strings.Index(rest, "."); i > 0 {
-				idxStr = rest[:i]
-				rest = rest[i+1:]
-			} else {
+			i := strings.Index(rest, ".")
+			if i <= 0 {
 				return fmt.Errorf("nested path %q missing .args.FIELD suffix", target)
 			}
+			idxStr := rest[:i]
+			rest = rest[i+1:]
 			var nestedIdx int
 			if _, err := fmt.Sscanf(idxStr, "%d", &nestedIdx); err != nil {
 				return fmt.Errorf("expected numeric index in %q, got %q", target, idxStr)
