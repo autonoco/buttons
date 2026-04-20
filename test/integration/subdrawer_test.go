@@ -180,3 +180,60 @@ func TestSubDrawer_MissingChildRejected(t *testing.T) {
 		t.Errorf("expected DRAWER_NOT_FOUND, got: %s", r.Stdout)
 	}
 }
+
+// TestDrawerSet_WritesArgs verifies `buttons drawer X set
+// STEP.args.FIELD=value` persists literal and ${ref} values so
+// agents can wire step args without editing drawer.json by hand.
+func TestDrawerSet_WritesArgs(t *testing.T) {
+	env := newTestEnv(t)
+
+	env.run("create", "echo-msg",
+		"--runtime", "shell",
+		"--code", `echo "{\"got\":\"$BUTTONS_ARG_MSG\"}"`,
+		"--arg", "msg:string:required",
+		"--json",
+	)
+	env.run("drawer", "create", "flow", "--json")
+	env.run("drawer", "flow", "add", "echo-msg", "--json")
+
+	// Literal value.
+	r := env.run("drawer", "flow", "set", "echo-msg.args.msg=hello world", "--json")
+	if r.ExitCode != 0 {
+		t.Fatalf("set literal: exit %d, stderr=%s", r.ExitCode, r.Stderr)
+	}
+
+	// Press — should pick up the set value. Stdout is JSON-escaped
+	// in the outer result envelope, so match the escaped form.
+	r = env.run("drawer", "flow", "press", "--json")
+	if r.ExitCode != 0 {
+		t.Fatalf("press: exit %d, stderr=%s", r.ExitCode, r.Stderr)
+	}
+	if !strings.Contains(r.Stdout, `hello world`) {
+		t.Errorf("expected press output to contain 'hello world', got: %s", r.Stdout)
+	}
+
+	// ${ref} expression — references a drawer input.
+	env.run("drawer", "flow", "set", `echo-msg.args.msg=built ${inputs.ver}`, "--json")
+	r = env.run("drawer", "flow", "press", "ver=7.7.7", "--json")
+	if r.ExitCode != 0 {
+		t.Fatalf("press w/ ref: exit %d, stderr=%s, stdout=%s", r.ExitCode, r.Stderr, r.Stdout)
+	}
+	if !strings.Contains(r.Stdout, `built 7.7.7`) {
+		t.Errorf("expected output to contain 'built 7.7.7', got: %s", r.Stdout)
+	}
+}
+
+// TestDrawerSet_RejectsBadTarget verifies typos in the path
+// fail with a clear message instead of silently writing nowhere.
+func TestDrawerSet_RejectsBadTarget(t *testing.T) {
+	env := newTestEnv(t)
+	env.run("drawer", "create", "flow", "--json")
+
+	r := env.run("drawer", "flow", "set", "nope=1", "--json")
+	if r.ExitCode == 0 {
+		t.Fatal("expected failure on missing .args. in target")
+	}
+	if !strings.Contains(r.Stderr, "STEP.args.FIELD") && !strings.Contains(r.Stdout, "STEP.args.FIELD") {
+		t.Errorf("expected usage hint, got stderr=%s stdout=%s", r.Stderr, r.Stdout)
+	}
+}

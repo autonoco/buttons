@@ -96,6 +96,8 @@ Usage:
 			return drawerAdd(name, vargs)
 		case "connect":
 			return drawerConnect(name, vargs)
+		case "set":
+			return drawerSet(name, vargs)
 		case "press":
 			return drawerPress(name, vargs)
 		case "remove", "rm":
@@ -371,6 +373,77 @@ func drawerPress(name string, args []string) error {
 			}
 			return "unknown"
 		}())
+	}
+	return nil
+}
+
+// drawerSet writes literal values or ${ref} expressions into a
+// step's args. Accepts dotted-path targets so agents can address
+// both button-step args and sub-drawer-step args with one verb:
+//
+//	buttons drawer deploy set build.args.env=prod
+//	buttons drawer deploy set publish.args.version='${build.output.version}'
+//	buttons drawer deploy set child-flow.args.token='${env.APIFY_TOKEN}'
+//
+// Multiple pairs in one call are applied atomically enough — we
+// load the drawer once, mutate each arg, and save once at the end.
+// A parse error on any pair aborts the whole call before any
+// write hits disk.
+func drawerSet(name string, vargs []string) error {
+	if len(vargs) < 1 {
+		return fmt.Errorf("usage: buttons drawer %s set STEP.args.FIELD=value [STEP.args.FIELD=value ...]", name)
+	}
+
+	type assignment struct {
+		step, field string
+		value       any
+	}
+	ops := make([]assignment, 0, len(vargs))
+	for _, raw := range vargs {
+		eq := strings.Index(raw, "=")
+		if eq < 0 {
+			return fmt.Errorf("expected STEP.args.FIELD=value, got %q", raw)
+		}
+		target, rawValue := raw[:eq], raw[eq+1:]
+		if !strings.Contains(target, ".args.") {
+			return fmt.Errorf("target must be STEP.args.FIELD, got %q", target)
+		}
+		idx := strings.Index(target, ".args.")
+		stepID := target[:idx]
+		field := target[idx+len(".args."):]
+		if stepID == "" || field == "" {
+			return fmt.Errorf("empty step id or field in %q", target)
+		}
+		// Parse literal JSON first (numbers, bools, objects). Falls
+		// through to string so ${ref} expressions and plain strings
+		// stash verbatim. Matches parseKV's behavior for presses.
+		var value any
+		if err := json.Unmarshal([]byte(rawValue), &value); err != nil {
+			value = rawValue
+		}
+		ops = append(ops, assignment{step: stepID, field: field, value: value})
+	}
+
+	svc := drawer.NewService()
+	var final *drawer.Drawer
+	for _, op := range ops {
+		d, err := svc.SetArg(name, op.step, op.field, op.value)
+		if err != nil {
+			return handleDrawerError(err)
+		}
+		final = d
+	}
+
+	if jsonOutput {
+		return config.WriteJSON(map[string]any{
+			"ok":     true,
+			"drawer": name,
+			"set":    len(ops),
+			"spec":   final,
+		})
+	}
+	for _, op := range ops {
+		fmt.Fprintf(os.Stderr, "set %s.args.%s = %v\n", op.step, op.field, op.value)
 	}
 	return nil
 }
