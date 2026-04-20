@@ -19,6 +19,22 @@ type Button struct {
 	TimeoutSeconds       int               `json:"timeout_seconds"`
 	MaxResponseBytes     int64             `json:"max_response_bytes,omitempty"`
 	AllowPrivateNetworks bool              `json:"allow_private_networks,omitempty"`
+	// AllowedHost locks the scheme+host portion of an HTTP button's
+	// URL at create time. {{arg}} substitution never modifies scheme
+	// or host — only path, query, and fragment. Before dispatch,
+	// validateHTTPTarget enforces that the final URL's host matches
+	// this value.
+	//
+	// Auto-derived from URL when the scheme and host have no {{}}
+	// placeholders. A literal "*" opts out (requires
+	// BUTTONS_ALLOW_ANY_HOST=1 at press time to actually fire) for
+	// legacy buttons that genuinely need host templating.
+	//
+	// Defends against {{arg}} values from remote sources (webhook
+	// bodies) being used to redirect the button to an attacker-
+	// controlled host — a real exfil vector the private-network
+	// SSRF block didn't cover.
+	AllowedHost string `json:"allowed_host,omitempty"`
 	MCPEnabled           bool              `json:"mcp_enabled"`
 	// Pinned buttons render as large, clickable cards at the top of the
 	// `buttons board` TUI. Omitted from JSON when false to avoid polluting
