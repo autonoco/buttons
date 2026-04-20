@@ -43,13 +43,23 @@ ${ref} references between steps.
 Usage:
   buttons drawer create NAME
   buttons drawer list
-  buttons drawer NAME add BUTTON [BUTTON...]
-  buttons drawer NAME connect A to B
-  buttons drawer NAME connect A.output.x to B.args.y
-  buttons drawer NAME press [key=value ...]
-  buttons drawer NAME remove
-  buttons drawer NAME                  (show drawer summary)
-  buttons drawer schema                (print JSON Schema)`,
+  buttons drawer NAME add BUTTON [BUTTON ...]         append button step(s)
+  buttons drawer NAME add drawer/OTHER                append a sub-drawer step
+  buttons drawer NAME connect A to B                  auto-match output → args by name+type
+  buttons drawer NAME connect A.output.x to B.args.y  explicit field path
+  buttons drawer NAME set STEP.args.FIELD=value       write a literal or ${ref} into a step arg
+  buttons drawer NAME press [key=value ...]           run it; unfilled required inputs go here
+  buttons drawer NAME logs [--failed] [--limit N]     past runs for this drawer
+  buttons drawer NAME remove                          delete the drawer
+  buttons drawer NAME                                 summary (topology + validation + recent runs)
+  buttons drawer schema                               print JSON Schema for drawer.json
+
+Typical authoring flow:
+  buttons drawer create deploy-flow
+  buttons drawer deploy-flow add build publish
+  buttons drawer deploy-flow connect build to publish
+  buttons drawer deploy-flow set publish.args.env=prod
+  buttons drawer deploy-flow press`,
 	Args:          cobra.ArbitraryArgs,
 	SilenceErrors: true,
 	SilenceUsage:  true,
@@ -184,6 +194,15 @@ func drawerAdd(name string, args []string) error {
 		return config.WriteJSON(d)
 	}
 	fmt.Fprintf(os.Stderr, "Added %d step(s) to drawer %s\n", len(args), name)
+	// Point at the next logical step. If there are 2+ steps now
+	// (most drawers start with 0 and get 1 or more added at once),
+	// suggest wiring them. Otherwise suggest adding more.
+	if len(d.Steps) >= 2 {
+		printNextHint("buttons drawer %s connect %s to %s",
+			d.Name, d.Steps[len(d.Steps)-2].ID, d.Steps[len(d.Steps)-1].ID)
+	} else {
+		printNextHint("buttons drawer %s add MORE_BUTTONS", d.Name)
+	}
 	return nil
 }
 
@@ -315,6 +334,7 @@ func drawerAutoConnect(name, fromID, toID string) error {
 	for _, p := range wired {
 		fmt.Fprintf(os.Stderr, "connected %s.output.%s → %s.args.%s\n", fromID, p.from, toID, p.to)
 	}
+	printNextHint("buttons drawer %s press", name)
 	return nil
 }
 
@@ -339,6 +359,7 @@ func drawerExplicitConnect(name, from, to string) error {
 		return config.WriteJSON(map[string]any{"ok": true, "wired": []map[string]string{{"from": fromField, "to": toField}}})
 	}
 	fmt.Fprintf(os.Stderr, "connected %s.output.%s → %s.args.%s\n", fromID, fromField, toID, toField)
+	printNextHint("buttons drawer %s press", name)
 	return nil
 }
 
@@ -366,6 +387,7 @@ func drawerPress(name string, args []string) error {
 	}
 	if result.Status == "ok" {
 		fmt.Fprintf(os.Stderr, "✓ drawer %s ok (%dms)\n", name, result.DurationMs)
+		printNextHint("buttons drawer %s logs", name)
 	} else {
 		fmt.Fprintf(os.Stderr, "✗ drawer %s failed at step %s: %s\n", name, result.FailedStep, func() string {
 			if result.Error != nil {
@@ -373,6 +395,7 @@ func drawerPress(name string, args []string) error {
 			}
 			return "unknown"
 		}())
+		printNextHint("buttons drawer %s logs --failed", name)
 	}
 	return nil
 }
@@ -445,6 +468,7 @@ func drawerSet(name string, vargs []string) error {
 	for _, op := range ops {
 		fmt.Fprintf(os.Stderr, "set %s.args.%s = %v\n", op.step, op.field, op.value)
 	}
+	printNextHint("buttons drawer %s press", name)
 	return nil
 }
 
