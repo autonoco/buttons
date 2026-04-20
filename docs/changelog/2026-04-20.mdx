@@ -1,0 +1,58 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-20" description="Webhook triggers, drawer composition, live streaming, and CEL expressions">
+## Webhook triggers, drawer composition, live streaming, and CEL expressions
+
+Drawers gain webhook triggers with Cloudflare tunnels, composable sub-drawers, parallel iteration, error handlers, and CEL expressions. The CLI and board now stream live output as buttons run.
+
+### New features
+
+- **Webhook triggers for drawers** — drawers can now be triggered by incoming webhooks. Run `buttons webhook setup` to configure a Cloudflare tunnel, then `buttons drawer NAME trigger webhook` to register a path. Incoming POST requests press the drawer with the request body, headers, and query params available as `${inputs.webhook.*}`. Supports quick mode with an ephemeral URL or named mode with a stable hostname on your own Cloudflare account. See [webhook buttons](/buttons/webhook).
+
+- **Webhook authentication** — secure your webhook endpoints with four auth modes: `none`, `basic`, `header`, or `jwt`. Set them with `--auth` when registering a trigger. Secrets accept `$ENV{VAR_NAME}` so you can commit the auth shape without exposing credentials.
+
+- **Sub-drawers** — drawers can now call other drawers with `buttons drawer PARENT add drawer/CHILD`. Child outputs flow back into the parent via CEL expressions, so you can compose reusable workflow libraries instead of rebuilding from scratch. See the [drawer CLI reference](/cli/buttons_drawer_add).
+
+- **`for_each` iteration** — run a set of steps once per item in an array with `kind=for_each`. Declare `over`, `as`, and nested steps, and the executor iterates serially or in parallel. Use `on_item_failure` to control whether a single failure stops the loop or continues. Author from the CLI with `buttons drawer NAME add for_each:BUTTON`.
+
+- **Parallel `for_each`** — set `parallelism` on a `for_each` step to run multiple iterations concurrently. Results stay ordered by index regardless of completion order. First failure cancels in-flight workers when `on_item_failure` is `stop`.
+
+- **`switch` and `aggregate` steps** — `kind=switch` picks the first matching branch based on a CEL condition. `kind=aggregate` collects a field from each item in an array, pairing naturally with `for_each` output.
+
+- **`on_error` handler** — drawers can declare an `on_error` block that invokes another drawer when any step fails. The handler receives the error details, failed step ID, and parent inputs so you can route alerts or trigger rollbacks automatically.
+
+- **`wait` step** — add a time-based pause to a drawer with `buttons drawer NAME add wait:30s` or set an absolute time with `until`. Useful for rate-limiting, cooldown periods, or scheduling.
+
+- **CEL expressions** — drawer step arguments now support full [CEL](https://github.com/google/cel-spec) inside `${...}`. Use string concatenation, arithmetic, ternaries, and null coalescing alongside the existing dotted-path lookups. Environment variables are available via `${env.VAR}`.
+
+- **Idempotent presses** — pass `--idempotency-key` and `--idempotency-ttl` to `buttons press` to cache successful results. A second press with the same key returns the cached result without re-executing. Only successful results are cached — failures always retry. See the [press CLI reference](/cli/buttons_press).
+
+- **Progress streaming** — scripts can write structured events to `$BUTTONS_PROGRESS_PATH` during execution. Use `buttons tail NAME -f` to follow progress in real time. See the [tail CLI reference](/cli/buttons_tail).
+
+- **`buttons press --follow`** — stream a button's stdout and stderr to your terminal as it runs. Stdout prints as-is, stderr lines are prefixed with `! `. The final structured result still goes to stdout, so you can pipe it to `jq` while watching live output on stderr. See the [press CLI reference](/cli/buttons_press).
+
+- **Live output on the board** — pressing a button from the [board](/cli/buttons_board) now streams stdout and stderr into the logs pane in real time. A `● live` badge shows while the press is running, replaced by the exit code and duration when it finishes.
+
+- **`buttons logs --follow`** — stream a button's progress output to stdout with `buttons NAME logs --follow`. Pipes cleanly with no TUI, no color codes, and is interruptible with Ctrl+C. See the [logs CLI reference](/cli/buttons_logs).
+
+- **Per-button gitignore** — run `buttons ignore NAME` to keep scratch or test buttons out of git, or pass `--ignore` at create time. Entries are written to `.buttons/.gitignore` so your repo's top-level ignore file stays clean. See the [ignore CLI reference](/cli/buttons_ignore).
+
+- **Drawer `set` verb** — wire step arguments from the CLI with `buttons drawer NAME set STEP.args.FIELD=VALUE`. Works for button steps, sub-drawer steps, and nested `for_each` steps. Supports CEL expression refs and literal JSON values. See the [drawer CLI reference](/cli/buttons_drawer).
+
+- **Queue concurrency** — buttons can declare a named queue with a concurrency limit. Shared queue names pool across buttons, and an optional key scopes the pool (e.g., 3 concurrent per user). Queues survive across CLI invocations.
+
+### Updates
+
+- **Prettier logs output** — `buttons NAME logs` in a TTY now displays a compact one-line-per-run table instead of raw JSON. Agents and piped output still get full JSON.
+
+- **Drawer CLI hints** — every drawer mutation now prints a "Next:" hint showing what to do next. Hints are suppressed in `--json` mode and non-TTY environments.
+
+### Bug fixes
+
+- **HTTP buttons validate target URLs before dispatch** — template-substituted URLs are now checked for valid scheme, host, and private-range restrictions before the request fires. This closes a class of SSRF where argument values could redirect an HTTP button to an unintended destination.
+
+- **HTTP buttons lock scheme and host at create time** — the scheme and host from a button's URL are locked when the button is created. Argument substitution can only affect the path, query, and fragment. This prevents webhook payloads or other untrusted input from redirecting requests to arbitrary hosts.
+</Update>
