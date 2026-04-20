@@ -173,6 +173,7 @@ buttons create [flags]
 | `-d, --description` | string | button description |
 | `-f, --file` | string | copy an existing script file into the button folder |
 | `--header` | stringArray | HTTP header as 'Key: Value' (repeatable) |
+| `--ignore` | bool | add this button to .buttons/.gitignore so git won't track it (good for scratch/test buttons) |
 | `--max-response-size` | string | max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M |
 | `--method` | string | HTTP method for --url (default: GET) |
 | `--prompt` | string | prompt/instruction for the consuming agent (written to AGENT.md) |
@@ -203,6 +204,7 @@ buttons drawer [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `--failed` | bool | only return runs that failed (for `NAME logs`) |
+| `-f, --follow` | bool | stream live progress (for `NAME logs`) |
 | `--limit` | int | max runs to return (for `NAME logs`) |
 
 ### `buttons history`
@@ -216,6 +218,14 @@ buttons history [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `--last` | int | number of runs to show |
+
+### `buttons ignore`
+
+Keep a button or drawer out of git (writes .buttons/.gitignore)
+
+```
+buttons ignore
+```
 
 ### `buttons init`
 
@@ -239,7 +249,7 @@ buttons list
 
 ### `buttons logs`
 
-View a button's past runs, or press and stream live
+View past runs for a button or tail the live progress stream
 
 ```
 buttons logs [flags]
@@ -247,9 +257,8 @@ buttons logs [flags]
 
 | Flag | Type | Description |
 |------|------|-------------|
-| `--arg` | stringArray | argument as key=value (with --follow, passed through to the press) |
 | `--failed` | bool | only return runs that failed |
-| `-f, --follow` | bool | press the button and stream live output in a TUI |
+| `-f, --follow` | bool | stream the latest press's progress events live (agent-friendly, no TUI) |
 | `--limit` | int | max runs to return |
 
 ### `buttons press`
@@ -307,6 +316,14 @@ buttons tail [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `-f, --follow` | bool | keep tailing as new lines arrive |
+
+### `buttons unignore`
+
+Re-include a previously-ignored button or drawer in git
+
+```
+buttons unignore
+```
 
 ### `buttons update`
 

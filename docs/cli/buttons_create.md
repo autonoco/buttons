@@ -70,6 +70,7 @@ buttons create [name] [flags]
   -f, --file string                copy an existing script file into the button folder
       --header stringArray         HTTP header as 'Key: Value' (repeatable)
   -h, --help                       help for create
+      --ignore                     add this button to .buttons/.gitignore so git won't track it (good for scratch/test buttons)
       --max-response-size string   max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M
       --method string              HTTP method for --url (default: GET)
       --prompt string              prompt/instruction for the consuming agent (written to AGENT.md)

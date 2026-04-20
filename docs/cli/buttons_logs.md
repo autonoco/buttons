@@ -5,21 +5,28 @@ description: "CLI reference for buttons logs"
 
 ## buttons logs
 
-View a button's past runs, or press and stream live
+View past runs for a button or tail the live progress stream
 
 ### Synopsis
 
-View a button's run history. Preferred form is name-first to
-match the rest of the CLI:
+Structured run history. CLI only — for the full-screen
+interactive viewer, use 'buttons board'.
 
-  buttons BUTTONNAME logs           — past runs for this button
-  buttons BUTTONNAME logs --follow  — press + stream live
-  buttons BUTTONNAME logs --failed  — just failures
-  buttons drawer DRAWERNAME logs    — past runs for this drawer
+  buttons BUTTONNAME logs            — past runs for this button
+  buttons BUTTONNAME logs --follow   — tail live progress JSONL as it writes
+  buttons BUTTONNAME logs --failed   — just failures
+  buttons BUTTONNAME logs --limit 10 — how many (default 20)
+  buttons drawer DRAWERNAME logs     — past runs for this drawer
+  buttons logs                       — recent failures across the workspace
 
+--follow streams the latest press's progress events to stdout as
+plain text (JSONL: one event per line). No TUI. Pipe it, parse it,
+interrupt it with ctrl+C. Use this when an agent needs to watch a
+long-running press live.
+
+Agent mode (--json or non-TTY) returns the full Run shape for
+non-follow calls. TTY mode prints a compact one-line-per-run table.
 The verb-first form (buttons logs NAME) still works as an alias.
-buttons logs (no name) dumps recent failures across every button
-and drawer — same shape as summary.recent_failures.
 
 ```
 buttons logs [name] [flags]
@@ -28,11 +35,10 @@ buttons logs [name] [flags]
 ### Options
 
 ```
-      --arg stringArray   argument as key=value (with --follow, passed through to the press)
-      --failed            only return runs that failed
-  -f, --follow            press the button and stream live output in a TUI
-  -h, --help              help for logs
-      --limit int         max runs to return (default 20)
+      --failed      only return runs that failed
+  -f, --follow      stream the latest press's progress events live (agent-friendly, no TUI)
+  -h, --help        help for logs
+      --limit int   max runs to return (default 20)
 ```
 
 ### Options inherited from parent commands

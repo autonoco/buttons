@@ -118,6 +118,7 @@ func init() {
 	// of which command registered them.
 	drawerCmd.Flags().BoolVar(&logsFailed, "failed", false, "only return runs that failed (for `NAME logs`)")
 	drawerCmd.Flags().IntVar(&logsLimit, "limit", 20, "max runs to return (for `NAME logs`)")
+	drawerCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "stream live progress (for `NAME logs`)")
 	rootCmd.AddCommand(drawerCmd)
 }
 
