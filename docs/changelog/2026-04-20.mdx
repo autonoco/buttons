@@ -60,3 +60,15 @@ Drawers graduate from a concept into a full workflow engine with typed steps, cr
 
 - **HTTP button host-locking** — the scheme and host of an HTTP button's URL are now locked at create time. Template arguments can no longer modify the host portion of the URL, closing a class of request-routing vulnerabilities. See [SSRF protection](/security/ssrf-protection).
 </Update>
+
+<Update label="2026-04-20" description="Webhook reliability fixes">
+## Webhook reliability fixes
+
+### Bug fixes
+
+- **Graceful shutdown for webhook listeners** — pressing Ctrl+C while `buttons webhook listen` has in-flight presses no longer abandons them. The listener now drains running presses for up to 30 seconds before exiting, so webhook-triggered drawers finish cleanly instead of being dropped mid-run. See the [webhook CLI reference](/cli/buttons_webhook).
+
+- **Stronger tunnel readiness check** — `buttons webhook listen` now verifies that the Cloudflare tunnel is fully connected end-to-end before accepting requests. Previously, a stale DNS record could cause the readiness check to pass prematurely. The listener now confirms the tunnel routes all the way back to your local process before reporting ready.
+
+- **Fixed a memory leak in the webhook dispatcher** — long-running webhook listeners no longer accumulate stale tracking state for completed requests. The dispatcher now cleans up immediately after each request finishes.
+</Update>
