@@ -29,13 +29,19 @@ type Event struct {
 // Server is the local HTTP receiver for webhook POSTs. One listener per
 // process is enough — we multiplex by correlation id embedded in the
 // URL path (/webhook/<id>).
+//
+// readyToken is a per-process random secret embedded in the /healthz
+// response. The tunnel readiness check fetches /healthz through the
+// public URL and matches the token — this closes the loop through
+// edge DNS + CF → local process and rejects stale DNS pointing
+// somewhere else that happens to return 2xx.
 type Server struct {
-	listener net.Listener
-	http     *http.Server
+	listener   net.Listener
+	http       *http.Server
+	readyToken string
 
 	mu      sync.Mutex
-	waiters map[string]chan Event // correlation id -> delivery channel
-	pending map[string]Event      // id -> event received before Wait() registered
+	waiters map[string]chan Event // correlation id -> delivery channel; callers Register before publishing URL
 }
 
 // NewServer binds on 127.0.0.1 with an OS-picked free port and starts
@@ -46,23 +52,42 @@ func NewServer() (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("bind local webhook listener: %w", err)
 	}
+	tokenBytes := make([]byte, 16)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		_ = ln.Close()
+		return nil, fmt.Errorf("mint readiness token: %w", err)
+	}
 	s := &Server{
-		listener: ln,
-		waiters:  make(map[string]chan Event),
-		pending:  make(map[string]Event),
+		listener:   ln,
+		readyToken: hex.EncodeToString(tokenBytes),
+		waiters:    make(map[string]chan Event),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook/", s.handleWebhook)
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"ok":true}`))
-	})
+	mux.HandleFunc("/healthz", s.handleHealthz)
 	s.http = &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() { _ = s.http.Serve(ln) }()
 	return s, nil
+}
+
+// ReadyToken returns the process-local secret embedded in /healthz
+// responses. Callers pass it to tunnel readiness checks so a 2xx from
+// a hostname pointing at some unrelated origin isn't accepted.
+func (s *Server) ReadyToken() string {
+	return s.readyToken
+}
+
+// handleHealthz serves the readiness token in JSON. Kept separate
+// from the webhook handler so the token surface is minimal and
+// obvious at a glance. CORS not needed — only cloudflared and the
+// drawer dispatcher hit this endpoint.
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"ok":true,"token":"` + s.readyToken + `"}`))
 }
 
 // Port returns the randomly-assigned local port.
@@ -86,31 +111,44 @@ func NewCorrelationID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// Wait blocks until a webhook for the given correlation id arrives or
-// the context fires. If the event was already received before Wait was
-// called, it returns immediately — this is the common case in our drawer
-// flow where Register → return URL → Wait all happen in sequence.
-func (s *Server) Wait(ctx context.Context, correlationID string) (Event, error) {
+// Register creates a waiter channel for the given correlation id and
+// returns it. Callers must call Register BEFORE making the external
+// URL publicly available (e.g. before spawning the POST goroutine in
+// `webhook test`); that way the handler always finds a waiter when
+// the event arrives and we don't need an unbounded pending-map stash.
+// The returned channel is buffered (size 1) so handler delivery
+// always succeeds without blocking.
+//
+// Caller is responsible for calling Deregister (e.g. via defer) if
+// the waiter is never consumed — on ctx cancel, timeout, etc. Without
+// that we'd leak one map entry per abandoned Wait.
+func (s *Server) Register(correlationID string) <-chan Event {
+	ch := make(chan Event, 1)
 	s.mu.Lock()
-	if ev, ok := s.pending[correlationID]; ok {
-		delete(s.pending, correlationID)
-		s.mu.Unlock()
-		return ev, nil
-	}
-	ch, ok := s.waiters[correlationID]
-	if !ok {
-		ch = make(chan Event, 1)
-		s.waiters[correlationID] = ch
-	}
+	s.waiters[correlationID] = ch
 	s.mu.Unlock()
+	return ch
+}
 
+// Deregister removes a correlation id's waiter entry. Safe to call
+// even if the waiter was already consumed (idempotent).
+func (s *Server) Deregister(correlationID string) {
+	s.mu.Lock()
+	delete(s.waiters, correlationID)
+	s.mu.Unlock()
+}
+
+// Wait is a convenience helper: Register + block on the returned
+// channel or ctx.Done, with Deregister on exit. Matches the previous
+// Wait() signature so existing callers compile unchanged — they just
+// get the leak-free Register-first semantics.
+func (s *Server) Wait(ctx context.Context, correlationID string) (Event, error) {
+	ch := s.Register(correlationID)
+	defer s.Deregister(correlationID)
 	select {
 	case ev := <-ch:
 		return ev, nil
 	case <-ctx.Done():
-		s.mu.Lock()
-		delete(s.waiters, correlationID)
-		s.mu.Unlock()
 		return Event{}, ctx.Err()
 	}
 }
@@ -170,16 +208,18 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
-	if ch, ok := s.waiters[id]; ok {
+	ch, ok := s.waiters[id]
+	if ok {
 		delete(s.waiters, id)
-		s.mu.Unlock()
+	}
+	s.mu.Unlock()
+	if ok {
 		// Non-blocking send; buffer of 1 guarantees success.
 		ch <- ev
-	} else {
-		// Stash for a Wait() that hasn't landed yet.
-		s.pending[id] = ev
-		s.mu.Unlock()
 	}
+	// No waiter registered → drop. Callers must Register before
+	// publishing the URL so this path should be rare; if it happens
+	// it means a stray POST arrived outside any active flow.
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

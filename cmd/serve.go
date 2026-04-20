@@ -91,12 +91,34 @@ func runListen(cmd *cobra.Command, args []string) error {
 	}
 	localURL := fmt.Sprintf("http://%s", ln.Addr().String())
 
+	// Press context: shared across every in-flight drawer press so
+	// shutdown can cancel all of them at once (cooperative cancel
+	// lands way faster than waiting out the 1h press deadline).
+	// Defer the cancel so early-return paths don't leak the context —
+	// vet flags uncalled cancel functions as a leak risk.
+	pressCtx, cancelPresses := context.WithCancel(context.Background())
+	defer cancelPresses()
+
+	// Readiness token: the tunnel verifier pulls /healthz through the
+	// public URL and matches this token. Closes the "stale DNS
+	// pointing elsewhere returns 2xx" gap.
+	readyToken, err := webhook.MintReadyToken()
+	if err != nil {
+		return fmt.Errorf("mint ready token: %w", err)
+	}
+
 	mux := http.NewServeMux()
-	h := &serveHandler{dsvc: dsvc, routes: routes}
+	h := &serveHandler{
+		dsvc:      dsvc,
+		routes:    routes,
+		pressCtx:  pressCtx,
+		cancelAll: cancelPresses,
+	}
 	mux.Handle("/", h)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true,"token":"` + readyToken + `"}`))
 	})
 
 	srv := &http.Server{
@@ -119,7 +141,7 @@ func runListen(cmd *cobra.Command, args []string) error {
 			return handleWebhookErr(err)
 		}
 		tunnelCtx, tunnelCancel := context.WithTimeout(ctx, 90*time.Second)
-		tunnel, err = webhook.StartTunnel(tunnelCtx, localURL)
+		tunnel, err = webhook.StartTunnel(tunnelCtx, localURL, readyToken)
 		tunnelCancel()
 		if err != nil {
 			_ = srv.Shutdown(context.Background())
@@ -146,9 +168,40 @@ func runListen(cmd *cobra.Command, args []string) error {
 	case <-ctx.Done():
 	}
 
+	// Orderly shutdown:
+	//
+	//   1. Stop accepting new connections (srv.Shutdown) — 5s grace.
+	//   2. Wait for in-flight presses up to drainTimeout. Shorter than
+	//      the per-press cap on purpose: operators want Ctrl-C to
+	//      feel responsive, and steps that haven't already observed
+	//      cancellation probably won't.
+	//   3. Cancel every in-flight press (cancelPresses) so any
+	//      remaining goroutines unwind via context.Done and we don't
+	//      leave zombies after runListen returns.
+	const drainTimeout = 30 * time.Second
+
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	_ = srv.Shutdown(shutdownCtx)
+
+	drained := make(chan struct{})
+	go func() {
+		h.wg.Wait()
+		close(drained)
+	}()
+	select {
+	case <-drained:
+		// All presses finished cleanly.
+	case <-time.After(drainTimeout):
+		fmt.Fprintln(os.Stderr, "draining in-flight presses timed out; cancelling remaining work")
+	}
+	cancelPresses()
+	// Short final wait so cancel-triggered goroutines can clean up
+	// before runListen's caller returns (history flush, etc.).
+	select {
+	case <-drained:
+	case <-time.After(2 * time.Second):
+	}
 	return nil
 }
 
@@ -236,14 +289,18 @@ func printServeBanner(publicBase string, routes []route, tunnel *webhook.Tunnel)
 }
 
 // serveHandler dispatches incoming POSTs to the drawer registered for
-// the request path. Holds a sync.Mutex around the in-flight count so a
-// graceful shutdown can wait for drawer presses rather than dropping
-// them mid-run.
+// the request path. A WaitGroup tracks in-flight drawer presses so
+// graceful shutdown can actually wait for them to finish instead of
+// abandoning goroutines the moment the HTTP listener closes. The
+// press context is derived from pressCtx so Ctrl-C propagates
+// cooperatively — drawer steps honoring ctx cancellation return
+// promptly rather than hanging until the 1h press deadline.
 type serveHandler struct {
-	dsvc    *drawer.Service
-	routes  []route
-	mu      sync.Mutex
-	inFlight int
+	dsvc      *drawer.Service
+	routes    []route
+	wg        sync.WaitGroup
+	pressCtx  context.Context
+	cancelAll context.CancelFunc
 }
 
 func (h *serveHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -353,19 +410,17 @@ func (h *serveHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Press asynchronously: respond to the webhook sender right away
 	// with a run id. Most services retry aggressively on slow webhook
 	// responses, and a long-running drawer would block them needlessly.
-	h.mu.Lock()
-	h.inFlight++
-	h.mu.Unlock()
+	//
+	// WaitGroup lets runListen's shutdown path drain in-flight presses
+	// instead of abandoning them.
+	h.wg.Add(1)
 
 	go func() {
-		defer func() {
-			h.mu.Lock()
-			h.inFlight--
-			h.mu.Unlock()
-		}()
-		// Fresh context — not tied to the request (which is about to
-		// close). 1h cap so a hung drawer can't leak forever.
-		ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+		defer h.wg.Done()
+		// Derive from h.pressCtx (cancelled on shutdown) with a 1h
+		// cap so a wedged drawer can't leak forever. Steps that honor
+		// ctx observe cancellation and return cleanly.
+		ctx, cancel := context.WithTimeout(h.pressCtx, time.Hour)
 		defer cancel()
 
 		exec := drawer.NewExecutor()
