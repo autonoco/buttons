@@ -239,7 +239,7 @@ buttons list
 
 ### `buttons logs`
 
-View a button's past runs, or press and stream live
+View past runs for a button or workspace failures
 
 ```
 buttons logs [flags]
@@ -247,9 +247,7 @@ buttons logs [flags]
 
 | Flag | Type | Description |
 |------|------|-------------|
-| `--arg` | stringArray | argument as key=value (with --follow, passed through to the press) |
 | `--failed` | bool | only return runs that failed |
-| `-f, --follow` | bool | press the button and stream live output in a TUI |
 | `--limit` | int | max runs to return |
 
 ### `buttons press`
