@@ -142,6 +142,12 @@ func (e *Executor) runStep(ctx context.Context, d *Drawer, step *Step, ctxMap Co
 	if kind == "for_each" {
 		return e.runForEachStep(ctx, step, ctxMap)
 	}
+	if kind == "switch" {
+		return e.runSwitchStep(ctx, step, ctxMap)
+	}
+	if kind == "aggregate" {
+		return e.runAggregateStep(step, ctxMap)
+	}
 	if kind != "button" {
 		sr.Status = "failed"
 		sr.Error = &StepError{
@@ -452,7 +458,9 @@ func (e *Executor) runForEachStep(ctx context.Context, step *Step, ctxMap Contex
 	}
 
 	continueOnFail := step.OnItemFailure == "continue"
-	results := make([]map[string]any, 0, len(items))
+	// []any (not []map[string]any) so downstream ref resolvers and
+	// aggregate steps can walk it without type gymnastics.
+	results := make([]any, 0, len(items))
 
 	for i, item := range items {
 		// Per-iteration context: start from the outer ctxMap and
@@ -507,6 +515,170 @@ func (e *Executor) runForEachStep(ctx context.Context, step *Step, ctxMap Contex
 	sr.Output = map[string]any{
 		"results": results,
 		"total":   len(items),
+	}
+	return sr, nil
+}
+
+// runSwitchStep handles kind=switch — an if/elif/else chain. Walks
+// Cases in order, evaluates each When as a CEL boolean; the first
+// truthy case has its Steps run. No match falls through to the
+// step's top-level Steps (the "default" branch). Output records
+// which branch matched so downstream refs can disambiguate.
+func (e *Executor) runSwitchStep(ctx context.Context, step *Step, ctxMap Context) (StepRun, error) {
+	sr := StepRun{ID: step.ID}
+
+	matched := ""
+	var body []Step
+	for i, c := range step.Cases {
+		whenExpr := c.When
+		if !strings.HasPrefix(whenExpr, "${") {
+			whenExpr = "${" + whenExpr + "}"
+		}
+		v, err := Resolve(whenExpr, ctxMap)
+		if err != nil {
+			sr.Status = "failed"
+			sr.Error = &StepError{
+				Code:        "RESOLVE_ERROR",
+				Message:     fmt.Sprintf("case %d 'when': %v", i, err),
+				Remediation: "check the case's when expression — must return a boolean",
+			}
+			return sr, err
+		}
+		b, ok := v.(bool)
+		if !ok {
+			sr.Status = "failed"
+			sr.Error = &StepError{
+				Code:        "VALIDATION_ERROR",
+				Message:     fmt.Sprintf("case %d 'when' resolved to %T, not bool", i, v),
+				Remediation: "each case's when must evaluate to true or false",
+			}
+			return sr, fmt.Errorf("switch when not bool")
+		}
+		if b {
+			matched = c.ID
+			if matched == "" {
+				matched = fmt.Sprintf("case-%d", i)
+			}
+			body = c.Steps
+			break
+		}
+	}
+	if matched == "" && len(step.Steps) > 0 {
+		matched = "default"
+		body = step.Steps
+	}
+
+	// Run the chosen branch's nested steps against a child context.
+	// Each nested step's output chains into subsequent nested refs.
+	branchCtx := Context{}
+	for k, v := range ctxMap {
+		branchCtx[k] = v
+	}
+	branchOut := map[string]any{}
+	for _, nested := range body {
+		nestedStep := nested
+		nsr, nerr := e.runStep(ctx, nil, &nestedStep, branchCtx)
+		branchOut[nestedStep.ID] = map[string]any{
+			"status": nsr.Status,
+			"output": nsr.Output,
+			"error":  nsr.Error,
+		}
+		branchCtx[nestedStep.ID] = map[string]any{"output": nsr.Output}
+		if nerr != nil {
+			sr.Status = "failed"
+			sr.Output = map[string]any{"matched": matched, "steps": branchOut}
+			sr.Error = nsr.Error
+			return sr, nerr
+		}
+	}
+
+	sr.Status = "ok"
+	sr.Output = map[string]any{
+		"matched": matched,
+		"steps":   branchOut,
+	}
+	return sr, nil
+}
+
+// runAggregateStep handles kind=aggregate — iterate the From array,
+// evaluate Pluck per item with `item` bound, collect results. Pairs
+// naturally with a for_each predecessor whose `output.results` array
+// becomes this step's `from`.
+func (e *Executor) runAggregateStep(step *Step, ctxMap Context) (StepRun, error) {
+	sr := StepRun{ID: step.ID}
+
+	if step.From == "" {
+		sr.Status = "failed"
+		sr.Error = &StepError{
+			Code:        "VALIDATION_ERROR",
+			Message:     "aggregate step has no 'from' expression",
+			Remediation: "set step.from to a CEL expression producing an array",
+		}
+		return sr, fmt.Errorf("missing from")
+	}
+	if step.Pluck == "" {
+		sr.Status = "failed"
+		sr.Error = &StepError{
+			Code:        "VALIDATION_ERROR",
+			Message:     "aggregate step has no 'pluck' expression",
+			Remediation: "set step.pluck to a CEL expression (use 'item' for the current entry)",
+		}
+		return sr, fmt.Errorf("missing pluck")
+	}
+
+	fromExpr := step.From
+	if !strings.HasPrefix(fromExpr, "${") {
+		fromExpr = "${" + fromExpr + "}"
+	}
+	resolved, err := Resolve(fromExpr, ctxMap)
+	if err != nil {
+		sr.Status = "failed"
+		sr.Error = &StepError{
+			Code:        "RESOLVE_ERROR",
+			Message:     err.Error(),
+			Remediation: "check the 'from' expression — must resolve to an array",
+		}
+		return sr, err
+	}
+	items, ok := resolved.([]any)
+	if !ok {
+		sr.Status = "failed"
+		sr.Error = &StepError{
+			Code:        "VALIDATION_ERROR",
+			Message:     fmt.Sprintf("'from' resolved to %T, not an array", resolved),
+			Remediation: "'from' must produce a JSON array",
+		}
+		return sr, fmt.Errorf("from is not an array")
+	}
+
+	pluckExpr := step.Pluck
+	if !strings.HasPrefix(pluckExpr, "${") {
+		pluckExpr = "${" + pluckExpr + "}"
+	}
+	out := make([]any, 0, len(items))
+	for i, item := range items {
+		iterCtx := Context{}
+		for k, v := range ctxMap {
+			iterCtx[k] = v
+		}
+		iterCtx["item"] = item
+		v, perr := Resolve(pluckExpr, iterCtx)
+		if perr != nil {
+			sr.Status = "failed"
+			sr.Error = &StepError{
+				Code:        "RESOLVE_ERROR",
+				Message:     fmt.Sprintf("pluck at index %d: %v", i, perr),
+				Remediation: "check the 'pluck' expression — 'item' is the current entry",
+			}
+			return sr, perr
+		}
+		out = append(out, v)
+	}
+
+	sr.Status = "ok"
+	sr.Output = map[string]any{
+		"values": out,
+		"count":  len(out),
 	}
 	return sr, nil
 }

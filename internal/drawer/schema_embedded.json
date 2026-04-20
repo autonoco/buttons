@@ -28,6 +28,29 @@
       ],
       "type": "object"
     },
+    "Case": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Case identifier surfaced in output.matched",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
+        },
+        "when": {
+          "description": "CEL predicate — first truthy case wins",
+          "type": "string"
+        }
+      },
+      "required": [
+        "when"
+      ],
+      "type": "object"
+    },
     "ErrorHandler": {
       "additionalProperties": false,
       "properties": {
@@ -132,8 +155,19 @@
           "description": "Button name to invoke (kind=button only)",
           "type": "string"
         },
+        "cases": {
+          "description": "Conditional branches (kind=switch)",
+          "items": {
+            "$ref": "#/$defs/Case"
+          },
+          "type": "array"
+        },
         "drawer": {
           "description": "Drawer name to invoke (kind=drawer only)",
+          "type": "string"
+        },
+        "from": {
+          "description": "CEL expression producing the input array (kind=aggregate)",
           "type": "string"
         },
         "id": {
@@ -170,8 +204,12 @@
           "description": "CEL expression producing the array to iterate over (kind=for_each)",
           "type": "string"
         },
+        "pluck": {
+          "description": "CEL expression evaluated per item; 'item' is bound to the current entry (kind=aggregate)",
+          "type": "string"
+        },
         "steps": {
-          "description": "Nested steps run once per item (kind=for_each)",
+          "description": "Nested steps (for_each body or switch default)",
           "items": {
             "$ref": "#/$defs/Step"
           },

@@ -125,11 +125,38 @@ type Step struct {
 	// "fail-fast overall, but tolerate per-item errors here."
 	OnItemFailure string `json:"on_item_failure,omitempty" jsonschema:"enum=stop,enum=continue,description=How to react to a per-item failure (kind=for_each)"`
 
-	// Steps are the nested steps executed per item. Each iteration
-	// gets its own child context layered on the outer one; step ids
-	// inside Steps are namespaced to the iteration so outer refs
-	// can't accidentally punch through.
-	Steps []Step `json:"steps,omitempty" jsonschema:"description=Nested steps run once per item (kind=for_each)"`
+	// Steps are the nested steps executed per item (for_each) OR
+	// the steps under a matching case's body (switch). Each child
+	// context is layered on the outer one.
+	Steps []Step `json:"steps,omitempty" jsonschema:"description=Nested steps (for_each body or switch default)"`
+
+	// --- Fields below apply only to Kind == "switch" ---
+	//
+	// Cases is an if/elif chain. First Case whose When expression is
+	// truthy has its Steps run; the rest are skipped. If none match,
+	// the step's top-level Steps (treated as the "default" branch)
+	// run. Output is the last nested step's Output in the matching
+	// branch; total output shape: { matched: "case-id-or-default",
+	// steps: {id: output} }.
+	Cases []Case `json:"cases,omitempty" jsonschema:"description=Conditional branches (kind=switch)"`
+
+	// --- Fields below apply only to Kind == "aggregate" ---
+	//
+	// From is a CEL expression producing an array of items (typically
+	// a for_each step's `output.results`). Pluck is a CEL expression
+	// evaluated once per item with `item` bound to the current entry;
+	// the result is collected into an output array.
+	From  string `json:"from,omitempty" jsonschema:"description=CEL expression producing the input array (kind=aggregate)"`
+	Pluck string `json:"pluck,omitempty" jsonschema:"description=CEL expression evaluated per item; 'item' is bound to the current entry (kind=aggregate)"`
+}
+
+// Case is one branch of a kind=switch step. When is a CEL predicate;
+// ID names the branch for the matched tag in the step's output so
+// agents can tell which arm ran. Steps are the branch's body.
+type Case struct {
+	ID    string `json:"id,omitempty" jsonschema:"description=Case identifier surfaced in output.matched"`
+	When  string `json:"when" jsonschema:"description=CEL predicate — first truthy case wins"`
+	Steps []Step `json:"steps,omitempty"`
 }
 
 // ErrorPolicy controls how a step failure is handled. Mirrors

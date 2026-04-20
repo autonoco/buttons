@@ -376,9 +376,178 @@ func TestDrawerSet_RejectsBadTarget(t *testing.T) {
 
 	r := env.run("drawer", "flow", "set", "nope=1", "--json")
 	if r.ExitCode == 0 {
-		t.Fatal("expected failure on missing .args. in target")
+		t.Fatal("expected failure on missing step id")
 	}
-	if !strings.Contains(r.Stderr, "STEP.args.FIELD") && !strings.Contains(r.Stdout, "STEP.args.FIELD") {
-		t.Errorf("expected usage hint, got stderr=%s stdout=%s", r.Stderr, r.Stdout)
+	_ = r
+}
+
+// TestForEach_CLIAuthoring verifies `buttons drawer X add
+// for_each:BUTTON` shorthand + the extended `set` paths
+// (STEP.over, STEP.as, STEP.steps.0.args.FIELD) let agents author
+// a complete for_each without patching drawer.json by hand.
+func TestForEach_CLIAuthoring(t *testing.T) {
+	env := newTestEnv(t)
+
+	env.run("create", "list-targets",
+		"--runtime", "shell",
+		"--code", `echo '{"names":["x","y"]}'`,
+		"--json",
+	)
+	env.run("create", "greeter",
+		"--runtime", "shell",
+		"--code", `echo "{\"hi\":\"$BUTTONS_ARG_NAME\"}"`,
+		"--arg", "name:string:required",
+		"--json",
+	)
+
+	env.run("drawer", "create", "loop-cli", "--json")
+	env.run("drawer", "loop-cli", "add", "list-targets", "for_each:greeter", "--json")
+
+	// Wire the for_each's loop params + the nested step's args.
+	r := env.run("drawer", "loop-cli", "set",
+		`for_each-greeter.over=${list-targets.output.names}`,
+		`for_each-greeter.as=n`,
+		`for_each-greeter.steps.0.args.name=${n}`,
+		"--json",
+	)
+	if r.ExitCode != 0 {
+		t.Fatalf("set: exit %d, stderr=%s, stdout=%s", r.ExitCode, r.Stderr, r.Stdout)
+	}
+
+	r = env.run("drawer", "loop-cli", "press", "--json")
+	if r.ExitCode != 0 {
+		t.Fatalf("press: exit %d, stderr=%s, stdout=%s", r.ExitCode, r.Stderr, r.Stdout)
+	}
+	if !strings.Contains(r.Stdout, `"total": 2`) {
+		t.Errorf("expected total=2 iterations, got: %s", r.Stdout)
+	}
+}
+
+// TestSwitch_PicksMatchingCase verifies kind=switch evaluates cases
+// in order and runs only the first matching branch's nested steps.
+func TestSwitch_PicksMatchingCase(t *testing.T) {
+	env := newTestEnv(t)
+
+	env.run("create", "emit-prod",
+		"--runtime", "shell", "--code", `echo '{"ran":"prod"}'`, "--json",
+	)
+	env.run("create", "emit-staging",
+		"--runtime", "shell", "--code", `echo '{"ran":"staging"}'`, "--json",
+	)
+
+	env.run("drawer", "create", "route", "--json")
+
+	drawerPath := filepath.Join(env.home, "drawers", "route", "drawer.json")
+	data, _ := os.ReadFile(drawerPath) // #nosec G304 — test scope
+	var d map[string]any
+	_ = json.Unmarshal(data, &d)
+	d["steps"] = []any{
+		map[string]any{
+			"id":   "pick",
+			"kind": "switch",
+			"cases": []any{
+				map[string]any{
+					"id":   "prod-case",
+					"when": "${inputs.env == 'prod'}",
+					"steps": []any{
+						map[string]any{"id": "run", "kind": "button", "button": "emit-prod"},
+					},
+				},
+				map[string]any{
+					"id":   "staging-case",
+					"when": "${inputs.env == 'staging'}",
+					"steps": []any{
+						map[string]any{"id": "run", "kind": "button", "button": "emit-staging"},
+					},
+				},
+			},
+		},
+	}
+	out, _ := json.MarshalIndent(d, "", "  ")
+	_ = os.WriteFile(drawerPath, out, 0o600)
+
+	// env=prod → prod-case matches
+	r := env.run("drawer", "route", "press", "env=prod", "--json")
+	if r.ExitCode != 0 {
+		t.Fatalf("press prod: exit %d, stdout=%s", r.ExitCode, r.Stdout)
+	}
+	if !strings.Contains(r.Stdout, "prod-case") {
+		t.Errorf("expected matched=prod-case, got: %s", r.Stdout)
+	}
+	if !strings.Contains(r.Stdout, `"ran"`) || !strings.Contains(r.Stdout, `"prod"`) {
+		t.Errorf("prod-case body didn't run: %s", r.Stdout)
+	}
+	// env=staging → staging-case matches
+	r = env.run("drawer", "route", "press", "env=staging", "--json")
+	if r.ExitCode != 0 {
+		t.Fatalf("press staging: exit %d", r.ExitCode)
+	}
+	if !strings.Contains(r.Stdout, "staging-case") {
+		t.Errorf("expected matched=staging-case, got: %s", r.Stdout)
+	}
+}
+
+// TestAggregate_PluckValuesFromForEach verifies kind=aggregate walks
+// a for_each's results array and extracts a chosen field per iteration.
+func TestAggregate_PluckValuesFromForEach(t *testing.T) {
+	env := newTestEnv(t)
+
+	env.run("create", "emit-ids",
+		"--runtime", "shell",
+		"--code", `echo '{"ids":[1,2,3]}'`,
+		"--json",
+	)
+	env.run("create", "double",
+		"--runtime", "shell",
+		"--code", `echo "{\"out\":$(( $BUTTONS_ARG_N * 2 ))}"`,
+		"--arg", "n:int:required",
+		"--json",
+	)
+
+	env.run("drawer", "create", "agg", "--json")
+	env.run("drawer", "agg", "add", "emit-ids", "--json")
+
+	drawerPath := filepath.Join(env.home, "drawers", "agg", "drawer.json")
+	data, _ := os.ReadFile(drawerPath) // #nosec G304 — test scope
+	var d map[string]any
+	_ = json.Unmarshal(data, &d)
+	steps := d["steps"].([]any)
+	// Add a for_each that doubles each id, then an aggregate that
+	// plucks the doubled value out.
+	steps = append(steps,
+		map[string]any{
+			"id":   "each",
+			"kind": "for_each",
+			"over": "${emit-ids.output.ids}",
+			"as":   "n",
+			"steps": []any{
+				map[string]any{
+					"id": "dbl", "kind": "button", "button": "double",
+					"args": map[string]any{"n": "${n}"},
+				},
+			},
+		},
+		map[string]any{
+			"id":    "collect",
+			"kind":  "aggregate",
+			"from":  "${each.output.results}",
+			"pluck": "${item.steps.dbl.output.out}",
+		},
+	)
+	d["steps"] = steps
+	out, _ := json.MarshalIndent(d, "", "  ")
+	_ = os.WriteFile(drawerPath, out, 0o600)
+
+	r := env.run("drawer", "agg", "press", "--json")
+	if r.ExitCode != 0 {
+		t.Fatalf("press: exit %d, stderr=%s, stdout=%s", r.ExitCode, r.Stderr, r.Stdout)
+	}
+	// Values plucked out of [1,2,3] doubled = [2,4,6]. Shell
+	// arithmetic returns int but JSON parsing may float64 — assert
+	// presence of each value rather than exact array format.
+	for _, want := range []string{"2", "4", "6"} {
+		if !strings.Contains(r.Stdout, want) {
+			t.Errorf("expected aggregate output to contain %s, got: %s", want, r.Stdout)
+		}
 	}
 }

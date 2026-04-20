@@ -142,6 +142,42 @@ func Validate(d *Drawer, btnSvc *button.Service) ValidationReport {
 			}
 			continue
 		}
+		if kind == "switch" {
+			if len(st.Cases) == 0 && len(st.Steps) == 0 {
+				report.Errors = append(report.Errors, ValidationIssue{
+					Severity: "error", StepID: st.ID,
+					Message:     "switch step has no cases and no default steps",
+					Remediation: "add at least one case with a 'when' predicate, or default steps",
+				})
+			}
+			for ci, c := range st.Cases {
+				if c.When == "" {
+					report.Errors = append(report.Errors, ValidationIssue{
+						Severity: "error", StepID: st.ID,
+						Message:     fmt.Sprintf("case %d has no 'when' predicate", ci),
+						Remediation: "every case needs a when expression (CEL bool)",
+					})
+				}
+			}
+			continue
+		}
+		if kind == "aggregate" {
+			if st.From == "" {
+				report.Errors = append(report.Errors, ValidationIssue{
+					Severity: "error", StepID: st.ID,
+					Message:     "aggregate step has no 'from' expression",
+					Remediation: "set step.from to a CEL expression producing an array",
+				})
+			}
+			if st.Pluck == "" {
+				report.Errors = append(report.Errors, ValidationIssue{
+					Severity: "error", StepID: st.ID,
+					Message:     "aggregate step has no 'pluck' expression",
+					Remediation: "set step.pluck to a CEL expression; 'item' is the current entry",
+				})
+			}
+			continue
+		}
 		if kind != "button" {
 			// Future kinds are reserved but not runnable; the executor
 			// errors with KIND_NOT_IMPLEMENTED. Warn so the validator

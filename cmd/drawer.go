@@ -45,9 +45,15 @@ Usage:
   buttons drawer list
   buttons drawer NAME add BUTTON [BUTTON ...]         append button step(s)
   buttons drawer NAME add drawer/OTHER                append a sub-drawer step
+  buttons drawer NAME add for_each:BUTTON             append a per-item loop wrapping BUTTON
   buttons drawer NAME connect A to B                  auto-match output → args by name+type
   buttons drawer NAME connect A.output.x to B.args.y  explicit field path
-  buttons drawer NAME set STEP.args.FIELD=value       write a literal or ${ref} into a step arg
+  buttons drawer NAME set STEP.args.FIELD=value       literal or ${ref} into a step arg
+  buttons drawer NAME set STEP.over=EXPR              for_each: the array to iterate
+  buttons drawer NAME set STEP.as=NAME                for_each: loop variable name
+  buttons drawer NAME set STEP.from=EXPR              aggregate: input array
+  buttons drawer NAME set STEP.pluck=EXPR             aggregate: per-item expression
+  buttons drawer NAME set STEP.steps.N.args.F=value   reach a nested step's arg
   buttons drawer NAME press [key=value ...]           run it; unfilled required inputs go here
   buttons drawer NAME logs [--failed] [--limit N]     past runs for this drawer
   buttons drawer NAME remove                          delete the drawer
@@ -421,59 +427,94 @@ func drawerPress(name string, args []string) error {
 // write hits disk.
 func drawerSet(name string, vargs []string) error {
 	if len(vargs) < 1 {
-		return fmt.Errorf("usage: buttons drawer %s set STEP.args.FIELD=value [STEP.args.FIELD=value ...]", name)
+		return fmt.Errorf("usage: buttons drawer %s set STEP.PATH=value [STEP.PATH=value ...]\n  paths: STEP.args.FIELD | STEP.over | STEP.as | STEP.from | STEP.pluck | STEP.steps.N.args.FIELD", name)
 	}
 
-	type assignment struct {
-		step, field string
-		value       any
-	}
-	ops := make([]assignment, 0, len(vargs))
+	svc := drawer.NewService()
+	applied := make([]string, 0, len(vargs))
+
 	for _, raw := range vargs {
 		eq := strings.Index(raw, "=")
 		if eq < 0 {
-			return fmt.Errorf("expected STEP.args.FIELD=value, got %q", raw)
+			return fmt.Errorf("expected STEP.PATH=value, got %q", raw)
 		}
 		target, rawValue := raw[:eq], raw[eq+1:]
-		if !strings.Contains(target, ".args.") {
-			return fmt.Errorf("target must be STEP.args.FIELD, got %q", target)
-		}
-		idx := strings.Index(target, ".args.")
-		stepID := target[:idx]
-		field := target[idx+len(".args."):]
-		if stepID == "" || field == "" {
-			return fmt.Errorf("empty step id or field in %q", target)
-		}
-		// Parse literal JSON first (numbers, bools, objects). Falls
-		// through to string so ${ref} expressions and plain strings
-		// stash verbatim. Matches parseKV's behavior for presses.
+		// Literal JSON first (numbers/bools/objects); fall through
+		// to string so ${ref} expressions and plain text stash as-is.
 		var value any
 		if err := json.Unmarshal([]byte(rawValue), &value); err != nil {
 			value = rawValue
 		}
-		ops = append(ops, assignment{step: stepID, field: field, value: value})
-	}
 
-	svc := drawer.NewService()
-	var final *drawer.Drawer
-	for _, op := range ops {
-		d, err := svc.SetArg(name, op.step, op.field, op.value)
-		if err != nil {
-			return handleDrawerError(err)
+		parts := strings.SplitN(target, ".", 2)
+		if len(parts) < 2 {
+			return fmt.Errorf("target must include a step id and a path, got %q", target)
 		}
-		final = d
+		stepID, path := parts[0], parts[1]
+		if stepID == "" {
+			return fmt.Errorf("empty step id in %q", target)
+		}
+
+		// Route by path shape:
+		//   args.FIELD                 → SetArg on the outer step
+		//   steps.N.args.FIELD         → SetNestedArg on for_each/switch body
+		//   <field>                    → SetField (over, as, from, pluck, ...)
+		switch {
+		case strings.HasPrefix(path, "args."):
+			field := strings.TrimPrefix(path, "args.")
+			if field == "" {
+				return fmt.Errorf("empty arg name in %q", target)
+			}
+			if _, err := svc.SetArg(name, stepID, field, value); err != nil {
+				return handleDrawerError(err)
+			}
+		case strings.HasPrefix(path, "steps."):
+			rest := strings.TrimPrefix(path, "steps.")
+			idxStr := rest
+			if i := strings.Index(rest, "."); i > 0 {
+				idxStr = rest[:i]
+				rest = rest[i+1:]
+			} else {
+				return fmt.Errorf("nested path %q missing .args.FIELD suffix", target)
+			}
+			var nestedIdx int
+			if _, err := fmt.Sscanf(idxStr, "%d", &nestedIdx); err != nil {
+				return fmt.Errorf("expected numeric index in %q, got %q", target, idxStr)
+			}
+			if !strings.HasPrefix(rest, "args.") {
+				return fmt.Errorf("nested path must end in .args.FIELD, got %q", target)
+			}
+			argName := strings.TrimPrefix(rest, "args.")
+			if argName == "" {
+				return fmt.Errorf("empty nested arg name in %q", target)
+			}
+			if _, err := svc.SetNestedArg(name, stepID, nestedIdx, argName, value); err != nil {
+				return handleDrawerError(err)
+			}
+		default:
+			// Bare field — over, as, from, pluck, button, drawer,
+			// on_item_failure. Always a string on the wire.
+			strVal, ok := value.(string)
+			if !ok {
+				strVal = rawValue
+			}
+			if _, err := svc.SetField(name, stepID, path, strVal); err != nil {
+				return handleDrawerError(err)
+			}
+		}
+		applied = append(applied, target)
 	}
 
 	if jsonOutput {
 		return config.WriteJSON(map[string]any{
 			"ok":     true,
 			"drawer": name,
-			"set":    len(ops),
-			"spec":   final,
+			"set":    len(applied),
+			"paths":  applied,
 		})
 	}
-	for _, op := range ops {
-		fmt.Fprintf(os.Stderr, "set %s.args.%s = %v\n", op.step, op.field, op.value)
+	for _, t := range applied {
+		fmt.Fprintf(os.Stderr, "set %s\n", t)
 	}
 	printNextHint("buttons drawer %s press", name)
 	return nil
