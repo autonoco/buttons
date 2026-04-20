@@ -717,13 +717,16 @@ func drawerTrigger(name string, vargs []string) error {
 	return nil
 }
 
-// extractJSONFlag scans args for --json / --json=true / --no-json and
-// sets the package-level jsonOutput bool accordingly. Returns the
-// residual args so the per-verb hand-parsers don't have to know about
-// the flag. Also strips --help so `buttons drawer NAME --help`
-// doesn't confuse our dispatch — Cobra's automatic help path is
-// intentional for `buttons drawer --help` (no subcommand) and handled
-// upstream by the RunE when args is empty.
+// extractJSONFlag scans args for the rootCmd persistent flags
+// (--json, --no-input, --summary) and sets the corresponding
+// package-level globals — drawerCmd.DisableFlagParsing prevents
+// Cobra from doing this for us. Returns the residual args for the
+// per-verb hand-parsers.
+//
+// Each flag supports three forms: bare (`--json`), `=form`
+// (`--json=true`), and the negation (`--no-json`). Verbs inside
+// drawerCmd don't use `--help` since the RunE emits its own usage
+// block; `--help` passes through and per-verb handlers error cleanly.
 func extractJSONFlag(args []string) []string {
 	out := make([]string, 0, len(args))
 	for _, a := range args {
@@ -732,6 +735,14 @@ func extractJSONFlag(args []string) []string {
 			jsonOutput = true
 		case "--json=false", "--no-json":
 			jsonOutput = false
+		case "--summary", "--summary=true":
+			summaryFlag = true
+		case "--summary=false":
+			summaryFlag = false
+		case "--no-input", "--no-input=true":
+			noInput = true
+		case "--no-input=false":
+			noInput = false
 		default:
 			out = append(out, a)
 		}
