@@ -48,10 +48,7 @@ buttons drawer [flags]
 ### Options
 
 ```
-      --failed NAME logs   only return runs that failed (for NAME logs)
-  -f, --follow NAME logs   stream live progress (for NAME logs)
-  -h, --help               help for drawer
-      --limit NAME logs    max runs to return (for NAME logs) (default 20)
+  -h, --help   help for drawer
 ```
 
 ### Options inherited from parent commands

@@ -198,14 +198,8 @@ buttons delete [flags]
 Manage drawer workflows (chains of buttons)
 
 ```
-buttons drawer [flags]
+buttons drawer
 ```
-
-| Flag | Type | Description |
-|------|------|-------------|
-| `--failed` | bool | only return runs that failed (for `NAME logs`) |
-| `-f, --follow` | bool | stream live progress (for `NAME logs`) |
-| `--limit` | int | max runs to return (for `NAME logs`) |
 
 ### `buttons history`
 
@@ -344,6 +338,64 @@ Print build version, commit, and date
 
 ```
 buttons version
+```
+
+### `buttons webhook`
+
+Expose a local URL via Cloudflare to receive webhook callbacks
+
+```
+buttons webhook [command]
+```
+
+#### `buttons webhook listen`
+
+Run the webhook listener — presses drawers when trigger paths are hit
+
+```
+buttons webhook listen [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--no-tunnel` | bool | skip cloudflared; listen on 127.0.0.1 only (local testing) |
+| `--port` | int | bind local listener on this port (0 = random) |
+
+#### `buttons webhook logout`
+
+Clear named-tunnel config (falls back to quick mode)
+
+```
+buttons webhook logout
+```
+
+#### `buttons webhook setup`
+
+One-time Cloudflare login + named-tunnel config
+
+```
+buttons webhook setup [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--hostname` | string | hostname for webhooks (e.g. webhooks.yourdomain.com) |
+| `--tunnel` | string | Cloudflare tunnel name |
+
+#### `buttons webhook status`
+
+Show current webhook mode and URL
+
+```
+buttons webhook status
+```
+
+#### `buttons webhook test`
+
+Round-trip verify: spin up a tunnel, self-POST, observe delivery
+
+```
+buttons webhook test
 ```
 
 ## JSON output contract
