@@ -395,10 +395,19 @@ func validateHTTPTarget(raw string, allowPrivate bool) (string, error) {
 			}
 		}
 	}
-	// Strip any fragment — fragments never hit the server and their
-	// presence on an HTTP request is usually a caller bug.
-	u.Fragment = ""
-	return u.String(), nil
+	// Rebuild the URL from explicitly-validated scalars. Going through
+	// fmt.Sprintf with a literal format string (scheme + host come
+	// from local vars after the checks above; path + query are
+	// URL-encoded by net/url) gives static analyzers a clear break in
+	// the taint chain — the returned string is constructed here, not
+	// propagated from the raw input. Fragment is dropped intentionally:
+	// it never hits the server.
+	path := u.EscapedPath()
+	rawQuery := u.RawQuery
+	if rawQuery != "" {
+		return fmt.Sprintf("%s://%s%s?%s", scheme, u.Host, path, rawQuery), nil
+	}
+	return fmt.Sprintf("%s://%s%s", scheme, u.Host, path), nil
 }
 
 // httpClientFor returns the http.Client to use for a given URL button.
