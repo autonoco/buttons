@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/autonoco/buttons/internal/battery"
@@ -410,13 +411,12 @@ func (e *Executor) runDrawerStep(ctx context.Context, step *Step, ctxMap Context
 // its own child context with the outer context plus the loop
 // variable (step.As) bound to the current item.
 //
-// v1 is serial (no parallelism). Per-item failures stop the loop by
-// default; OnItemFailure="continue" records the error and moves on.
-// Output is {results: [...]} — one entry per iteration, each a map
-// of {step_id: step.Output} for the nested steps. Downstream refs
-// walk this via ${<for_each_id>.output.results.0.step_id.field}
-// (indexed access) but will typically be consumed by an aggregator
-// step in later stages.
+// Concurrency: Parallelism <= 1 runs serially (deterministic order,
+// fail-fast). Parallelism > 1 spawns a worker pool. Results are
+// still written in input order regardless of completion order so
+// downstream refs like ${step.output.results.0.item} stay stable.
+// OnItemFailure="stop" in parallel mode cancels in-flight workers
+// via a sub-context the moment the first failure is observed.
 func (e *Executor) runForEachStep(ctx context.Context, step *Step, ctxMap Context) (StepRun, error) {
 	sr := StepRun{ID: step.ID}
 
@@ -462,65 +462,153 @@ func (e *Executor) runForEachStep(ctx context.Context, step *Step, ctxMap Contex
 	}
 
 	continueOnFail := step.OnItemFailure == "continue"
-	// []any (not []map[string]any) so downstream ref resolvers and
-	// aggregate steps can walk it without type gymnastics.
-	results := make([]any, 0, len(items))
+	parallelism := step.Parallelism
+	if parallelism < 1 {
+		parallelism = 1
+	}
+
+	// Preallocated, index-addressable results so writers can drop
+	// their output at position i without a mutex — each worker owns
+	// exactly one index.
+	results := make([]any, len(items))
+	errs := make([]error, len(items))
+
+	// Parallelism == 1 keeps the serial, fail-fast semantics that
+	// stage 3 shipped. Inlined to avoid the channel/goroutine cost
+	// for small loops where serial was already fine.
+	if parallelism == 1 {
+		for i, item := range items {
+			results[i], errs[i] = e.runForEachIter(ctx, step, asName, item, i, ctxMap)
+			if errs[i] != nil && !continueOnFail {
+				sr.Status = "failed"
+				sr.Output = map[string]any{
+					"results":   trimNilTail(results, i+1),
+					"completed": i + 1,
+					"total":     len(items),
+				}
+				sr.Error = &StepError{
+					Code:        "FOREACH_ITEM_FAILED",
+					Message:     fmt.Sprintf("iteration %d failed: %v", i, errs[i]),
+					Remediation: "fix the failing nested step or set on_item_failure: continue to tolerate per-item errors",
+				}
+				return sr, errs[i]
+			}
+		}
+		sr.Status = "ok"
+		sr.Output = map[string]any{"results": results, "total": len(items)}
+		return sr, nil
+	}
+
+	// Parallel mode. workerCtx gets cancelled on first failure
+	// when OnItemFailure != "continue" so in-flight iterations
+	// abort promptly instead of finishing their work after we've
+	// already decided to fail the step.
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Bounded semaphore + sync primitives. A plain buffered chan
+	// doubles as the semaphore (acquire by send, release by recv)
+	// without pulling in x/sync.
+	sem := make(chan struct{}, parallelism)
+	var wg sync.WaitGroup
+	var failMu sync.Mutex
+	var firstFailIdx int = -1
+	var firstFailErr error
 
 	for i, item := range items {
-		// Per-iteration context: start from the outer ctxMap and
-		// overlay the loop variable so nested ${<as>.field} refs
-		// resolve. Don't mutate the outer map — each iter gets its
-		// own.
-		iterCtx := Context{}
-		for k, v := range ctxMap {
-			iterCtx[k] = v
+		// Respect early-cancel decisions made by previous workers.
+		if workerCtx.Err() != nil {
+			break
 		}
-		iterCtx[asName] = item
-
-		iterOut := map[string]any{}
-		var iterErr error
-		for _, nested := range step.Steps {
-			nestedStep := nested
-			stepRes, serr := e.runStep(ctx, nil, &nestedStep, iterCtx)
-			iterOut[nestedStep.ID] = map[string]any{
-				"status": stepRes.Status,
-				"output": stepRes.Output,
-				"error":  stepRes.Error,
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(idx int, it any) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			out, err := e.runForEachIter(workerCtx, step, asName, it, idx, ctxMap)
+			results[idx] = out
+			errs[idx] = err
+			if err != nil && !continueOnFail {
+				failMu.Lock()
+				if firstFailIdx == -1 || idx < firstFailIdx {
+					firstFailIdx = idx
+					firstFailErr = err
+				}
+				failMu.Unlock()
+				cancel()
 			}
-			// Expose the just-completed nested step's output so
-			// later nested steps in the same iteration can chain.
-			iterCtx[nestedStep.ID] = map[string]any{"output": stepRes.Output}
-			if serr != nil {
-				iterErr = serr
-				break
+		}(i, item)
+	}
+	wg.Wait()
+
+	if firstFailIdx != -1 {
+		completed := 0
+		for i := range results {
+			if results[i] != nil {
+				completed++
 			}
 		}
-
-		results = append(results, map[string]any{
-			"index":  i,
-			"item":   item,
-			"steps":  iterOut,
-			"failed": iterErr != nil,
-		})
-
-		if iterErr != nil && !continueOnFail {
-			sr.Status = "failed"
-			sr.Output = map[string]any{"results": results, "completed": i + 1, "total": len(items)}
-			sr.Error = &StepError{
-				Code:        "FOREACH_ITEM_FAILED",
-				Message:     fmt.Sprintf("iteration %d failed: %v", i, iterErr),
-				Remediation: "fix the failing nested step or set on_item_failure: continue to tolerate per-item errors",
-			}
-			return sr, iterErr
+		sr.Status = "failed"
+		sr.Output = map[string]any{
+			"results":   results,
+			"completed": completed,
+			"total":     len(items),
 		}
+		sr.Error = &StepError{
+			Code:        "FOREACH_ITEM_FAILED",
+			Message:     fmt.Sprintf("iteration %d failed: %v", firstFailIdx, firstFailErr),
+			Remediation: "fix the failing nested step or set on_item_failure: continue to tolerate per-item errors",
+		}
+		return sr, firstFailErr
 	}
 
 	sr.Status = "ok"
-	sr.Output = map[string]any{
-		"results": results,
-		"total":   len(items),
-	}
+	sr.Output = map[string]any{"results": results, "total": len(items)}
 	return sr, nil
+}
+
+// runForEachIter executes the nested Steps for one iteration against
+// a per-iteration context. Extracted so both the serial and parallel
+// paths share exactly one implementation of the per-iter semantics.
+func (e *Executor) runForEachIter(ctx context.Context, step *Step, asName string, item any, idx int, outerCtx Context) (map[string]any, error) {
+	iterCtx := Context{}
+	for k, v := range outerCtx {
+		iterCtx[k] = v
+	}
+	iterCtx[asName] = item
+
+	iterOut := map[string]any{}
+	var iterErr error
+	for _, nested := range step.Steps {
+		nestedStep := nested
+		stepRes, serr := e.runStep(ctx, nil, &nestedStep, iterCtx)
+		iterOut[nestedStep.ID] = map[string]any{
+			"status": stepRes.Status,
+			"output": stepRes.Output,
+			"error":  stepRes.Error,
+		}
+		iterCtx[nestedStep.ID] = map[string]any{"output": stepRes.Output}
+		if serr != nil {
+			iterErr = serr
+			break
+		}
+	}
+	return map[string]any{
+		"index":  idx,
+		"item":   item,
+		"steps":  iterOut,
+		"failed": iterErr != nil,
+	}, iterErr
+}
+
+// trimNilTail is used by the serial path to return a results slice
+// that only includes actually-completed iterations, keeping the
+// shape compatible with the pre-parallelism stage 3 behavior.
+func trimNilTail(xs []any, upTo int) []any {
+	if upTo > len(xs) {
+		upTo = len(xs)
+	}
+	return xs[:upTo]
 }
 
 // runSwitchStep handles kind=switch — an if/elif/else chain. Walks

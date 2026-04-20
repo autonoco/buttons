@@ -208,6 +208,10 @@
           "description": "CEL expression producing the array to iterate over (kind=for_each)",
           "type": "string"
         },
+        "parallelism": {
+          "description": "Max concurrent iterations (kind=for_each); 0 or 1 = serial",
+          "type": "integer"
+        },
         "pluck": {
           "description": "CEL expression evaluated per item; 'item' is bound to the current entry (kind=aggregate)",
           "type": "string"
