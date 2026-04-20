@@ -33,6 +33,7 @@ buttons [flags]
 * [buttons delete](buttons_delete.md)	 - Delete a button
 * [buttons drawer](buttons_drawer.md)	 - Manage drawer workflows (chains of buttons)
 * [buttons history](buttons_history.md)	 - Show run history
+* [buttons ignore](buttons_ignore.md)	 - Keep a button or drawer out of git (writes .buttons/.gitignore)
 * [buttons init](buttons_init.md)	 - Initialize a project-local .buttons directory
 * [buttons list](buttons_list.md)	 - List all buttons
 * [buttons logs](buttons_logs.md)	 - View past runs for a button or tail the live progress stream
@@ -41,6 +42,7 @@ buttons [flags]
 * [buttons store](buttons_store.md)	 - Marketplace (search/install/import/publish)
 * [buttons summary](buttons_summary.md)	 - Print a workspace snapshot (buttons, drawers, recent runs)
 * [buttons tail](buttons_tail.md)	 - Follow the progress JSONL of a press
+* [buttons unignore](buttons_unignore.md)	 - Re-include a previously-ignored button or drawer in git
 * [buttons update](buttons_update.md)	 - Update buttons to the latest version
 * [buttons version](buttons_version.md)	 - Print build version, commit, and date
 

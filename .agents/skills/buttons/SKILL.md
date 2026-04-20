@@ -173,6 +173,7 @@ buttons create [flags]
 | `-d, --description` | string | button description |
 | `-f, --file` | string | copy an existing script file into the button folder |
 | `--header` | stringArray | HTTP header as 'Key: Value' (repeatable) |
+| `--ignore` | bool | add this button to .buttons/.gitignore so git won't track it (good for scratch/test buttons) |
 | `--max-response-size` | string | max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M |
 | `--method` | string | HTTP method for --url (default: GET) |
 | `--prompt` | string | prompt/instruction for the consuming agent (written to AGENT.md) |
@@ -217,6 +218,14 @@ buttons history [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `--last` | int | number of runs to show |
+
+### `buttons ignore`
+
+Keep a button or drawer out of git (writes .buttons/.gitignore)
+
+```
+buttons ignore
+```
 
 ### `buttons init`
 
@@ -307,6 +316,14 @@ buttons tail [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `-f, --follow` | bool | keep tailing as new lines arrive |
+
+### `buttons unignore`
+
+Re-include a previously-ignored button or drawer in git
+
+```
+buttons unignore
+```
 
 ### `buttons update`
 
