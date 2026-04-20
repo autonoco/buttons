@@ -1,0 +1,50 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-20" description="Webhook triggers, drawer composition, and live streaming">
+## Webhook triggers, drawer composition, and live streaming
+
+Drawers gain webhooks, sub-drawers, loops, branches, error handling, and CEL expressions. The CLI and board now stream live output as a press runs.
+
+### New features
+
+- **Webhook triggers** — drawers can now receive HTTP webhooks via a Cloudflare tunnel. Run `buttons webhook setup` once to configure your tunnel, then register a drawer with `buttons drawer NAME trigger webhook`. Incoming POSTs press the drawer with the request body, headers, query params, and method available as `${inputs.webhook.*}`. Two modes are available: quick (ephemeral URL, no setup) and named (stable hostname on your own Cloudflare account). Supports four auth types: none, basic, header, and JWT. See [webhooks](/buttons/webhook).
+
+- **Sub-drawers** — drawers can now call other drawers as steps with `buttons drawer PARENT add drawer/CHILD`. The child drawer runs inside the parent's execution, and its return values flow into downstream steps via `${child.output.*}`. Use this to build reusable workflow libraries instead of re-planning from scratch every time.
+
+- **`for_each` loops** — iterate over an array with `kind=for_each`. Each iteration runs the nested steps in order, with a loop variable available to inner steps. Set `on_item_failure` to `stop` (default) or `continue` to control how failures are handled. See the [drawer CLI reference](/cli/buttons_drawer).
+
+- **Parallel `for_each`** — set `parallelism` on a `for_each` step to run multiple iterations concurrently. A worker pool caps inflight goroutines so you can process large lists quickly without overwhelming downstream services.
+
+- **Conditional branches** — `kind=switch` evaluates a list of `when` conditions and runs the first matching case. Non-matching cases are skipped entirely. Use this to route workflows based on inputs or prior step results.
+
+- **Aggregate steps** — `kind=aggregate` collects a single field from each item in an array. Pairs naturally with `for_each` — run a step per item, then pluck the results into a flat list for the next step.
+
+- **`on_error` handler** — declare a drawer-level `on_error` block to invoke another drawer when any step fails. The handler receives the failure details — step ID, error code, message, and remediation — so you can route alerts, roll back, or log to an external system.
+
+- **`kind=wait` steps** — add time-based pauses to a drawer with `kind=wait`. Specify a fixed duration (e.g. `30s`, `2m30s`) or an absolute timestamp via a CEL expression. Useful for cooldown periods between deploys or waiting for external propagation.
+
+- **CEL expressions** — drawer step references now support full [CEL](https://cel.dev) syntax inside `${...}`. Beyond simple dotted paths, you can use string concatenation, arithmetic, ternaries, and null coalescing. Existing `${step.output.field}` references continue to work unchanged.
+
+- **Idempotency** — pass `--idempotency-key` and `--idempotency-ttl` to `buttons press` to cache successful results across runs. A second press with the same key returns the cached result without re-executing. Failed runs are never cached, so retries always re-run.
+
+- **Queue concurrency** — buttons can now declare a named queue with a concurrency limit. Multiple buttons sharing the same queue name pool together, so you can enforce rate limits like "3 concurrent requests to this API" across your whole project.
+
+- **Progress streaming** — button scripts now receive a `$BUTTONS_PROGRESS_PATH` environment variable pointing to a JSONL file. Write structured progress events to it during execution, then tail them live with `buttons tail NAME -f`.
+
+- **`buttons press --follow`** — stream a button's stdout and stderr to your terminal in real time while the press runs. Stdout prints as-is; stderr lines are prefixed with `! `. The final JSON result still lands on stdout, so you can pipe it while watching progress on stderr.
+
+- **Live output on the board** — pressing a button from the board now streams its stdout and stderr into the logs pane in real time. A `● live` badge appears in the header during execution and switches to `· done` when the press finishes.
+
+- **Per-button gitignore** — run `buttons ignore NAME` to add a button to `.buttons/.gitignore`, keeping scratch and test buttons out of version control without editing your repo's top-level `.gitignore`. Use `buttons create NAME --ignore` to create and ignore in one step. Run `buttons unignore NAME` to re-include it.
+
+### Updates
+
+- **NAME-first log syntax** — you can now write `buttons NAME logs` instead of `buttons logs NAME`. Both forms work. The NAME-first form matches the pattern used by other commands like `buttons NAME press`.
+
+- **Pretty log output** — `buttons NAME logs` in an interactive terminal now displays a compact table of past runs instead of raw JSON. JSON output is still available via `--json` or when piping.
+
+- **Failure filtering** — `buttons NAME logs --failed` shows only failed runs. Combine with `--limit` to control how many results appear. `buttons logs` (with no name) shows recent failures across every button and drawer in the workspace.
+</Update>
