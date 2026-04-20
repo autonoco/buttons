@@ -132,12 +132,18 @@ func (e *Executor) runStep(ctx context.Context, d *Drawer, step *Step, ctxMap Co
 	if kind == "" {
 		kind = "button"
 	}
+	// Route per-kind. kind=drawer recurses into another drawer
+	// (sub-drawer composition — stage 3). All other non-button
+	// kinds remain reserved until their executors land.
+	if kind == "drawer" {
+		return e.runDrawerStep(ctx, step, ctxMap)
+	}
 	if kind != "button" {
 		sr.Status = "failed"
 		sr.Error = &StepError{
 			Code:        "KIND_NOT_IMPLEMENTED",
 			Message:     fmt.Sprintf("step kind %q is reserved but not executable in v1", kind),
-			Remediation: "only kind=button steps run today; remove or change this step",
+			Remediation: "only kind=button and kind=drawer steps run today; remove or change this step",
 		}
 		return sr, fmt.Errorf("kind not implemented")
 	}
@@ -280,6 +286,134 @@ func (e *Executor) runStep(ctx context.Context, d *Drawer, step *Step, ctxMap Co
 	}
 	sr.Output = out
 	return sr, nil
+}
+
+// runDrawerStep handles kind=drawer — a sub-drawer call. Reads the
+// target drawer's spec, recursively invokes the executor with the
+// step's Args as the child's inputs, then runs the child's Return
+// block to produce an output map the parent can reference via
+// ${<step_id>.output.<field>}.
+//
+// Failure propagation: a child failure bubbles as this step's
+// failure, subject to the parent's on_failure (same as a button
+// step). The child's own run is still persisted to its own
+// pressed/ history with a run_id that the CLI surfaces.
+func (e *Executor) runDrawerStep(ctx context.Context, step *Step, ctxMap Context) (StepRun, error) {
+	sr := StepRun{ID: step.ID}
+
+	if step.Drawer == "" {
+		sr.Status = "failed"
+		sr.Error = &StepError{
+			Code:        "VALIDATION_ERROR",
+			Message:     "kind=drawer step has no drawer name",
+			Remediation: "set step.drawer to an existing drawer's name",
+		}
+		return sr, fmt.Errorf("missing drawer")
+	}
+
+	child, err := e.DrawerSvc.Get(step.Drawer)
+	if err != nil {
+		sr.Status = "failed"
+		sr.Error = &StepError{
+			Code:        "DRAWER_NOT_FOUND",
+			Message:     fmt.Sprintf("drawer %q does not exist", step.Drawer),
+			Remediation: fmt.Sprintf("run `buttons drawer create %s` or fix the step.drawer reference", step.Drawer),
+		}
+		return sr, err
+	}
+
+	// Resolve the step's args against the parent's context. These
+	// become the CHILD drawer's inputs at invocation time — same
+	// substitution logic as button steps, just handed to a different
+	// execution path.
+	inputValues := map[string]any{}
+	for k, v := range step.Args {
+		r, rerr := Resolve(v, ctxMap)
+		if rerr != nil {
+			sr.Status = "failed"
+			sr.Error = &StepError{
+				Code:        "RESOLVE_ERROR",
+				Message:     rerr.Error(),
+				Remediation: "check the ${ref} paths in this drawer-step's args",
+			}
+			return sr, rerr
+		}
+		inputValues[k] = r
+	}
+	sr.Args = inputValues
+
+	// Recurse. The child runs in its own context with its own run_id
+	// and its own history — but the parent's step record links back
+	// via sr.Output and (future) a nested_run_id field we can add
+	// when we wire parent→child trace lineage.
+	childRes, cerr := e.Execute(ctx, child, inputValues)
+	if cerr != nil {
+		sr.Status = "failed"
+		sr.Error = &StepError{
+			Code:        "SUBDRAWER_FAILED",
+			Message:     fmt.Sprintf("sub-drawer %q failed: %v", child.Name, cerr),
+			Remediation: fmt.Sprintf("inspect with: buttons drawer %s logs", child.Name),
+		}
+		return sr, cerr
+	}
+	if childRes.Status != "ok" {
+		sr.Status = "failed"
+		sr.DurationMs = childRes.DurationMs
+		msg := "sub-drawer failed"
+		if childRes.Error != nil {
+			msg = childRes.Error.Message
+		}
+		sr.Error = &StepError{
+			Code:        "SUBDRAWER_FAILED",
+			Message:     fmt.Sprintf("sub-drawer %q: %s", child.Name, msg),
+			Remediation: fmt.Sprintf("inspect failing step: buttons drawer %s logs", child.Name),
+		}
+		return sr, fmt.Errorf("sub-drawer %s failed", child.Name)
+	}
+
+	// Build the child's output map by evaluating its Return block
+	// against the child's own step context. Empty Return → empty
+	// output (the parent can still reference sub-drawer status, it
+	// just can't pull fields).
+	out, rerr := computeReturn(child, childRes)
+	if rerr != nil {
+		sr.Status = "failed"
+		sr.Error = &StepError{
+			Code:        "RETURN_ERROR",
+			Message:     rerr.Error(),
+			Remediation: fmt.Sprintf("check the ${ref} paths in drawer %q's return block", child.Name),
+		}
+		return sr, rerr
+	}
+	sr.Status = "ok"
+	sr.DurationMs = childRes.DurationMs
+	sr.Output = out
+	return sr, nil
+}
+
+// computeReturn evaluates a drawer's Return block against its
+// completed run's step outputs, producing the map that flows into
+// the parent drawer's context as this step's .output. Returns an
+// empty map (not nil) when Return is empty so downstream ref lookups
+// don't null-deref.
+func computeReturn(d *Drawer, res *ExecuteResult) (map[string]any, error) {
+	if len(d.Return) == 0 {
+		return map[string]any{}, nil
+	}
+	ctxMap := Context{}
+	for _, s := range res.Steps {
+		ctxMap[s.ID] = map[string]any{"output": s.Output}
+	}
+	ctxMap["inputs"] = res.Inputs
+	out := map[string]any{}
+	for k, expr := range d.Return {
+		v, err := Resolve(expr, ctxMap)
+		if err != nil {
+			return nil, err
+		}
+		out[k] = v
+	}
+	return out, nil
 }
 
 // finalize fills in timing and persists the run history. Secret

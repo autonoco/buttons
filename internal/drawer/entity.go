@@ -8,7 +8,10 @@
 // drawer files at author time.
 package drawer
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // SchemaVersion is the current drawer.json schema version. Bump when
 // making breaking changes; additive changes (new optional fields)
@@ -27,6 +30,21 @@ type Drawer struct {
 	// drawer fails. Reserved in the schema now so adding it later
 	// doesn't require a schema bump; the v1 executor ignores it.
 	OnError *ErrorHandler `json:"on_error,omitempty" jsonschema:"description=Drawer to run on unhandled step failure"`
+
+	// OutputSchema mirrors button.OutputSchema but for drawers — the
+	// shape of what the drawer exposes to a parent drawer calling it
+	// via kind=drawer. Optional; when present, parent drawers get
+	// type-checked access to ${child-step.output.field} references
+	// at connect time.
+	OutputSchema json.RawMessage `json:"output_schema,omitempty" jsonschema:"description=JSON Schema describing what this drawer returns when called as a sub-drawer"`
+
+	// Return maps OutputSchema field names to CEL expressions that
+	// compute the value from the drawer's step context. Evaluated
+	// after all steps complete; result becomes the drawer's output
+	// when it's run as a sub-drawer. Ignored for top-level presses.
+	// Example: { "version": "${build.output.version}", "url": "${publish.output.url}" }
+	Return map[string]any `json:"return,omitempty" jsonschema:"description=CEL expressions producing the drawer's output fields"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -64,11 +82,17 @@ type Step struct {
 	// Button is the target when Kind == "button" (the v1 case).
 	Button string `json:"button,omitempty" jsonschema:"description=Button name to invoke (kind=button only)"`
 
-	// Args maps the target button's arg names to either literal
-	// values or ${...} reference strings. Resolved at press time.
-	// Stored as map[string]any so literal ints/bools round-trip
-	// without string coercion.
-	Args map[string]any `json:"args,omitempty" jsonschema:"description=Arg values or ${ref} strings to pass to the button"`
+	// Drawer is the target when Kind == "drawer" — a sub-drawer
+	// call. The child drawer's inputs come from this step's Args,
+	// and its Return block flows back into the parent's step
+	// context as ${<step_id>.output.<field>} for downstream refs.
+	Drawer string `json:"drawer,omitempty" jsonschema:"description=Drawer name to invoke (kind=drawer only)"`
+
+	// Args maps the target's input names (button args OR drawer
+	// inputs) to literal values or ${...} expressions. Resolved at
+	// press time. Stored as map[string]any so literal ints/bools
+	// round-trip without string coercion.
+	Args map[string]any `json:"args,omitempty" jsonschema:"description=Arg/input values or ${ref} strings to pass to the button or drawer"`
 
 	// OnFailure overrides the drawer-level failure behavior for this
 	// step only. See ErrorPolicy docs.

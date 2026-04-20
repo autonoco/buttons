@@ -118,7 +118,7 @@
       "additionalProperties": false,
       "properties": {
         "args": {
-          "description": "Arg values or ${ref} strings to pass to the button",
+          "description": "Arg/input values or ${ref} strings to pass to the button or drawer",
           "type": "object"
         },
         "bindings": {
@@ -126,6 +126,10 @@
         },
         "button": {
           "description": "Button name to invoke (kind=button only)",
+          "type": "string"
+        },
+        "drawer": {
+          "description": "Drawer name to invoke (kind=drawer only)",
           "type": "string"
         },
         "id": {
@@ -187,6 +191,17 @@
     "on_error": {
       "$ref": "#/$defs/ErrorHandler",
       "description": "Drawer to run on unhandled step failure"
+    },
+    "output_schema": {
+      "description": "JSON Schema describing what this drawer returns when called as a sub-drawer",
+      "items": {
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "return": {
+      "description": "CEL expressions producing the drawer's output fields",
+      "type": "object"
     },
     "schema_version": {
       "const": 1,

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/autonoco/buttons/internal/button"
@@ -154,7 +155,7 @@ func (s *Service) Remove(name string) error {
 // button doesn't exist). Step IDs default to the button name; if
 // that's already taken we append "-2", "-3", etc. so agents can add
 // the same button twice without fighting with ids.
-func (s *Service) AddSteps(drawerName string, buttonNames []string) (*Drawer, error) {
+func (s *Service) AddSteps(drawerName string, targets []string) (*Drawer, error) {
 	d, err := s.Get(drawerName)
 	if err != nil {
 		return nil, err
@@ -166,12 +167,41 @@ func (s *Service) AddSteps(drawerName string, buttonNames []string) (*Drawer, er
 		taken[st.ID] = true
 	}
 
-	for _, bn := range buttonNames {
-		slug := button.Slugify(bn)
+	for _, t := range targets {
+		// `drawer/NAME` → kind=drawer sub-drawer step. Plain name →
+		// kind=button step (existing path). No other prefixes.
+		if strings.HasPrefix(t, "drawer/") {
+			childName := button.Slugify(strings.TrimPrefix(t, "drawer/"))
+			if childName == d.Name {
+				return nil, &ServiceError{
+					Code:    "VALIDATION_ERROR",
+					Message: fmt.Sprintf("drawer %q cannot include itself as a sub-drawer", d.Name),
+				}
+			}
+			if _, err := s.Get(childName); err != nil {
+				return nil, &ServiceError{
+					Code:    "DRAWER_NOT_FOUND",
+					Message: fmt.Sprintf("drawer %q does not exist", childName),
+				}
+			}
+			id := childName
+			for n := 2; taken[id]; n++ {
+				id = fmt.Sprintf("%s-%d", childName, n)
+			}
+			taken[id] = true
+			d.Steps = append(d.Steps, Step{
+				ID:     id,
+				Kind:   "drawer",
+				Drawer: childName,
+				Args:   map[string]any{},
+			})
+			continue
+		}
+		slug := button.Slugify(t)
 		if _, err := btnSvc.Get(slug); err != nil {
 			return nil, &ServiceError{
 				Code:    "BUTTON_NOT_FOUND",
-				Message: fmt.Sprintf("button %q does not exist", bn),
+				Message: fmt.Sprintf("button %q does not exist", t),
 			}
 		}
 		id := slug

@@ -124,9 +124,17 @@ func resolveString(s string, ctx Context) (any, error) {
 // (different upstream step ids per drawer). If this shows up in
 // profiles later, cache by context-shape fingerprint.
 func evalCEL(expr string, ctx Context) (any, error) {
+	// Drawer step ids and button/drawer names are kebab-case, but CEL
+	// doesn't permit hyphens in identifiers (they parse as the
+	// subtraction operator). Transparently swap hyphens for
+	// underscores in identifier chains — both the expression and
+	// the activation keys — so agents keep writing
+	// ${emit-version.output.x} while CEL sees emit_version.output.x.
+	expr = celSafeExpr(expr)
+
 	opts := make([]celgo.EnvOption, 0, len(ctx)+1)
 	for k := range ctx {
-		opts = append(opts, celgo.Variable(k, celgo.DynType))
+		opts = append(opts, celgo.Variable(celSafeKey(k), celgo.DynType))
 	}
 	opts = append(opts, celgo.Variable("env", celgo.DynType))
 
@@ -145,7 +153,7 @@ func evalCEL(expr string, ctx Context) (any, error) {
 
 	activation := make(map[string]any, len(ctx)+1)
 	for k, v := range ctx {
-		activation[k] = v
+		activation[celSafeKey(k)] = v
 	}
 	activation["env"] = envFromOS()
 
@@ -154,6 +162,29 @@ func evalCEL(expr string, ctx Context) (any, error) {
 		return nil, &ResolveError{Path: expr, Reason: err.Error()}
 	}
 	return celToAny(val), nil
+}
+
+// hyphenIdent matches kebab-case identifier chains like
+// "emit-version" or "step-1.output" but NOT plain arithmetic
+// ("3 - 1" has whitespace; adjacent hyphens stay untouched).
+var hyphenIdent = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*(-[A-Za-z0-9_]+)+`)
+
+// celSafeExpr rewrites identifier chains containing hyphens so CEL
+// can parse them. Arithmetic expressions using spaces stay unchanged
+// because the regex requires no whitespace between the hyphen and
+// the surrounding alphanumeric run.
+func celSafeExpr(s string) string {
+	return hyphenIdent.ReplaceAllStringFunc(s, func(m string) string {
+		return strings.ReplaceAll(m, "-", "_")
+	})
+}
+
+// celSafeKey mirrors celSafeExpr for activation map keys so
+// "emit-version" in the step id becomes "emit_version" as a CEL
+// variable name. The two functions must stay in lockstep — if one
+// changes its transform, the other has to match.
+func celSafeKey(s string) string {
+	return strings.ReplaceAll(s, "-", "_")
 }
 
 // envFromOS materializes the current process environment as a

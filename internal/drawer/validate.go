@@ -77,19 +77,62 @@ func Validate(d *Drawer, btnSvc *button.Service) ValidationReport {
 		return b, nil
 	}
 
+	drawerSvc := NewService()
+
 	for i, st := range d.Steps {
 		kind := st.Kind
 		if kind == "" {
 			kind = "button"
 		}
+		// kind=drawer: sub-drawer step. Verify the target exists and
+		// that the step's args line up with the child's declared
+		// inputs. Full ref resolution across drawer boundaries lives
+		// in a future iteration of the CEL type checker; this pass
+		// catches the common shape bugs.
+		if kind == "drawer" {
+			if st.Drawer == "" {
+				report.Errors = append(report.Errors, ValidationIssue{
+					Severity: "error", StepID: st.ID,
+					Message:     "drawer-kind step has no drawer name",
+					Remediation: "set step.drawer to an existing drawer's name",
+				})
+				continue
+			}
+			child, err := drawerSvc.Get(st.Drawer)
+			if err != nil {
+				report.Errors = append(report.Errors, ValidationIssue{
+					Severity: "error", StepID: st.ID,
+					Message:     fmt.Sprintf("sub-drawer %q not found", st.Drawer),
+					Remediation: fmt.Sprintf("run `buttons drawer create %s` or fix the name", st.Drawer),
+				})
+				continue
+			}
+			// Required sub-drawer inputs should have a value from
+			// step.args (literal or ref). Warn on missing so agents
+			// see the connect hint without hard-failing.
+			provided := map[string]bool{}
+			for k := range st.Args {
+				provided[k] = true
+			}
+			for _, in := range child.Inputs {
+				if in.Required && !provided[in.Name] {
+					report.Warnings = append(report.Warnings, ValidationIssue{
+						Severity: "warning", StepID: st.ID, Arg: in.Name,
+						Message:     fmt.Sprintf("sub-drawer %q requires input %q — not provided", st.Drawer, in.Name),
+						Remediation: fmt.Sprintf("set `%s.args.%s` to a literal or ${ref}", st.ID, in.Name),
+					})
+				}
+			}
+			continue
+		}
 		if kind != "button" {
-			// Future kinds are reserved but not runnable in v1; the
-			// executor will refuse them. Flag as a warning so the
-			// validator doesn't block authoring.
+			// Future kinds are reserved but not runnable; the executor
+			// errors with KIND_NOT_IMPLEMENTED. Warn so the validator
+			// doesn't block authoring.
 			report.Warnings = append(report.Warnings, ValidationIssue{
 				Severity: "warning", StepID: st.ID,
-				Message:     fmt.Sprintf("step kind %q is reserved but not executable in v1", kind),
-				Remediation: "only kind=button is executable; this step will error at press time",
+				Message:     fmt.Sprintf("step kind %q is reserved but not executable yet", kind),
+				Remediation: "only kind=button and kind=drawer execute today; this step will error at press time",
 			})
 			continue
 		}
