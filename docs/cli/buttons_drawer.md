@@ -24,6 +24,7 @@ Usage:
   buttons drawer NAME set STEP.args.FIELD=value       literal or ${ref} into a step arg
   buttons drawer NAME set STEP.over=EXPR              for_each: the array to iterate
   buttons drawer NAME set STEP.as=NAME                for_each: loop variable name
+  buttons drawer NAME set STEP.parallelism=N          for_each: max concurrent iterations (0/1 = serial)
   buttons drawer NAME set STEP.from=EXPR              aggregate: input array
   buttons drawer NAME set STEP.pluck=EXPR             aggregate: per-item expression
   buttons drawer NAME set STEP.steps.N.args.F=value   reach a nested step's arg

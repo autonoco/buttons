@@ -351,10 +351,19 @@ func (s *Service) SetField(drawerName, stepID, field, value string) (*Drawer, er
 		d.Steps[idx].Duration = value
 	case "until":
 		d.Steps[idx].Until = value
+	case "parallelism":
+		var n int
+		if _, err := fmt.Sscanf(value, "%d", &n); err != nil {
+			return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: fmt.Sprintf("parallelism must be an integer, got %q", value)}
+		}
+		if n < 0 {
+			return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "parallelism must be >= 0"}
+		}
+		d.Steps[idx].Parallelism = n
 	default:
 		return nil, &ServiceError{
 			Code:    "STEP_FIELD_UNKNOWN",
-			Message: fmt.Sprintf("unknown step field %q — allowed: over, as, on_item_failure, from, pluck, button, drawer, duration, until", field),
+			Message: fmt.Sprintf("unknown step field %q — allowed: over, as, on_item_failure, parallelism, from, pluck, button, drawer, duration, until", field),
 		}
 	}
 	d.UpdatedAt = time.Now().UTC()

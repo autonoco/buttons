@@ -125,6 +125,13 @@ type Step struct {
 	// "fail-fast overall, but tolerate per-item errors here."
 	OnItemFailure string `json:"on_item_failure,omitempty" jsonschema:"enum=stop,enum=continue,description=How to react to a per-item failure (kind=for_each)"`
 
+	// Parallelism bounds how many iterations run concurrently. 0 or
+	// 1 means serial (same as before). N > 1 spawns a worker pool
+	// of size N. Ordering of the results array still matches the
+	// input order regardless of completion order — downstream refs
+	// like ${step.output.results.0.item} stay deterministic.
+	Parallelism int `json:"parallelism,omitempty" jsonschema:"description=Max concurrent iterations (kind=for_each); 0 or 1 = serial"`
+
 	// Steps are the nested steps executed per item (for_each) OR
 	// the steps under a matching case's body (switch). Each child
 	// context is layered on the outer one.
