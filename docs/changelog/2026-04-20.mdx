@@ -3,98 +3,60 @@ title: "Changelog"
 description: "New features and improvements to Buttons."
 ---
 
-<Update label="2026-04-20" description="Drawer workflows, CEL, idempotency, queues, live streaming, webhooks, and more">
-## Drawer workflows, CEL, idempotency, queues, live streaming, and webhooks
+<Update label="2026-04-20" description="Drawer workflows, live streaming, webhooks, and more">
+## Drawer workflows, live streaming, webhooks, and more
 
-A large day for Buttons. Drawers graduate from a concept into a full workflow engine: typed step composition with cross-step data flow, CEL expressions, sub-drawers, iteration, conditionals, retries, error handlers, and scheduled pauses. The CLI gains live output streaming across the board, press, and logs commands, plus idempotency keys, per-button concurrency queues, structured progress streams, per-button gitignore, and — at the end of the day — a full webhook-trigger system with n8n-compatible auth.
+Drawers graduate from a concept into a full workflow engine with typed steps, cross-step data flow, CEL expressions, sub-drawers, iteration, conditionals, retries, and error handlers. The CLI gains live output streaming, idempotency keys, concurrency queues, and a webhook trigger system.
 
-### Drawer workflows
+### New features
 
-- **Drawer engine (stage 1)** — chain buttons into typed, schema-validated workflows with `buttons drawer create NAME`, `buttons drawer NAME add BUTTON`, and `buttons drawer NAME press`. Steps reference upstream outputs via `${step.output.field}` expressions, wired either by hand with `buttons drawer NAME connect A to B` (auto-match by name+type) or explicitly with `buttons drawer NAME connect A.output.x to B.args.y`. Per-step retry policies with exponential backoff handle transient failures. See the [drawer CLI reference](/cli/buttons_drawer).
+- **Drawer workflow engine** — chain buttons into typed, schema-validated workflows with `buttons drawer create`, `buttons drawer add`, and `buttons drawer press`. Steps reference upstream outputs via `${step.output.field}` expressions, wired automatically or explicitly with `buttons drawer connect`. Per-step retry policies with exponential backoff handle transient failures. See the [drawer CLI reference](/cli/buttons_drawer).
 
-- **CEL expressions (stage 2)** — `${...}` contents are now full [CEL](https://cel.dev) expressions: string concatenation (`${'v' + build.output.version}`), arithmetic (`${inputs.count * 2}`), ternaries (`${inputs.env == 'prod' ? 'strict' : 'lax'}`), and null coalescing via `has()`. Dotted paths like `${build.output.version}` still work unchanged — CEL extends, it doesn't replace.
+- **CEL expressions** — `${...}` contents now support full [CEL](https://cel.dev) expressions: string concatenation, arithmetic, ternaries, and null coalescing. Simple dotted paths like `${build.output.version}` still work unchanged.
 
-- **Sub-drawers (`kind: drawer`)** — compose workflows from reusable building blocks. Add a child with `buttons drawer PARENT add drawer/CHILD`; the child's `return` block flows back into the parent's step context as `${child-step.output.field}`.
+- **Sub-drawers** — compose workflows from reusable building blocks. Add a child drawer to a parent and its return values flow back into the parent's step context.
 
-- **`kind: for_each`** — iterate over an array, running nested steps per item. Set `parallelism` > 1 to run iterations concurrently with a bounded worker pool; results stay index-ordered regardless of completion order. `on_item_failure: continue` tolerates per-item errors without aborting the whole step.
+- **`for_each` steps** — iterate over an array, running nested steps per item. Set `parallelism` to run iterations concurrently with a bounded worker pool. Use `on_item_failure: continue` to tolerate per-item errors without aborting the whole step.
 
-- **`kind: switch`** — conditional branches. Each case's `when` predicate is a CEL boolean; the first truthy case runs, the rest are skipped. Output tags the branch that ran so downstream steps can route on it.
+- **`switch` steps** — conditional branches using CEL predicates. The first truthy case runs, the rest are skipped.
 
-- **`kind: aggregate`** — pluck a field from each entry in an array (typically a `for_each` result) into a flat list.
+- **`aggregate` steps** — pluck a field from each entry in an array into a flat list.
 
-- **`kind: wait`** — pause for a Go duration (`30s`, `2m30s`) or until an RFC 3339 timestamp. Honors context cancellation so Ctrl-C aborts cleanly.
+- **`wait` steps** — pause for a duration or until a specific timestamp. Honors cancellation so Ctrl-C aborts cleanly.
 
-- **Drawer-level `on_error` handler** — declare a fallback drawer that runs when any step fails. The handler receives the error payload, failing step ID, and parent inputs so it can notify, roll back, or triage.
+- **Drawer-level `on_error` handler** — declare a fallback drawer that runs when any step fails. The handler receives the error payload and context so it can notify, roll back, or triage.
 
-- **`buttons drawer NAME set`** — wire step arguments from the CLI without editing JSON by hand. Dotted-path targets cover nested steps too: `set each.steps.0.args.n='${n}'`.
+- **`buttons summary`** — one command, full workspace snapshot: buttons, drawers, recent runs, active runs, recent failures, and webhook listener state. Pass `--json` for structured output or `--deep` to inline full schemas and run history. Running bare `buttons` with no subcommand now invokes summary automatically.
 
-- **Drawer run history** — every press writes a full run log with per-step results, durations, and outputs. Secret-flagged inputs are redacted. History prunes to the most recent 100 runs per drawer, matching per-button behavior.
+- **`--summary` universal flag** — attach `--summary` to any mutating command to preview the plan without executing. Never mutates, never touches the network.
 
-### Workspace introspection
+- **`buttons press --follow`** — stream a button's stdout and stderr to your terminal as the press runs. The final structured result still goes to stdout so you can pipe to `jq` while watching progress on stderr. See the [press CLI reference](/cli/buttons_press).
 
-- **`buttons summary`** — one command, full workspace snapshot: buttons, drawers, recent runs, active runs, recent failures, webhook listener state. Pass `--json` for structured output agents can parse, `--deep` to inline full schemas and run history. Bare `buttons` (no subcommand) now invokes summary automatically — the canonical agent cold-start command. See the [summary CLI reference](/cli/buttons_summary).
+- **`buttons NAME logs --follow`** — follow the latest press's output as plain-text JSONL on stdout. Pipes cleanly with no TUI or color codes.
 
-- **`--summary` universal flag** — attach `--summary` to any mutating command (`press`, `drawer add`, `drawer connect`, `drawer press`, `drawer remove`) to preview the plan without executing. Never mutates, never touches the network.
+- **Live output in the board** — pressing a button on the board now auto-opens the logs pane and streams stdout/stderr in real time with a `● live` badge that flips to `· done` when the press finishes.
 
-- **`buttons <name> --summary`** — per-button dry-run: resolved args, exit plan, no execution.
+- **`buttons tail`** — follow a button's structured progress events in real time. Scripts emit JSONL progress events that `buttons tail -f` streams to stdout.
 
-### Live streaming
+- **Idempotency keys** — `buttons press --idempotency-key=K --idempotency-ttl=24h` caches successful results. A second press with the same key within the TTL returns the cached result instantly. Only successful results are cached — failures always retry.
 
-- **`buttons press --follow`** — stream a button's stdout and stderr to your terminal as the press runs. Stdout prints as-is; stderr lines are prefixed with `!`. The final structured result still goes to stdout so you can pipe to `jq` while watching progress on stderr. See the [press CLI reference](/cli/buttons_press).
+- **Per-button concurrency queues** — declare a queue with a name and concurrency limit. Multiple buttons sharing the same queue name pool their slots. An optional key scopes concurrency per dimension (e.g. three concurrent presses per user).
 
-- **`buttons NAME logs --follow`** — follow the latest press's progress events as plain-text JSONL on stdout. No TUI, no color codes — pipes cleanly.
+- **`buttons ignore` / `buttons unignore`** — keep scratch or test buttons out of git without touching your repo's `.gitignore`. Pass `--ignore` on `buttons create` to ignore a new button in one step.
 
-- **Live output in the board** — pressing a button on the board now auto-opens the logs pane and streams stdout/stderr in real time. Stdout lines in primary color, stderr in red, with a `● live` badge that flips to `· done` when the press finishes.
+- **Webhook triggers** — drawers can now be invoked by incoming HTTP requests, routed through a Cloudflare tunnel to your local machine. Run `buttons webhook setup` once to configure, then `buttons webhook listen` to start the dispatcher. See the [webhook CLI reference](/cli/buttons_webhook).
 
-- **`buttons tail NAME`** — follow a button's structured progress events. Scripts append JSONL events to the file at `$BUTTONS_PROGRESS_PATH`; `buttons tail NAME -f` streams them to stdout. See the [tail CLI reference](/cli/buttons_tail).
+- **Webhook auth** — four built-in auth modes: open (default), HTTP Basic, arbitrary header, and HS-family JWT with optional claim checks. Secrets can reference environment variables so you don't commit sensitive values.
 
-### Scale and safety
-
-- **Idempotency keys** — `buttons press NAME --idempotency-key=K --idempotency-ttl=24h` caches successful results. A second press with the same key within the TTL returns the cached result instantly. Only `ok` results are cached — failures always retry. Makes deploys and migrations safe to re-run.
-
-- **Per-button concurrency queues** — declare a queue in `button.json`: `queue: { name: "openai", concurrency: 3, key: "${inputs.user_id}" }`. Multiple buttons sharing the same queue name pool their slots. The optional `key` scopes concurrency per dimension (e.g. three concurrent presses per user). File-lock semaphore enforces limits across CLI invocations.
-
-- **`buttons ignore` / `buttons unignore`** — keep scratch or test buttons out of git without touching your repo's `.gitignore`. Writes entries to `.buttons/.gitignore`, which git applies natively. Pass `--ignore` on `buttons create` to ignore a new button in one step. Run `buttons ignore` with no arguments to list ignored entries. See the [ignore CLI reference](/cli/buttons_ignore).
-
-### Webhook triggers
-
-Drawers can now be invoked automatically by incoming HTTP POSTs, routed through a Cloudflare tunnel to your local listener.
-
-- **`buttons webhook setup`** — one-time: Cloudflare login + pick a hostname. Uses the user's own Cloudflare account (via `cloudflared`) for stable named tunnels. Without setup, the listener falls back to ephemeral `*.trycloudflare.com` URLs per run.
-
-- **`buttons drawer NAME trigger webhook [PATH]`** — declare a webhook trigger on a drawer. Default path is `/<drawer-name>`; override with an explicit path.
-
-- **`buttons webhook listen`** — foreground dispatcher. Registers every webhook-triggered drawer with the listener and starts the tunnel. Incoming POSTs get a `202 Accepted` immediately; drawers press asynchronously.
-
-- **Input shape** — a triggered drawer's steps access the request as `${inputs.webhook.body}` (+ `body.<field>`, `headers.<Name>`, `query.<param>`, `method`, `path`, `received_at`).
-
-- **Cross-drawer references** — `${webhooks.<drawer-name>}` resolves to another drawer's full public URL. Use it when one drawer configures an upstream service with another drawer's callback URL.
-
-- **Dry-run** — `buttons drawer NAME press --webhook-body '{...}'` or `--webhook-body @fixture.json` synthesizes the `${inputs.webhook.*}` shape locally without the listener, so agents can iterate on webhook drawers without a two-terminal setup.
-
-- **Auth types (n8n parity)** — four built-in modes match n8n's webhook node 1:1:
-
-  - `--auth none` — open endpoint (default).
-  - `--auth basic --auth-user U --auth-pass P` — HTTP Basic.
-  - `--auth header --auth-header-name X-Foo --auth-header-value V` — arbitrary header.
-  - `--auth jwt --jwt-secret S [--jwt-algorithm HS256|HS384|HS512] [--jwt-issuer ...] [--jwt-audience ...]` — HS-family JWT with optional claim checks.
-
-  Every compare runs through `crypto/subtle.ConstantTimeCompare`. Secret fields accept `$ENV{VAR_NAME}` references resolved by the listener at match time, so committed drawer.json can encode the auth *shape* without the *secret*.
-
-### HTTP button host-locking
-
-The scheme and host of an HTTP button's URL are now locked at button-create time and can no longer be modified by `{{arg}}` substitution. This closes the SSRF exfil class that the webhook surface otherwise exposed (attacker-controlled input flowing into the URL's authority).
-
-- **`{{arg}}` placeholders are rejected in scheme or host** at save time with `VALIDATION_ERROR`.
-- **`AllowedHost`** is auto-derived from the URL template and enforced by `validateHTTPTarget` before dispatch.
-- **Defense in depth**: `newSafeDialContext` still blocks dial-time TCP to private IP ranges.
-- Escape hatches: `AllowedHost="*"` + `BUTTONS_ALLOW_ANY_HOST=1` for genuinely host-templating buttons; `BUTTONS_ALLOW_PRIVATE_NETWORKS=1` for local services.
+- **Webhook dry-run** — test webhook-triggered drawers locally with `buttons drawer press --webhook-body` without needing a running listener.
 
 ### Updates
 
-- **NAME-first log syntax** — `buttons NAME logs` is now the canonical form; the verb-first `buttons logs NAME` still works. Same for drawer logs: `buttons drawer NAME logs`.
+- **NAME-first log syntax** — `buttons NAME logs` is now the canonical form; the verb-first `buttons logs NAME` still works. Same for drawer logs.
 
-- **Retry policies on drawer steps** — each step can declare an error policy with action (`stop` | `continue` | `retry`), max attempts, exponential backoff (with optional jitter), and a retry-on allowlist of error codes.
+- **Retry policies on drawer steps** — each step can declare error handling with configurable max attempts, exponential backoff with optional jitter, and a retry-on allowlist of error codes.
 
-- **Output schemas on buttons** — optional JSON Schema describing a button's stdout shape. Drawers use it at connect time to type-check `${step.output.field}` references before you press.
+- **Output schemas on buttons** — optional JSON Schema describing a button's stdout shape. Drawers use it at connect time to type-check references before you press.
+
+- **HTTP button host-locking** — the scheme and host of an HTTP button's URL are now locked at create time. Template arguments can no longer modify the host portion of the URL, closing a class of request-routing vulnerabilities. See [SSRF protection](/security/ssrf-protection).
 </Update>
