@@ -423,6 +423,76 @@ func (s *Service) save(d *Drawer) error {
 	return nil
 }
 
+// SetWebhookTrigger declares (or replaces) the webhook trigger on a
+// drawer. Returns an error if `path` collides with another drawer that
+// already owns the same path — listener dispatch must be unambiguous.
+// Pass secret="" to unset the shared token.
+func (s *Service) SetWebhookTrigger(drawerName, path, secret string) (*Drawer, error) {
+	if path == "" {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "trigger path required (e.g. /apify-done)"}
+	}
+	if path[0] != '/' {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "trigger path must start with '/'"}
+	}
+	// Reject collision with any other drawer that already owns this path.
+	others, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	for _, od := range others {
+		if od.Name == drawerName {
+			continue
+		}
+		for _, t := range od.Triggers {
+			if t.Kind == "webhook" && t.Path == path {
+				return nil, &ServiceError{
+					Code:    "TRIGGER_PATH_CONFLICT",
+					Message: fmt.Sprintf("path %q is already bound to drawer %q", path, od.Name),
+				}
+			}
+		}
+	}
+
+	d, err := s.Get(drawerName)
+	if err != nil {
+		return nil, err
+	}
+	// Replace any existing webhook trigger (we only allow one per drawer
+	// today; non-webhook triggers pass through).
+	filtered := make([]Trigger, 0, len(d.Triggers)+1)
+	for _, t := range d.Triggers {
+		if t.Kind != "webhook" {
+			filtered = append(filtered, t)
+		}
+	}
+	filtered = append(filtered, Trigger{Kind: "webhook", Path: path, Secret: secret})
+	d.Triggers = filtered
+	d.UpdatedAt = time.Now().UTC()
+	if err := s.save(d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// FindByWebhookPath returns the drawer registered for a given webhook
+// path, or (nil, nil) if nothing matches.
+func (s *Service) FindByWebhookPath(path string) (*Drawer, error) {
+	ds, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range ds {
+		for _, t := range d.Triggers {
+			if t.Kind == "webhook" && t.Path == path {
+				// Return the full drawer (List might return summaries —
+				// follow up with Get to be safe).
+				return s.Get(d.Name)
+			}
+		}
+	}
+	return nil, nil
+}
+
 // PressedDir returns the path to a drawer's pressed/ directory —
 // parallels button.Service.PressedDir so the history package can
 // write trace files there.

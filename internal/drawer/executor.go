@@ -11,10 +11,24 @@ import (
 	"sync"
 	"time"
 
+	"path/filepath"
+
 	"github.com/autonoco/buttons/internal/battery"
 	"github.com/autonoco/buttons/internal/button"
+	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/engine"
 )
+
+// webhookConfigPath returns ~/.buttons/webhook.json. Duplicated from
+// internal/webhook.ConfigPath to avoid a drawer → webhook import
+// dependency (webhook already imports drawer-adjacent config).
+func webhookConfigPath() (string, error) {
+	base, err := config.DataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "webhook.json"), nil
+}
 
 // ExecuteResult is the aggregated return of a drawer press. Mirrors
 // engine.Result's envelope so agents see a consistent shape when
@@ -92,9 +106,14 @@ func (e *Executor) Execute(ctx context.Context, d *Drawer, inputValues map[strin
 		}
 	}
 
-	// Build initial resolution context with inputs only.
+	// Build initial resolution context with inputs plus the cross-
+	// drawer `webhooks` map: ${webhooks.<drawer-name>} resolves to the
+	// public URL of that drawer's webhook trigger, if one exists. Lets
+	// one drawer's step configure a third-party service with another
+	// drawer's webhook URL without copy-pasting strings.
 	ctxMap := Context{
-		"inputs": toAnyMap(inputValues),
+		"inputs":   toAnyMap(inputValues),
+		"webhooks": e.buildWebhooksMap(),
 	}
 
 	// Lazy battery load — only if the executor didn't get one via
@@ -869,6 +888,79 @@ func (e *Executor) runWaitStep(ctx context.Context, step *Step, ctxMap Context) 
 		"until":     target.UTC().Format(time.RFC3339),
 	}
 	return sr, nil
+}
+
+
+// buildWebhooksMap populates the ${webhooks.<drawer>} context var by
+// iterating drawers that have a webhook trigger and computing the
+// public URL from the webhook config (named tunnel → stable hostname;
+// quick mode → URL unknown at drawer-resolve time, we return a
+// placeholder that agents can detect and fall back from).
+//
+// Keys are the drawer name with hyphens swapped for underscores —
+// matches the CEL-safe identifier transform so agents can write
+// ${webhooks.on-apify-done} and have it resolve.
+//
+// Silent fallback on error: a broken drawer listing shouldn't prevent
+// unrelated drawers from pressing. Worst case, ${webhooks.foo} resolves
+// to nil and the agent sees a clear empty-string propagation.
+func (e *Executor) buildWebhooksMap() map[string]any {
+	out := map[string]any{}
+	if e.DrawerSvc == nil {
+		return out
+	}
+	drawers, err := e.DrawerSvc.List()
+	if err != nil {
+		return out
+	}
+	// Load webhook config to know the hostname. When named-tunnel is
+	// not configured, URLs are only knowable at `buttons webhook
+	// listen` start time — we emit an empty string so the agent can
+	// detect the unconfigured state instead of getting a misleading
+	// literal.
+	hostname := resolveWebhookHostname()
+	for _, d := range drawers {
+		for _, t := range d.Triggers {
+			if t.Kind != "webhook" || t.Path == "" {
+				continue
+			}
+			key := strings.ReplaceAll(d.Name, "-", "_")
+			if hostname != "" {
+				out[key] = "https://" + hostname + t.Path
+			} else {
+				out[key] = ""
+			}
+		}
+	}
+	return out
+}
+
+// resolveWebhookHostname reads the webhook config file directly rather
+// than importing internal/webhook (avoids a cycle risk and keeps the
+// executor's dependency graph shallow). Returns "" if no named tunnel
+// is configured.
+func resolveWebhookHostname() string {
+	// The config file lives alongside the data dir. We read JSON by
+	// hand because this is the only field we care about.
+	path, err := webhookConfigPath()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- fixed path under DataDir
+	if err != nil {
+		return ""
+	}
+	var c struct {
+		Mode     string `json:"mode"`
+		Hostname string `json:"hostname"`
+	}
+	if err := json.Unmarshal(data, &c); err != nil {
+		return ""
+	}
+	if c.Mode != "named" {
+		return ""
+	}
+	return c.Hostname
 }
 
 // computeReturn evaluates a drawer's Return block against its

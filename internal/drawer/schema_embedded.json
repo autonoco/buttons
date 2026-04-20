@@ -235,6 +235,33 @@
         "id"
       ],
       "type": "object"
+    },
+    "Trigger": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "description": "Trigger source",
+          "enum": [
+            "webhook",
+            "cron",
+            "file",
+            "mcp"
+          ],
+          "type": "string"
+        },
+        "path": {
+          "description": "URL path on the webhook listener (kind=webhook only); e.g. /apify",
+          "type": "string"
+        },
+        "secret": {
+          "description": "Shared token; if set",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
     }
   },
   "$id": "https://buttons.sh/schemas/drawer.schema.json",
@@ -285,6 +312,13 @@
       "description": "Ordered list of steps (depth-first execution)",
       "items": {
         "$ref": "#/$defs/Step"
+      },
+      "type": "array"
+    },
+    "triggers": {
+      "description": "Ways this drawer gets invoked automatically (webhook",
+      "items": {
+        "$ref": "#/$defs/Trigger"
       },
       "type": "array"
     },

@@ -55,9 +55,19 @@ Drawers are workflow chains of buttons. Spec stored at `~/.buttons/drawers/<name
 References between steps use `${step_id.output.field}` (dotted-path) or `$ENV{VAR_NAME}` for secrets. Stage 2 swaps the dotted-path resolver for CEL while keeping the `${...}` wire format stable.
 
 ### `buttons summary` and `--summary`
-Workspace introspection: `buttons summary [--json]` dumps buttons, drawers, recent runs, and failures in one response so agents orient themselves in a single tool call. Bare `buttons` invokes the same.
+Workspace introspection: `buttons summary [--json]` dumps buttons, drawers, recent runs, failures, and webhook listener state in one response so agents orient themselves in a single tool call. Bare `buttons` invokes the same.
 
 `--summary` is a universal flag: applied to any mutating command (`press`, `drawer press`, `drawer add`, `drawer connect`, etc.) it returns a read-only plan instead of executing. Never mutates, never touches the network, never side-effects.
+
+### Webhook-triggered drawers
+Drawers can be invoked automatically by incoming HTTP POSTs. Architecture: `cloudflared` tunnel → local listener → dispatch by path → press drawer with request body/headers/query as `${inputs.webhook.*}`.
+
+- **Setup:** `buttons webhook setup` — one-time Cloudflare login + pick hostname. Quick-tunnel mode (no config) works for ephemeral URLs; named mode for stable hostnames.
+- **Register:** `buttons drawer <name> trigger webhook [PATH] [--secret TOKEN]` — default path `/<drawer-name>`. Secret, when set, is verified via `X-Buttons-Token` header or `?token=`.
+- **Listen:** `buttons webhook listen` — foreground dispatcher. Responds `202 Accepted` immediately; drawer presses asynchronously.
+- **Input shape:** `${inputs.webhook.body}` (+ `body.<field>`, `headers.<Name>`, `query.<param>`, `method`, `path`, `received_at`).
+- **Cross-drawer refs:** `${webhooks.<drawer-name>}` → that drawer's full public URL. Use when one drawer configures an upstream with another drawer's webhook URL.
+- **Dry-run:** `buttons drawer <name> press --webhook-body '{...}'` or `--webhook-body @file.json` — simulates a POST locally without running the listener.
 
 ### Stage 2 plumbing (CEL, idempotency, queues, progress, DLQ)
 - **Expressions:** `${...}` wraps CEL (`google/cel-go`). Ternaries, string concat, arithmetic, `has()` for null-coalescing. Dotted-path refs still work — the shape agents learned in stage 1 is unchanged; CEL extends it.

@@ -45,8 +45,39 @@ type Drawer struct {
 	// Example: { "version": "${build.output.version}", "url": "${publish.output.url}" }
 	Return map[string]any `json:"return,omitempty" jsonschema:"description=CEL expressions producing the drawer's output fields"`
 
+	// Triggers declares how this drawer gets invoked automatically.
+	// Today the only kind is "webhook": an incoming HTTP POST to the
+	// configured path on the `buttons serve` listener presses the
+	// drawer with the request body materialized as
+	// ${inputs.webhook.body} (plus headers, query, etc.). Drawers
+	// without triggers are only invoked manually via `buttons drawer
+	// NAME press`.
+	Triggers []Trigger `json:"triggers,omitempty" jsonschema:"description=Ways this drawer gets invoked automatically (webhook, etc.)"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Trigger is one automatic invocation source for a drawer. The only
+// kind today is "webhook" — an incoming POST to the `buttons serve`
+// listener at Path presses the drawer with the request body available
+// as ${inputs.webhook.body}, ${inputs.webhook.headers.*}, etc.
+//
+// Future kinds reserved: "cron" (scheduled), "file" (fsnotify), "mcp"
+// (MCP-tool-invoked). Kept in schema now so drawers can declare intent
+// even before the corresponding listener ships.
+type Trigger struct {
+	Kind string `json:"kind" jsonschema:"enum=webhook,enum=cron,enum=file,enum=mcp,description=Trigger source"`
+	// Path is the URL path the `buttons serve` listener binds for this
+	// trigger. Must start with '/'. Mutually exclusive across drawers —
+	// two drawers cannot register the same path. Only used for
+	// kind=webhook today.
+	Path string `json:"path,omitempty" jsonschema:"description=URL path on the webhook listener (kind=webhook only); e.g. /apify"`
+	// Secret is an optional shared token. When set, the listener
+	// compares against the X-Buttons-Token header (or ?token= query
+	// parameter) and rejects requests without a match. Keeps third
+	// parties who learn the URL from invoking the drawer.
+	Secret string `json:"secret,omitempty" jsonschema:"description=Shared token; if set, required via X-Buttons-Token header or ?token query param"`
 }
 
 // InputDef declares a drawer-level input. Mirrors button.ArgDef so
