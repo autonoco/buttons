@@ -1,0 +1,48 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-20" description="Drawer workflows, live streaming, ignore, and workspace summary">
+## Drawer workflows, live streaming, ignore, and workspace summary
+
+Buttons now supports multi-step workflows called drawers, live output streaming from presses, per-button gitignore, and a single command to see everything in your workspace.
+
+### New features
+
+- **Drawer workflows** — chain multiple buttons into a multi-step workflow with automatic data passing between steps. Create a drawer, add buttons as steps, connect their inputs and outputs, and press to run the whole sequence. Steps reference upstream outputs with `${step.output.field}` expressions powered by CEL, so you can do string concatenation, arithmetic, ternaries, and null coalescing right in the wiring. See the [drawer CLI reference](/cli/buttons_drawer).
+
+- **Sub-drawers** — drawers can call other drawers as steps, so you can compose workflows from reusable building blocks. A child drawer's return values flow into the parent's next step like any other output.
+
+- **`for_each` steps** — iterate over an array and run nested steps once per item. Useful for deploying to multiple targets, processing a list of URLs, or notifying a list of subscribers. Set `on_item_failure` to `continue` to keep going even if one item fails. See the [drawer CLI reference](/cli/buttons_drawer).
+
+- **`switch` steps** — add conditional branches to a drawer. The first case whose `when` expression evaluates to true runs; the rest are skipped. Useful for routing logic like deploying to different environments based on an input.
+
+- **`aggregate` steps** — collect values from an array into a flat list. Pairs naturally with `for_each` to pluck a field from each iteration's output.
+
+- **`wait` steps** — pause a drawer for a fixed duration or until an absolute timestamp. Accepts Go duration strings like `30s` or `2m30s`, or a CEL expression that resolves to an RFC 3339 timestamp.
+
+- **Drawer-level `on_error` handler** — define a fallback drawer that fires when any step fails. The handler receives the error details, the failing step, and the parent's inputs so you can route alerts, log failures, or trigger rollbacks.
+
+- **`buttons summary`** — see every button, drawer, recent run, active press, and recent failure in your workspace with a single command. Use `--deep` for full schemas and history. Mutating commands also accept a `--summary` flag to preview what would happen without executing.
+
+- **`buttons press --follow`** — stream live stdout and stderr to your terminal as a press runs. Stdout lines print as-is; stderr lines are prefixed with `! `. The final structured result still goes to stdout, so you can pipe JSON and watch progress at the same time. See the [press CLI reference](/cli/buttons_press).
+
+- **Live output in the board** — pressing a button on the board now auto-opens the logs pane and streams stdout and stderr in real time. A `● live` badge shows while the press is running, flipping to `· done` when it finishes. Stderr lines appear in red.
+
+- **`buttons tail`** — follow a button's structured progress events as they happen. Scripts can write JSONL events to `$BUTTONS_PROGRESS_PATH` during a press, and `buttons tail NAME -f` streams them to stdout. See the [tail CLI reference](/cli/buttons_tail).
+
+- **Idempotency** — pass `--idempotency-key` and `--idempotency-ttl` on press to cache successful results across runs. A second press with the same key returns the cached result without re-executing. Only successful results are cached — failures always retry.
+
+- **Queues and concurrency** — declare a `queue` on a button to limit how many presses can run at the same time. Shared queue names pool across buttons, and an optional `key` scopes concurrency per value (e.g., three concurrent presses per user). Works across CLI invocations.
+
+- **`buttons ignore` / `unignore`** — keep scratch or test buttons out of git without touching your repo's `.gitignore`. Run `buttons ignore NAME` to add it to `.buttons/.gitignore`, or pass `--ignore` when creating a button. Run `buttons ignore` with no arguments to list ignored entries. See the [ignore CLI reference](/cli/buttons_ignore).
+
+### Updates
+
+- **NAME-first form for logs** — you can now write `buttons mybutton logs` instead of `buttons logs mybutton`. Both forms work. The `--failed` flag filters to just failures, and `--limit` controls how many runs to show.
+
+- **Pretty logs in the terminal** — `buttons NAME logs` in an interactive terminal now renders a compact one-line-per-run table instead of raw JSON. Agents and piped output still get JSON.
+
+- **Drawer `set` verb** — wire step arguments from the CLI with `buttons drawer NAME set step.args.field=value`. Supports literal values, `${ref}` expressions, and nested paths for `for_each` steps.
+</Update>
