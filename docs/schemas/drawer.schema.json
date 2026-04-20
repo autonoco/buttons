@@ -166,6 +166,10 @@
           "description": "Drawer name to invoke (kind=drawer only)",
           "type": "string"
         },
+        "duration": {
+          "description": "Go duration like '30s' (kind=wait)",
+          "type": "string"
+        },
         "from": {
           "description": "CEL expression producing the input array (kind=aggregate)",
           "type": "string"
@@ -217,6 +221,10 @@
         },
         "timeout_seconds": {
           "type": "integer"
+        },
+        "until": {
+          "description": "RFC3339 timestamp or CEL expression producing one (kind=wait)",
+          "type": "string"
         }
       },
       "required": [
