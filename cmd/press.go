@@ -22,6 +22,7 @@ var pressTimeout int
 var pressDryRun bool
 var pressIdempotencyKey string
 var pressIdempotencyTTL time.Duration
+var pressFollow bool
 
 var pressCmd = &cobra.Command{
 	Use:   "press [name]",
@@ -165,10 +166,35 @@ Examples:
 			defer queueLock.Release()
 		}
 
-		// No streaming sink for CLI presses — the final Result is the
-		// only thing the caller needs. The TUI log viewer (C2) passes
-		// a real sink to see lines as they happen.
-		result := engine.Execute(ctx, btn, parsedArgs, batteries, nil, codePath)
+		// If --follow is set, tee child stdout/stderr to our stderr
+		// as lines arrive. Pure-text stream: stdout lines prefixed
+		// with nothing, stderr lines prefixed with `! `. The final
+		// structured Result still goes to stdout at the end so
+		// agents can parse `buttons press --follow --json | jq .`
+		// cleanly — live feed on stderr, result on stdout.
+		var sink chan engine.LogLine
+		var sinkDone chan struct{}
+		if pressFollow {
+			sink = make(chan engine.LogLine, 128)
+			sinkDone = make(chan struct{})
+			go func() {
+				for line := range sink {
+					prefix := ""
+					if line.Sev == engine.SeverityStderr {
+						prefix = "! "
+					}
+					fmt.Fprintf(os.Stderr, "%s%s\n", prefix, line.Text)
+				}
+				close(sinkDone)
+			}()
+		}
+
+		result := engine.Execute(ctx, btn, parsedArgs, batteries, sink, codePath)
+
+		if pressFollow {
+			close(sink)
+			<-sinkDone // drain the channel before emitting the final Result
+		}
 
 		// Attach prompt if AGENT.md has custom content (not the default template)
 		if promptMD := readPrompt(btn.Name); promptMD != "" {
@@ -309,5 +335,6 @@ func init() {
 	pressCmd.Flags().BoolVar(&pressDryRun, "dry-run", false, "show what would execute without running")
 	pressCmd.Flags().StringVar(&pressIdempotencyKey, "idempotency-key", "", "reuse the cached result for this key if present (cross-run dedup)")
 	pressCmd.Flags().DurationVar(&pressIdempotencyTTL, "idempotency-ttl", 24*time.Hour, "how long idempotency entries stay valid (e.g. 1h, 24h)")
+	pressCmd.Flags().BoolVarP(&pressFollow, "follow", "f", false, "stream stdout/stderr to stderr as the press runs (final Result still goes to stdout)")
 	rootCmd.AddCommand(pressCmd)
 }

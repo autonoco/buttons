@@ -273,6 +273,7 @@ buttons press [flags]
 |------|------|-------------|
 | `--arg` | stringArray | argument as key=value |
 | `--dry-run` | bool | show what would execute without running |
+| `-f, --follow` | bool | stream stdout/stderr to stderr as the press runs (final Result still goes to stdout) |
 | `--idempotency-key` | string | reuse the cached result for this key if present (cross-run dedup) |
 | `--idempotency-ttl` | duration | how long idempotency entries stay valid (e.g. 1h, 24h) |
 | `--timeout` | int | override timeout in seconds |

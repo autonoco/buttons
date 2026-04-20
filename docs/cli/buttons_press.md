@@ -39,6 +39,7 @@ buttons press [name] [flags]
 ```
       --arg stringArray            argument as key=value
       --dry-run                    show what would execute without running
+  -f, --follow                     stream stdout/stderr to stderr as the press runs (final Result still goes to stdout)
   -h, --help                       help for press
       --idempotency-key string     reuse the cached result for this key if present (cross-run dedup)
       --idempotency-ttl duration   how long idempotency entries stay valid (e.g. 1h, 24h) (default 24h0m0s)
