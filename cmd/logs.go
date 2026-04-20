@@ -13,23 +13,29 @@ import (
 
 var logsFailed bool
 var logsLimit int
+var logsFollow bool
 
 var logsCmd = &cobra.Command{
 	Use:   "logs [name]",
-	Short: "View past runs for a button or workspace failures",
-	Long: `Structured run history. CLI only — no TUI. For a live-stream
-viewer of an in-flight press, use the board: ` + "`buttons board`" + `.
+	Short: "View past runs for a button or tail the live progress stream",
+	Long: `Structured run history. CLI only — for the full-screen
+interactive viewer, use 'buttons board'.
 
   buttons BUTTONNAME logs            — past runs for this button
+  buttons BUTTONNAME logs --follow   — tail live progress JSONL as it writes
   buttons BUTTONNAME logs --failed   — just failures
   buttons BUTTONNAME logs --limit 10 — how many (default 20)
   buttons drawer DRAWERNAME logs     — past runs for this drawer
   buttons logs                       — recent failures across the workspace
 
-Agent mode (--json or non-TTY) returns the full Run shape (status,
-exit_code, duration_ms, stdout, stderr, error_type, args). TTY mode
-prints a compact one-line-per-run table. The verb-first form
-(buttons logs NAME) still works as an alias.`,
+--follow streams the latest press's progress events to stdout as
+plain text (JSONL: one event per line). No TUI. Pipe it, parse it,
+interrupt it with ctrl+C. Use this when an agent needs to watch a
+long-running press live.
+
+Agent mode (--json or non-TTY) returns the full Run shape for
+non-follow calls. TTY mode prints a compact one-line-per-run table.
+The verb-first form (buttons logs NAME) still works as an alias.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runLogs,
 }
@@ -41,9 +47,26 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return logsWorkspaceFailures()
 	}
-	// Per-button → structured past runs. Agents get JSON; humans
-	// get a one-line-per-run table.
+	// --follow → tail the latest press's progress JSONL as plain
+	// text on stdout. Same behavior as `buttons tail NAME -f` but
+	// under the logs verb so agents find it where they'd look.
+	// No TUI, no alt-screen; pipes cleanly.
+	if logsFollow {
+		return logsFollowStream(args[0])
+	}
+	// Per-button → structured past runs.
 	return logsButtonPast(args[0])
+}
+
+// logsFollowStream resolves the latest progress JSONL for a button
+// and tails it. Reuses the tail.go helpers so the CLI surface stays
+// consistent (logs --follow == tail -f against the same file).
+func logsFollowStream(name string) error {
+	path, err := resolveTailPath(name)
+	if err != nil {
+		return handleServiceError(err)
+	}
+	return streamFile(path, true)
 }
 
 // logsButtonPast prints past runs for one button. Honors --failed
@@ -185,5 +208,6 @@ func truncateForSummary(s string, n int) string {
 func init() {
 	logsCmd.Flags().BoolVar(&logsFailed, "failed", false, "only return runs that failed")
 	logsCmd.Flags().IntVar(&logsLimit, "limit", 20, "max runs to return")
+	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "stream the latest press's progress events live (agent-friendly, no TUI)")
 	rootCmd.AddCommand(logsCmd)
 }

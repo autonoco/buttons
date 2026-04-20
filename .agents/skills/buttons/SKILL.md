@@ -203,6 +203,7 @@ buttons drawer [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `--failed` | bool | only return runs that failed (for `NAME logs`) |
+| `-f, --follow` | bool | stream live progress (for `NAME logs`) |
 | `--limit` | int | max runs to return (for `NAME logs`) |
 
 ### `buttons history`
@@ -239,7 +240,7 @@ buttons list
 
 ### `buttons logs`
 
-View past runs for a button or workspace failures
+View past runs for a button or tail the live progress stream
 
 ```
 buttons logs [flags]
@@ -248,6 +249,7 @@ buttons logs [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `--failed` | bool | only return runs that failed |
+| `-f, --follow` | bool | stream the latest press's progress events live (agent-friendly, no TUI) |
 | `--limit` | int | max runs to return |
 
 ### `buttons press`
