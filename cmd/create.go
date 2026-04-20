@@ -31,6 +31,7 @@ var createTimeout int
 var createMaxResponseSize string
 var createAllowPrivateNetworks bool
 var createArgs []string
+var createIgnore bool
 
 var createCmd = &cobra.Command{
 	Use:   "create [name]",
@@ -142,19 +143,39 @@ Examples:
 			}
 		}
 
+		// --ignore: add this button to .buttons/.gitignore so git
+		// won't track it. Best-effort — failure here shouldn't fail
+		// the overall create (the button is already on disk).
+		ignored := false
+		if createIgnore {
+			entry, nerr := normalizeIgnoreTarget(btn.Name)
+			if nerr == nil {
+				if added, ierr := addIgnoreEntry(entry); ierr == nil {
+					ignored = added
+				} else {
+					fmt.Fprintf(os.Stderr, "warning: --ignore requested but could not write .gitignore: %v\n", ierr)
+				}
+			}
+		}
+
 		if jsonOutput {
 			return config.WriteJSON(struct {
 				*button.Button
 				CodePath  string `json:"code_path,omitempty"`
 				ButtonDir string `json:"button_dir"`
+				Ignored   bool   `json:"ignored,omitempty"`
 			}{
 				Button:    btn,
 				CodePath:  codePath,
 				ButtonDir: btnDir,
+				Ignored:   ignored,
 			})
 		}
 
 		fmt.Fprintf(os.Stderr, "Created button: %s\n", btn.Name)
+		if ignored {
+			fmt.Fprintf(os.Stderr, "  (added to .buttons/.gitignore — not tracked by git)\n")
+		}
 		if codePath != "" {
 			fmt.Fprintf(os.Stderr, "  Edit:  %s\n", codePath)
 		} else if btn.Runtime == "prompt" {
@@ -214,5 +235,6 @@ func init() {
 	createCmd.Flags().StringVar(&createMaxResponseSize, "max-response-size", "", "max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M")
 	createCmd.Flags().BoolVar(&createAllowPrivateNetworks, "allow-private-networks", false, "allow --url buttons to reach private network addresses (localhost, 10/8, 172.16/12, 192.168/16, 169.254/16, IPv6 private ranges). Required for local dev targets.")
 	createCmd.Flags().StringArrayVar(&createArgs, "arg", nil, "argument definition (name:type:required|optional)")
+	createCmd.Flags().BoolVar(&createIgnore, "ignore", false, "add this button to .buttons/.gitignore so git won't track it (good for scratch/test buttons)")
 	rootCmd.AddCommand(createCmd)
 }
