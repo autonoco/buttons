@@ -1,0 +1,36 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-20" description="Drawer workflows, live streaming, and workspace summary">
+## Drawer workflows, live streaming, and workspace summary
+
+Buttons now supports multi-step workflows, live output streaming across the CLI and board, and a single command to see everything in your workspace.
+
+### New features
+
+- **Drawer workflows** — chain multiple buttons into a multi-step workflow with `buttons drawer create`. Steps run sequentially, and you can pass data between them using `${step.output.field}` references. Retry policies with exponential backoff are built in. See the [CLI reference](/cli/buttons_drawer).
+
+- **CEL expressions in drawers** — drawer step references support the full [CEL expression language](https://cel.dev). Use string concatenation, arithmetic, ternary operators, and null coalescing in your `${...}` references — e.g. `${has(b.output.x) ? b.output.x : inputs.fallback}`.
+
+- **`buttons summary` command** — run `buttons summary` to see every button, drawer, recent run, active run, and recent failure in your workspace in one shot. Add `--deep` for full schemas and history. See the [CLI reference](/cli/buttons_summary).
+
+- **`buttons press --follow`** — stream a button's stdout and stderr to your terminal as the press runs. Stdout prints as-is, stderr lines are prefixed with `! `. The final structured result still goes to stdout, so you can pipe it to `jq` while watching progress on stderr. See the [CLI reference](/cli/buttons_press).
+
+- **Live output in the board logs pane** — pressing a button on the board now auto-opens the logs pane and streams stdout and stderr in real time. Stdout lines appear in the primary color, stderr in red, with a `● live` badge that flips to `· done` when the press finishes. See the [CLI reference](/cli/buttons_board).
+
+- **`buttons tail` command** — follow a button's progress events as they happen with `buttons tail NAME -f`. Scripts can write structured JSONL to the progress file exposed via `$BUTTONS_PROGRESS_PATH`, and `tail` streams those events to stdout. See the [CLI reference](/cli/buttons_tail).
+
+- **Idempotency** — skip duplicate work across runs with `--idempotency-key` and `--idempotency-ttl` on press. A second press with the same key returns the cached result instead of re-executing. Only successful results are cached — failures always retry. See the [CLI reference](/cli/buttons_press).
+
+- **Queue-based concurrency control** — declare a `queue` in your button config to limit how many presses run at the same time. Shared queue names pool across buttons, and a `key` field lets you scope concurrency per value (e.g. three concurrent presses per user). Works across CLI invocations.
+
+- **`buttons ignore` / `unignore`** — keep scratch or test buttons out of git without touching your repo's `.gitignore`. Run `buttons ignore NAME` to add a button to `.buttons/.gitignore`, or pass `--ignore` when creating. Run `buttons ignore` with no arguments to see what's currently ignored. See the [CLI reference](/cli/buttons_ignore).
+
+### Updates
+
+- **Name-first command syntax** — you can now write `buttons NAME logs` instead of `buttons logs NAME`. The verb-first form still works, so existing scripts aren't affected.
+
+- **`buttons logs --follow`** — streams live progress JSONL to stdout for agent-friendly live monitoring. Same behavior as `buttons tail NAME -f`, available as an alternative entry point.
+</Update>
