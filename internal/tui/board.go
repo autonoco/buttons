@@ -85,6 +85,18 @@ type Model struct {
 	// scrollable body. Clamped in movePaneCursor / handleKey.
 	logsDetailScroll int
 
+	// liveLines buffers streaming stdout/stderr lines while a press
+	// is in flight (and for a moment after it finishes so the user
+	// can see what just ran). Keyed by button name, capped per
+	// button via maxLiveLinesPerButton.
+	liveLines map[string][]liveLine
+
+	// liveSinks holds the channels each in-flight press is writing
+	// to. Keyed by button name. Update's liveLineMsg handler reaches
+	// into this to re-schedule readFromSink and keep the stream
+	// flowing. Entry removed on liveStreamDoneMsg.
+	liveSinks map[string]chan engine.LogLine
+
 	// argForm, when non-nil, is the inline press-with-args prompt
 	// replacing the board's content area. Opened automatically when
 	// the user presses a button with required args; dismissed on
@@ -109,6 +121,30 @@ const (
 	viewCards viewMode = iota // bordered grid (default)
 	viewList                  // single-column text list
 )
+
+// liveLine is one captured stream entry. Mirrors engine.LogLine but
+// kept distinct so board rendering code doesn't have to import engine
+// types just to format a row.
+type liveLine struct {
+	Ts   time.Time
+	Sev  engine.Severity
+	Text string
+}
+
+// liveLineMsg carries one streamed line into the Update loop. The
+// handler appends it to m.liveLines[name] and re-schedules
+// readFromSink so the stream stays flowing.
+type liveLineMsg struct {
+	name string
+	line engine.LogLine
+}
+
+// liveStreamDoneMsg fires when the sink channel closes (runPress
+// closes it after engine.Execute returns). No follow-up readFromSink
+// is scheduled on receipt — that ends the pub/sub loop cleanly.
+type liveStreamDoneMsg struct {
+	name string
+}
 
 type pressDoneMsg struct {
 	name   string
@@ -209,6 +245,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pressDoneMsg:
 		return m.handlePressDone(msg), nil
+
+	case liveLineMsg:
+		// Append the incoming line and immediately schedule another
+		// read so the stream keeps flowing. If the sink was cleaned
+		// up (e.g. press completed between msg send and handle),
+		// skip re-scheduling — the liveStreamDoneMsg path handles
+		// cleanup.
+		m.appendLiveLine(msg.name, liveLine{
+			Ts: msg.line.Ts, Sev: msg.line.Sev, Text: msg.line.Text,
+		})
+		if sink, ok := m.liveSinks[msg.name]; ok {
+			return m, readFromSink(sink, msg.name)
+		}
+		return m, nil
+
+	case liveStreamDoneMsg:
+		// runPress closed the channel after Execute returned. Drop
+		// the sink from the model so future live-line schedules
+		// short-circuit. Keep liveLines intact — the user can still
+		// scroll the just-finished output.
+		if m.liveSinks != nil {
+			delete(m.liveSinks, msg.name)
+		}
+		return m, nil
 
 	case pressFireMsg:
 		// Only flip fire on if the pulse is still targeting the same
@@ -645,7 +705,28 @@ func (m Model) pressButtonWithArgs(name string, args map[string]string) (tea.Mod
 		}
 	}
 
-	pressCmd := runPress(btn, codePath, batteries, args)
+	// Live-stream sink: every stdout/stderr line the child writes gets
+	// forwarded into the board's logs pane in real time. runPress
+	// closes the channel when Execute returns, which terminates the
+	// readFromSink Cmd loop below.
+	sink := make(chan engine.LogLine, 128)
+	if m.liveLines == nil {
+		m.liveLines = map[string][]liveLine{}
+	}
+	if m.liveSinks == nil {
+		m.liveSinks = map[string]chan engine.LogLine{}
+	}
+	// Reset any previous live buffer for this button — a new press
+	// starts a new stream, not a continuation.
+	m.liveLines[name] = nil
+	m.liveSinks[name] = sink
+	// Auto-open the logs pane so the live feed is visible without
+	// the user having to remember the L toggle. They can still
+	// close it with L once the press finishes.
+	m.logsOpen = true
+
+	pressCmd := runPress(btn, codePath, batteries, args, sink)
+	streamCmd := readFromSink(sink, name)
 
 	// Four-frame choreography: rest → keydown (now) → fire (+40ms) →
 	// release (+180ms). pressPulse is set synchronously so the very
@@ -658,22 +739,61 @@ func (m Model) pressButtonWithArgs(name string, args map[string]string) (tea.Mod
 
 	if !m.ticking {
 		m.ticking = true
-		return m, tea.Batch(pressCmd, fireCmd, releaseCmd, tickCmd())
+		return m, tea.Batch(pressCmd, streamCmd, fireCmd, releaseCmd, tickCmd())
 	}
-	return m, tea.Batch(pressCmd, fireCmd, releaseCmd)
+	return m, tea.Batch(pressCmd, streamCmd, fireCmd, releaseCmd)
 }
 
-func runPress(btn *button.Button, codePath string, batteries, args map[string]string) tea.Cmd {
+func runPress(btn *button.Button, codePath string, batteries, args map[string]string, sink chan engine.LogLine) tea.Cmd {
 	name := btn.Name
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(btn.TimeoutSeconds)*time.Second)
 		defer cancel()
 
-		// Board presses don't stream yet — the dedicated `buttons logs`
-		// viewer (C2) will pass a sink for live tailing.
-		result := engine.Execute(ctx, btn, args, batteries, nil, codePath)
+		result := engine.Execute(ctx, btn, args, batteries, sink, codePath)
+		// Closing the sink signals readFromSink's Cmd loop that no
+		// more lines are coming so it can return the terminal
+		// liveStreamDoneMsg and stop recursing.
+		if sink != nil {
+			close(sink)
+		}
 		return pressDoneMsg{name: name, result: result}
 	}
+}
+
+// readFromSink reads ONE LogLine from the sink channel and returns
+// either a liveLineMsg (wrapping that line) or a liveStreamDoneMsg
+// when the channel closes. Each liveLineMsg handler re-schedules
+// readFromSink to keep the stream flowing without blocking Update.
+// Classic Bubble Tea pub/sub pattern.
+func readFromSink(sink <-chan engine.LogLine, name string) tea.Cmd {
+	return func() tea.Msg {
+		line, ok := <-sink
+		if !ok {
+			return liveStreamDoneMsg{name: name}
+		}
+		return liveLineMsg{name: name, line: line}
+	}
+}
+
+// maxLiveLinesPerButton caps how many streamed lines we keep in
+// memory per button. 200 is plenty for debugging a press in flight
+// while staying bounded for pathological scripts that flood stdout.
+const maxLiveLinesPerButton = 200
+
+// appendLiveLine appends a streamed line to the button's buffer with
+// the cap enforced. Old lines roll off the front once the cap is
+// reached so the tail is always the freshest output.
+func (m *Model) appendLiveLine(name string, line liveLine) {
+	if m.liveLines == nil {
+		m.liveLines = map[string][]liveLine{}
+	}
+	buf := m.liveLines[name]
+	buf = append(buf, line)
+	if len(buf) > maxLiveLinesPerButton {
+		buf = buf[len(buf)-maxLiveLinesPerButton:]
+	}
+	m.liveLines[name] = buf
 }
 
 // tuiBatteryDiscoverer is the project-dir discoverer passed to
@@ -1298,6 +1418,57 @@ func (m Model) renderChrome() string {
 	return strings.Repeat(" ", leftPad) + left + strings.Repeat(" ", gap) + right
 }
 
+// renderLiveLines paints the streamed stdout/stderr for an in-flight
+// (or just-completed) press. Mirrors the full-screen logs viewer's
+// severity coloring but in the compact pane layout — last N lines
+// that fit in the pane's height. A header badge signals whether the
+// stream is live or finished.
+func (m Model) renderLiveLines(target string, lines []liveLine) string {
+	title := m.styles.HeroTitle.Render("logs")
+	running := m.status[target] == statusRunning
+
+	// Header badge tells the user what mode we're in. Orange ● when
+	// live, muted check when done.
+	var badge string
+	if running {
+		badge = m.styles.ChromeActiveBadge.Render("● live")
+	} else {
+		badge = m.styles.Muted.Render("· done")
+	}
+
+	header := title + m.styles.Muted.Render("  ·  "+target+"  ") + badge
+
+	// Budget: pane is bounded, show the tail that fits. Cap at 8
+	// lines to keep the board composable with the rest of the
+	// chrome. Users who want more can drop to the CLI
+	// (`buttons NAME logs --follow`).
+	tail := 8
+	if len(lines) < tail {
+		tail = len(lines)
+	}
+	visible := lines[len(lines)-tail:]
+
+	previewBudget := m.width - leftPad - 2 - 16 // indent + ts column
+	if previewBudget < 20 {
+		previewBudget = 20
+	}
+
+	rendered := []string{header, ""}
+	for _, ln := range visible {
+		ts := m.styles.Muted.Render(ln.Ts.Local().Format("15:04:05"))
+		text := truncateDisplay(ln.Text, previewBudget)
+		var styled string
+		switch ln.Sev {
+		case engine.SeverityStderr:
+			styled = m.styles.StatusError.Render(text)
+		default:
+			styled = m.styles.ButtonName.Render(text)
+		}
+		rendered = append(rendered, fmt.Sprintf("  %s  %s", ts, styled))
+	}
+	return indentBlock(strings.Join(rendered, "\n"), leftPad)
+}
+
 // renderLogs renders the collapsible history pane that sits above the
 // footer when `l` has been toggled on. Scope is the button currently
 // under the cursor — users looking at a row expect to see its runs,
@@ -1312,6 +1483,15 @@ func (m Model) renderLogs() string {
 	if target == "" {
 		empty := m.styles.Muted.Render("focus a button to see its history")
 		return indentBlock(title+"\n\n"+empty, leftPad)
+	}
+
+	// Live-follow mode: if we have buffered stream lines for this
+	// button (press in flight, or just completed and still showing),
+	// render them instead of the past-runs summary. The history
+	// view reappears on the next press's reset or when the user
+	// navigates to a button with no live buffer.
+	if lines := m.liveLines[target]; len(lines) > 0 {
+		return m.renderLiveLines(target, lines)
 	}
 
 	runs, err := history.List(target, logsPaneLimit)
