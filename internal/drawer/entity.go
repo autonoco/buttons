@@ -8,7 +8,10 @@
 // drawer files at author time.
 package drawer
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // SchemaVersion is the current drawer.json schema version. Bump when
 // making breaking changes; additive changes (new optional fields)
@@ -27,6 +30,21 @@ type Drawer struct {
 	// drawer fails. Reserved in the schema now so adding it later
 	// doesn't require a schema bump; the v1 executor ignores it.
 	OnError *ErrorHandler `json:"on_error,omitempty" jsonschema:"description=Drawer to run on unhandled step failure"`
+
+	// OutputSchema mirrors button.OutputSchema but for drawers — the
+	// shape of what the drawer exposes to a parent drawer calling it
+	// via kind=drawer. Optional; when present, parent drawers get
+	// type-checked access to ${child-step.output.field} references
+	// at connect time.
+	OutputSchema json.RawMessage `json:"output_schema,omitempty" jsonschema:"description=JSON Schema describing what this drawer returns when called as a sub-drawer"`
+
+	// Return maps OutputSchema field names to CEL expressions that
+	// compute the value from the drawer's step context. Evaluated
+	// after all steps complete; result becomes the drawer's output
+	// when it's run as a sub-drawer. Ignored for top-level presses.
+	// Example: { "version": "${build.output.version}", "url": "${publish.output.url}" }
+	Return map[string]any `json:"return,omitempty" jsonschema:"description=CEL expressions producing the drawer's output fields"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -64,11 +82,17 @@ type Step struct {
 	// Button is the target when Kind == "button" (the v1 case).
 	Button string `json:"button,omitempty" jsonschema:"description=Button name to invoke (kind=button only)"`
 
-	// Args maps the target button's arg names to either literal
-	// values or ${...} reference strings. Resolved at press time.
-	// Stored as map[string]any so literal ints/bools round-trip
-	// without string coercion.
-	Args map[string]any `json:"args,omitempty" jsonschema:"description=Arg values or ${ref} strings to pass to the button"`
+	// Drawer is the target when Kind == "drawer" — a sub-drawer
+	// call. The child drawer's inputs come from this step's Args,
+	// and its Return block flows back into the parent's step
+	// context as ${<step_id>.output.<field>} for downstream refs.
+	Drawer string `json:"drawer,omitempty" jsonschema:"description=Drawer name to invoke (kind=drawer only)"`
+
+	// Args maps the target's input names (button args OR drawer
+	// inputs) to literal values or ${...} expressions. Resolved at
+	// press time. Stored as map[string]any so literal ints/bools
+	// round-trip without string coercion.
+	Args map[string]any `json:"args,omitempty" jsonschema:"description=Arg/input values or ${ref} strings to pass to the button or drawer"`
 
 	// OnFailure overrides the drawer-level failure behavior for this
 	// step only. See ErrorPolicy docs.
@@ -81,6 +105,58 @@ type Step struct {
 	// Bindings is a legacy flat map from the drawer v0 stub. Retained
 	// so older drawer.json files load; new writes use Args instead.
 	Bindings map[string]string `json:"bindings,omitempty"`
+
+	// --- Fields below apply only to Kind == "for_each" ---
+	//
+	// Over is a CEL expression (string form, ${...} wrapping
+	// OPTIONAL for consistency with Args) that resolves to an
+	// array. The for_each step iterates that array, running Steps
+	// once per item.
+	Over string `json:"over,omitempty" jsonschema:"description=CEL expression producing the array to iterate over (kind=for_each)"`
+
+	// As is the variable name under which the current item is
+	// exposed to the nested Steps' ${...} context. Agents write
+	// ${<as>.field} or ${<as>} inside nested step args.
+	As string `json:"as,omitempty" jsonschema:"description=Loop variable name bound to the current item (kind=for_each)"`
+
+	// OnItemFailure decides whether a failing iteration aborts the
+	// loop ("stop", default) or is recorded and skipped ("continue").
+	// Separate from the drawer-level OnFailure so agents can say
+	// "fail-fast overall, but tolerate per-item errors here."
+	OnItemFailure string `json:"on_item_failure,omitempty" jsonschema:"enum=stop,enum=continue,description=How to react to a per-item failure (kind=for_each)"`
+
+	// Steps are the nested steps executed per item (for_each) OR
+	// the steps under a matching case's body (switch). Each child
+	// context is layered on the outer one.
+	Steps []Step `json:"steps,omitempty" jsonschema:"description=Nested steps (for_each body or switch default)"`
+
+	// --- Fields below apply only to Kind == "switch" ---
+	//
+	// Cases is an if/elif chain. First Case whose When expression is
+	// truthy has its Steps run; the rest are skipped. If none match,
+	// the step's top-level Steps (treated as the "default" branch)
+	// run. Output is the last nested step's Output in the matching
+	// branch; total output shape: { matched: "case-id-or-default",
+	// steps: {id: output} }.
+	Cases []Case `json:"cases,omitempty" jsonschema:"description=Conditional branches (kind=switch)"`
+
+	// --- Fields below apply only to Kind == "aggregate" ---
+	//
+	// From is a CEL expression producing an array of items (typically
+	// a for_each step's `output.results`). Pluck is a CEL expression
+	// evaluated once per item with `item` bound to the current entry;
+	// the result is collected into an output array.
+	From  string `json:"from,omitempty" jsonschema:"description=CEL expression producing the input array (kind=aggregate)"`
+	Pluck string `json:"pluck,omitempty" jsonschema:"description=CEL expression evaluated per item; 'item' is bound to the current entry (kind=aggregate)"`
+}
+
+// Case is one branch of a kind=switch step. When is a CEL predicate;
+// ID names the branch for the matched tag in the step's output so
+// agents can tell which arm ran. Steps are the branch's body.
+type Case struct {
+	ID    string `json:"id,omitempty" jsonschema:"description=Case identifier surfaced in output.matched"`
+	When  string `json:"when" jsonschema:"description=CEL predicate — first truthy case wins"`
+	Steps []Step `json:"steps,omitempty"`
 }
 
 // ErrorPolicy controls how a step failure is handled. Mirrors

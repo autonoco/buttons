@@ -28,6 +28,29 @@
       ],
       "type": "object"
     },
+    "Case": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Case identifier surfaced in output.matched",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
+        },
+        "when": {
+          "description": "CEL predicate — first truthy case wins",
+          "type": "string"
+        }
+      },
+      "required": [
+        "when"
+      ],
+      "type": "object"
+    },
     "ErrorHandler": {
       "additionalProperties": false,
       "properties": {
@@ -118,14 +141,33 @@
       "additionalProperties": false,
       "properties": {
         "args": {
-          "description": "Arg values or ${ref} strings to pass to the button",
+          "description": "Arg/input values or ${ref} strings to pass to the button or drawer",
           "type": "object"
+        },
+        "as": {
+          "description": "Loop variable name bound to the current item (kind=for_each)",
+          "type": "string"
         },
         "bindings": {
           "type": "object"
         },
         "button": {
           "description": "Button name to invoke (kind=button only)",
+          "type": "string"
+        },
+        "cases": {
+          "description": "Conditional branches (kind=switch)",
+          "items": {
+            "$ref": "#/$defs/Case"
+          },
+          "type": "array"
+        },
+        "drawer": {
+          "description": "Drawer name to invoke (kind=drawer only)",
+          "type": "string"
+        },
+        "from": {
+          "description": "CEL expression producing the input array (kind=aggregate)",
           "type": "string"
         },
         "id": {
@@ -149,6 +191,29 @@
         },
         "on_failure": {
           "$ref": "#/$defs/ErrorPolicy"
+        },
+        "on_item_failure": {
+          "description": "How to react to a per-item failure (kind=for_each)",
+          "enum": [
+            "stop",
+            "continue"
+          ],
+          "type": "string"
+        },
+        "over": {
+          "description": "CEL expression producing the array to iterate over (kind=for_each)",
+          "type": "string"
+        },
+        "pluck": {
+          "description": "CEL expression evaluated per item; 'item' is bound to the current entry (kind=aggregate)",
+          "type": "string"
+        },
+        "steps": {
+          "description": "Nested steps (for_each body or switch default)",
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
         },
         "timeout_seconds": {
           "type": "integer"
@@ -187,6 +252,17 @@
     "on_error": {
       "$ref": "#/$defs/ErrorHandler",
       "description": "Drawer to run on unhandled step failure"
+    },
+    "output_schema": {
+      "description": "JSON Schema describing what this drawer returns when called as a sub-drawer",
+      "items": {
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "return": {
+      "description": "CEL expressions producing the drawer's output fields",
+      "type": "object"
     },
     "schema_version": {
       "const": 1,

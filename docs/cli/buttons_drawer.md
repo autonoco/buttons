@@ -15,13 +15,29 @@ ${ref} references between steps.
 Usage:
   buttons drawer create NAME
   buttons drawer list
-  buttons drawer NAME add BUTTON [BUTTON...]
-  buttons drawer NAME connect A to B
-  buttons drawer NAME connect A.output.x to B.args.y
-  buttons drawer NAME press [key=value ...]
-  buttons drawer NAME remove
-  buttons drawer NAME                  (show drawer summary)
-  buttons drawer schema                (print JSON Schema)
+  buttons drawer NAME add BUTTON [BUTTON ...]         append button step(s)
+  buttons drawer NAME add drawer/OTHER                append a sub-drawer step
+  buttons drawer NAME add for_each:BUTTON             append a per-item loop wrapping BUTTON
+  buttons drawer NAME connect A to B                  auto-match output → args by name+type
+  buttons drawer NAME connect A.output.x to B.args.y  explicit field path
+  buttons drawer NAME set STEP.args.FIELD=value       literal or ${ref} into a step arg
+  buttons drawer NAME set STEP.over=EXPR              for_each: the array to iterate
+  buttons drawer NAME set STEP.as=NAME                for_each: loop variable name
+  buttons drawer NAME set STEP.from=EXPR              aggregate: input array
+  buttons drawer NAME set STEP.pluck=EXPR             aggregate: per-item expression
+  buttons drawer NAME set STEP.steps.N.args.F=value   reach a nested step's arg
+  buttons drawer NAME press [key=value ...]           run it; unfilled required inputs go here
+  buttons drawer NAME logs [--failed] [--limit N]     past runs for this drawer
+  buttons drawer NAME remove                          delete the drawer
+  buttons drawer NAME                                 summary (topology + validation + recent runs)
+  buttons drawer schema                               print JSON Schema for drawer.json
+
+Typical authoring flow:
+  buttons drawer create deploy-flow
+  buttons drawer deploy-flow add build publish
+  buttons drawer deploy-flow connect build to publish
+  buttons drawer deploy-flow set publish.args.env=prod
+  buttons drawer deploy-flow press
 
 ```
 buttons drawer [flags]

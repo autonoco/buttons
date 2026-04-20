@@ -43,13 +43,29 @@ ${ref} references between steps.
 Usage:
   buttons drawer create NAME
   buttons drawer list
-  buttons drawer NAME add BUTTON [BUTTON...]
-  buttons drawer NAME connect A to B
-  buttons drawer NAME connect A.output.x to B.args.y
-  buttons drawer NAME press [key=value ...]
-  buttons drawer NAME remove
-  buttons drawer NAME                  (show drawer summary)
-  buttons drawer schema                (print JSON Schema)`,
+  buttons drawer NAME add BUTTON [BUTTON ...]         append button step(s)
+  buttons drawer NAME add drawer/OTHER                append a sub-drawer step
+  buttons drawer NAME add for_each:BUTTON             append a per-item loop wrapping BUTTON
+  buttons drawer NAME connect A to B                  auto-match output → args by name+type
+  buttons drawer NAME connect A.output.x to B.args.y  explicit field path
+  buttons drawer NAME set STEP.args.FIELD=value       literal or ${ref} into a step arg
+  buttons drawer NAME set STEP.over=EXPR              for_each: the array to iterate
+  buttons drawer NAME set STEP.as=NAME                for_each: loop variable name
+  buttons drawer NAME set STEP.from=EXPR              aggregate: input array
+  buttons drawer NAME set STEP.pluck=EXPR             aggregate: per-item expression
+  buttons drawer NAME set STEP.steps.N.args.F=value   reach a nested step's arg
+  buttons drawer NAME press [key=value ...]           run it; unfilled required inputs go here
+  buttons drawer NAME logs [--failed] [--limit N]     past runs for this drawer
+  buttons drawer NAME remove                          delete the drawer
+  buttons drawer NAME                                 summary (topology + validation + recent runs)
+  buttons drawer schema                               print JSON Schema for drawer.json
+
+Typical authoring flow:
+  buttons drawer create deploy-flow
+  buttons drawer deploy-flow add build publish
+  buttons drawer deploy-flow connect build to publish
+  buttons drawer deploy-flow set publish.args.env=prod
+  buttons drawer deploy-flow press`,
 	Args:          cobra.ArbitraryArgs,
 	SilenceErrors: true,
 	SilenceUsage:  true,
@@ -96,6 +112,8 @@ Usage:
 			return drawerAdd(name, vargs)
 		case "connect":
 			return drawerConnect(name, vargs)
+		case "set":
+			return drawerSet(name, vargs)
 		case "press":
 			return drawerPress(name, vargs)
 		case "remove", "rm":
@@ -182,6 +200,15 @@ func drawerAdd(name string, args []string) error {
 		return config.WriteJSON(d)
 	}
 	fmt.Fprintf(os.Stderr, "Added %d step(s) to drawer %s\n", len(args), name)
+	// Point at the next logical step. If there are 2+ steps now
+	// (most drawers start with 0 and get 1 or more added at once),
+	// suggest wiring them. Otherwise suggest adding more.
+	if len(d.Steps) >= 2 {
+		printNextHint("buttons drawer %s connect %s to %s",
+			d.Name, d.Steps[len(d.Steps)-2].ID, d.Steps[len(d.Steps)-1].ID)
+	} else {
+		printNextHint("buttons drawer %s add MORE_BUTTONS", d.Name)
+	}
 	return nil
 }
 
@@ -313,6 +340,7 @@ func drawerAutoConnect(name, fromID, toID string) error {
 	for _, p := range wired {
 		fmt.Fprintf(os.Stderr, "connected %s.output.%s → %s.args.%s\n", fromID, p.from, toID, p.to)
 	}
+	printNextHint("buttons drawer %s press", name)
 	return nil
 }
 
@@ -337,6 +365,7 @@ func drawerExplicitConnect(name, from, to string) error {
 		return config.WriteJSON(map[string]any{"ok": true, "wired": []map[string]string{{"from": fromField, "to": toField}}})
 	}
 	fmt.Fprintf(os.Stderr, "connected %s.output.%s → %s.args.%s\n", fromID, fromField, toID, toField)
+	printNextHint("buttons drawer %s press", name)
 	return nil
 }
 
@@ -360,18 +389,133 @@ func drawerPress(name string, args []string) error {
 		return err
 	}
 	if jsonOutput {
-		return config.WriteJSON(result)
+		if result.Status == "ok" {
+			return config.WriteJSON(result)
+		}
+		// Drawer failed — still emit the full result on stdout so
+		// agents can parse the failure envelope, but exit non-zero
+		// via errSilent so pipelines notice.
+		_ = config.WriteJSON(result)
+		return errSilent
 	}
 	if result.Status == "ok" {
 		fmt.Fprintf(os.Stderr, "✓ drawer %s ok (%dms)\n", name, result.DurationMs)
-	} else {
-		fmt.Fprintf(os.Stderr, "✗ drawer %s failed at step %s: %s\n", name, result.FailedStep, func() string {
-			if result.Error != nil {
-				return result.Error.Message
-			}
-			return "unknown"
-		}())
+		printNextHint("buttons drawer %s logs", name)
+		return nil
 	}
+	fmt.Fprintf(os.Stderr, "✗ drawer %s failed at step %s: %s\n", name, result.FailedStep, func() string {
+		if result.Error != nil {
+			return result.Error.Message
+		}
+		return "unknown"
+	}())
+	printNextHint("buttons drawer %s logs --failed", name)
+	return errSilent
+}
+
+// drawerSet writes literal values or ${ref} expressions into a
+// step's args. Accepts dotted-path targets so agents can address
+// both button-step args and sub-drawer-step args with one verb:
+//
+//	buttons drawer deploy set build.args.env=prod
+//	buttons drawer deploy set publish.args.version='${build.output.version}'
+//	buttons drawer deploy set child-flow.args.token='${env.APIFY_TOKEN}'
+//
+// Multiple pairs in one call are applied atomically enough — we
+// load the drawer once, mutate each arg, and save once at the end.
+// A parse error on any pair aborts the whole call before any
+// write hits disk.
+func drawerSet(name string, vargs []string) error {
+	if len(vargs) < 1 {
+		return fmt.Errorf("usage: buttons drawer %s set STEP.PATH=value [STEP.PATH=value ...]\n  paths: STEP.args.FIELD | STEP.over | STEP.as | STEP.from | STEP.pluck | STEP.steps.N.args.FIELD", name)
+	}
+
+	svc := drawer.NewService()
+	applied := make([]string, 0, len(vargs))
+
+	for _, raw := range vargs {
+		eq := strings.Index(raw, "=")
+		if eq < 0 {
+			return fmt.Errorf("expected STEP.PATH=value, got %q", raw)
+		}
+		target, rawValue := raw[:eq], raw[eq+1:]
+		// Literal JSON first (numbers/bools/objects); fall through
+		// to string so ${ref} expressions and plain text stash as-is.
+		var value any
+		if err := json.Unmarshal([]byte(rawValue), &value); err != nil {
+			value = rawValue
+		}
+
+		parts := strings.SplitN(target, ".", 2)
+		if len(parts) < 2 {
+			return fmt.Errorf("target must include a step id and a path, got %q", target)
+		}
+		stepID, path := parts[0], parts[1]
+		if stepID == "" {
+			return fmt.Errorf("empty step id in %q", target)
+		}
+
+		// Route by path shape:
+		//   args.FIELD                 → SetArg on the outer step
+		//   steps.N.args.FIELD         → SetNestedArg on for_each/switch body
+		//   <field>                    → SetField (over, as, from, pluck, ...)
+		switch {
+		case strings.HasPrefix(path, "args."):
+			field := strings.TrimPrefix(path, "args.")
+			if field == "" {
+				return fmt.Errorf("empty arg name in %q", target)
+			}
+			if _, err := svc.SetArg(name, stepID, field, value); err != nil {
+				return handleDrawerError(err)
+			}
+		case strings.HasPrefix(path, "steps."):
+			rest := strings.TrimPrefix(path, "steps.")
+			i := strings.Index(rest, ".")
+			if i <= 0 {
+				return fmt.Errorf("nested path %q missing .args.FIELD suffix", target)
+			}
+			idxStr := rest[:i]
+			rest = rest[i+1:]
+			var nestedIdx int
+			if _, err := fmt.Sscanf(idxStr, "%d", &nestedIdx); err != nil {
+				return fmt.Errorf("expected numeric index in %q, got %q", target, idxStr)
+			}
+			if !strings.HasPrefix(rest, "args.") {
+				return fmt.Errorf("nested path must end in .args.FIELD, got %q", target)
+			}
+			argName := strings.TrimPrefix(rest, "args.")
+			if argName == "" {
+				return fmt.Errorf("empty nested arg name in %q", target)
+			}
+			if _, err := svc.SetNestedArg(name, stepID, nestedIdx, argName, value); err != nil {
+				return handleDrawerError(err)
+			}
+		default:
+			// Bare field — over, as, from, pluck, button, drawer,
+			// on_item_failure. Always a string on the wire.
+			strVal, ok := value.(string)
+			if !ok {
+				strVal = rawValue
+			}
+			if _, err := svc.SetField(name, stepID, path, strVal); err != nil {
+				return handleDrawerError(err)
+			}
+		}
+		applied = append(applied, target)
+	}
+
+	if jsonOutput {
+		return config.WriteJSON(map[string]any{
+			"ok":     true,
+			"drawer": name,
+			"set":    len(applied),
+			"paths":  applied,
+		})
+	}
+	for _, t := range applied {
+		fmt.Fprintf(os.Stderr, "set %s\n", t)
+	}
+	printNextHint("buttons drawer %s press", name)
 	return nil
 }
 

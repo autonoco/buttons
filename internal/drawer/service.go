@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/autonoco/buttons/internal/button"
@@ -154,7 +155,7 @@ func (s *Service) Remove(name string) error {
 // button doesn't exist). Step IDs default to the button name; if
 // that's already taken we append "-2", "-3", etc. so agents can add
 // the same button twice without fighting with ids.
-func (s *Service) AddSteps(drawerName string, buttonNames []string) (*Drawer, error) {
+func (s *Service) AddSteps(drawerName string, targets []string) (*Drawer, error) {
 	d, err := s.Get(drawerName)
 	if err != nil {
 		return nil, err
@@ -166,12 +167,74 @@ func (s *Service) AddSteps(drawerName string, buttonNames []string) (*Drawer, er
 		taken[st.ID] = true
 	}
 
-	for _, bn := range buttonNames {
-		slug := button.Slugify(bn)
+	for _, t := range targets {
+		// `for_each:BUTTON` → kind=for_each step wrapping one nested
+		// button step. Minimal shorthand so agents can author simple
+		// per-item loops without patching drawer.json directly.
+		// Multi-step bodies still need file-level editing.
+		if strings.HasPrefix(t, "for_each:") {
+			inner := strings.TrimPrefix(t, "for_each:")
+			slug := button.Slugify(inner)
+			if _, err := btnSvc.Get(slug); err != nil {
+				return nil, &ServiceError{
+					Code:    "BUTTON_NOT_FOUND",
+					Message: fmt.Sprintf("button %q does not exist (used inside for_each)", inner),
+				}
+			}
+			id := "for_each-" + slug
+			for n := 2; taken[id]; n++ {
+				id = fmt.Sprintf("for_each-%s-%d", slug, n)
+			}
+			taken[id] = true
+			d.Steps = append(d.Steps, Step{
+				ID:   id,
+				Kind: "for_each",
+				As:   "item",
+				Steps: []Step{
+					{
+						ID:     slug,
+						Kind:   "button",
+						Button: slug,
+						Args:   map[string]any{},
+					},
+				},
+			})
+			continue
+		}
+		// `drawer/NAME` → kind=drawer sub-drawer step. Plain name →
+		// kind=button step (existing path). No other prefixes.
+		if strings.HasPrefix(t, "drawer/") {
+			childName := button.Slugify(strings.TrimPrefix(t, "drawer/"))
+			if childName == d.Name {
+				return nil, &ServiceError{
+					Code:    "VALIDATION_ERROR",
+					Message: fmt.Sprintf("drawer %q cannot include itself as a sub-drawer", d.Name),
+				}
+			}
+			if _, err := s.Get(childName); err != nil {
+				return nil, &ServiceError{
+					Code:    "DRAWER_NOT_FOUND",
+					Message: fmt.Sprintf("drawer %q does not exist", childName),
+				}
+			}
+			id := childName
+			for n := 2; taken[id]; n++ {
+				id = fmt.Sprintf("%s-%d", childName, n)
+			}
+			taken[id] = true
+			d.Steps = append(d.Steps, Step{
+				ID:     id,
+				Kind:   "drawer",
+				Drawer: childName,
+				Args:   map[string]any{},
+			})
+			continue
+		}
+		slug := button.Slugify(t)
 		if _, err := btnSvc.Get(slug); err != nil {
 			return nil, &ServiceError{
 				Code:    "BUTTON_NOT_FOUND",
-				Message: fmt.Sprintf("button %q does not exist", bn),
+				Message: fmt.Sprintf("button %q does not exist", t),
 			}
 		}
 		id := slug
@@ -216,6 +279,91 @@ func (s *Service) SetArg(drawerName, stepID, argName string, value any) (*Drawer
 		d.Steps[idx].Args = map[string]any{}
 	}
 	d.Steps[idx].Args[argName] = value
+	d.UpdatedAt = time.Now().UTC()
+	if err := s.save(d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// SetField sets a non-args field directly on a step — e.g. for_each's
+// `over`/`as`/`on_item_failure`, switch's default branch, or
+// aggregate's `from`/`pluck`. Values are always strings at the wire
+// level for these fields. Unknown field names are rejected so typos
+// surface as STEP_FIELD_UNKNOWN instead of being silently ignored.
+func (s *Service) SetField(drawerName, stepID, field, value string) (*Drawer, error) {
+	d, err := s.Get(drawerName)
+	if err != nil {
+		return nil, err
+	}
+	idx := -1
+	for i, st := range d.Steps {
+		if st.ID == stepID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return nil, &ServiceError{Code: "STEP_NOT_FOUND", Message: fmt.Sprintf("step %q not found in drawer %q", stepID, drawerName)}
+	}
+	switch field {
+	case "over":
+		d.Steps[idx].Over = value
+	case "as":
+		d.Steps[idx].As = value
+	case "on_item_failure":
+		if value != "stop" && value != "continue" {
+			return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "on_item_failure must be 'stop' or 'continue'"}
+		}
+		d.Steps[idx].OnItemFailure = value
+	case "from":
+		d.Steps[idx].From = value
+	case "pluck":
+		d.Steps[idx].Pluck = value
+	case "button":
+		d.Steps[idx].Button = value
+	case "drawer":
+		d.Steps[idx].Drawer = value
+	default:
+		return nil, &ServiceError{
+			Code:    "STEP_FIELD_UNKNOWN",
+			Message: fmt.Sprintf("unknown step field %q — allowed: over, as, on_item_failure, from, pluck, button, drawer", field),
+		}
+	}
+	d.UpdatedAt = time.Now().UTC()
+	if err := s.save(d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// SetNestedArg sets an arg on a nested step inside a for_each or
+// switch body. Path form: <outer_id>.steps.<idx>.args.<field>=value.
+// Nested-step addressing is intentionally indexed (not by id) because
+// nested step ids may not be unique across branches and indices keep
+// the target unambiguous.
+func (s *Service) SetNestedArg(drawerName, outerID string, nestedIdx int, argName string, value any) (*Drawer, error) {
+	d, err := s.Get(drawerName)
+	if err != nil {
+		return nil, err
+	}
+	idx := -1
+	for i, st := range d.Steps {
+		if st.ID == outerID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return nil, &ServiceError{Code: "STEP_NOT_FOUND", Message: fmt.Sprintf("step %q not found in drawer %q", outerID, drawerName)}
+	}
+	if nestedIdx < 0 || nestedIdx >= len(d.Steps[idx].Steps) {
+		return nil, &ServiceError{Code: "NESTED_STEP_NOT_FOUND", Message: fmt.Sprintf("step %q has no nested step at index %d (has %d)", outerID, nestedIdx, len(d.Steps[idx].Steps))}
+	}
+	if d.Steps[idx].Steps[nestedIdx].Args == nil {
+		d.Steps[idx].Steps[nestedIdx].Args = map[string]any{}
+	}
+	d.Steps[idx].Steps[nestedIdx].Args[argName] = value
 	d.UpdatedAt = time.Now().UTC()
 	if err := s.save(d); err != nil {
 		return nil, err
