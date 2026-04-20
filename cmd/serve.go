@@ -94,7 +94,10 @@ func runListen(cmd *cobra.Command, args []string) error {
 	// Press context: shared across every in-flight drawer press so
 	// shutdown can cancel all of them at once (cooperative cancel
 	// lands way faster than waiting out the 1h press deadline).
+	// Defer the cancel so early-return paths don't leak the context —
+	// vet flags uncalled cancel functions as a leak risk.
 	pressCtx, cancelPresses := context.WithCancel(context.Background())
+	defer cancelPresses()
 
 	// Readiness token: the tunnel verifier pulls /healthz through the
 	// public URL and matches this token. Closes the "stale DNS
