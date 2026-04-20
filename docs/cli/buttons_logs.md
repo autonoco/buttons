@@ -5,23 +5,28 @@ description: "CLI reference for buttons logs"
 
 ## buttons logs
 
-View past runs for a button or workspace failures
+View past runs for a button or tail the live progress stream
 
 ### Synopsis
 
-Structured run history. CLI only — no TUI. For a live-stream
-viewer of an in-flight press, use the board: `buttons board`.
+Structured run history. CLI only — for the full-screen
+interactive viewer, use 'buttons board'.
 
   buttons BUTTONNAME logs            — past runs for this button
+  buttons BUTTONNAME logs --follow   — tail live progress JSONL as it writes
   buttons BUTTONNAME logs --failed   — just failures
   buttons BUTTONNAME logs --limit 10 — how many (default 20)
   buttons drawer DRAWERNAME logs     — past runs for this drawer
   buttons logs                       — recent failures across the workspace
 
-Agent mode (--json or non-TTY) returns the full Run shape (status,
-exit_code, duration_ms, stdout, stderr, error_type, args). TTY mode
-prints a compact one-line-per-run table. The verb-first form
-(buttons logs NAME) still works as an alias.
+--follow streams the latest press's progress events to stdout as
+plain text (JSONL: one event per line). No TUI. Pipe it, parse it,
+interrupt it with ctrl+C. Use this when an agent needs to watch a
+long-running press live.
+
+Agent mode (--json or non-TTY) returns the full Run shape for
+non-follow calls. TTY mode prints a compact one-line-per-run table.
+The verb-first form (buttons logs NAME) still works as an alias.
 
 ```
 buttons logs [name] [flags]
@@ -31,6 +36,7 @@ buttons logs [name] [flags]
 
 ```
       --failed      only return runs that failed
+  -f, --follow      stream the latest press's progress events live (agent-friendly, no TUI)
   -h, --help        help for logs
       --limit int   max runs to return (default 20)
 ```
