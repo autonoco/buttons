@@ -6,119 +6,51 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/drawer"
 	"github.com/autonoco/buttons/internal/history"
-	"github.com/autonoco/buttons/internal/tui"
 )
 
-var logsArgs []string
 var logsFailed bool
 var logsLimit int
-var logsFollow bool
 
 var logsCmd = &cobra.Command{
 	Use:   "logs [name]",
-	Short: "View a button's past runs, or press and stream live",
-	Long: `View a button's run history. Preferred form is name-first to
-match the rest of the CLI:
+	Short: "View past runs for a button or workspace failures",
+	Long: `Structured run history. CLI only — no TUI. For a live-stream
+viewer of an in-flight press, use the board: ` + "`buttons board`" + `.
 
-  buttons BUTTONNAME logs           — past runs for this button
-  buttons BUTTONNAME logs --follow  — press + stream live
-  buttons BUTTONNAME logs --failed  — just failures
-  buttons drawer DRAWERNAME logs    — past runs for this drawer
+  buttons BUTTONNAME logs            — past runs for this button
+  buttons BUTTONNAME logs --failed   — just failures
+  buttons BUTTONNAME logs --limit 10 — how many (default 20)
+  buttons drawer DRAWERNAME logs     — past runs for this drawer
+  buttons logs                       — recent failures across the workspace
 
-The verb-first form (buttons logs NAME) still works as an alias.
-buttons logs (no name) dumps recent failures across every button
-and drawer — same shape as summary.recent_failures.`,
+Agent mode (--json or non-TTY) returns the full Run shape (status,
+exit_code, duration_ms, stdout, stderr, error_type, args). TTY mode
+prints a compact one-line-per-run table. The verb-first form
+(buttons logs NAME) still works as an alias.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runLogs,
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
-	// Workspace-level: no name → recent failures across everything.
+	// No name → workspace-wide recent failures. Same bucket
+	// `buttons summary --json` surfaces, but as the direct triage
+	// entry point.
 	if len(args) == 0 {
 		return logsWorkspaceFailures()
 	}
-
-	// Per-button: if --follow AND TTY AND not --json, drop into the
-	// live-stream TUI. Otherwise return the structured past-runs
-	// view — this is the agent path and also the default non-TTY
-	// path. Failures live in history, so `buttons NAME logs --failed`
-	// is the triage call.
-	if logsFollow && !jsonOutput && !config.IsNonTTY() {
-		return runLogsTUI(cmd, args[0])
-	}
-	return logsButtonJSON(args[0])
+	// Per-button → structured past runs. Agents get JSON; humans
+	// get a one-line-per-run table.
+	return logsButtonPast(args[0])
 }
 
-func runLogsTUI(cmd *cobra.Command, name string) error {
-	svc := button.NewService()
-
-	btn, err := svc.Get(name)
-	if err != nil {
-		return handleServiceError(err)
-	}
-
-	// HTTP / prompt buttons don't stream. Surface a clear error instead
-	// of showing an empty log viewer forever.
-	if btn.URL != "" || btn.Runtime == "prompt" {
-		fmt.Fprintf(cmd.ErrOrStderr(),
-			"buttons logs: %s is a %s button, which doesn't stream. Use: buttons press %s\n",
-			btn.Name, runtimeLabel(btn), btn.Name)
-		return errSilent
-	}
-
-	parsedArgs, err := button.ParsePressArgs(logsArgs, btn.Args)
-	if err != nil {
-		return handleServiceError(err)
-	}
-
-	codePath, err := svc.CodePath(btn.Name)
-	if err != nil {
-		return handleServiceError(err)
-	}
-
-	// Same battery resolution as cmd/press so a battery added in
-	// another shell reaches the child.
-	batSvc, err := newBatteryService()
-	if err != nil {
-		return handleServiceError(err)
-	}
-	batteries, err := batSvc.Env()
-	if err != nil {
-		return handleServiceError(err)
-	}
-
-	if err := tui.RunLogs(btn, parsedArgs, batteries, codePath); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "logs: %v\n", err)
-		return errSilent
-	}
-	return nil
-}
-
-// runtimeLabel returns a user-friendly runtime name for error messages.
-// Maps blank / URL / prompt to the intent rather than the internal enum.
-func runtimeLabel(btn *button.Button) string {
-	if btn.URL != "" {
-		return "HTTP"
-	}
-	if btn.Runtime == "prompt" {
-		return "prompt"
-	}
-	if btn.Runtime == "" {
-		return "shell"
-	}
-	return btn.Runtime
-}
-
-// logsButtonJSON prints past runs for one button. Honors --failed
-// (filter to non-ok) and --limit (default 20). Agents get full
-// structured JSON; humans in TTY get a compact table. Either way
-// it's the standard CLI — no TUI unless the caller asks for
-// --follow.
-func logsButtonJSON(name string) error {
+// logsButtonPast prints past runs for one button. Honors --failed
+// and --limit. Agents get JSON (via --json or non-TTY auto-detect);
+// humans get a compact table. Never opens a TUI — that's what
+// `buttons board` is for.
+func logsButtonPast(name string) error {
 	n := logsLimit
 	if n <= 0 {
 		n = 20
@@ -156,9 +88,7 @@ func logsButtonJSON(name string) error {
 }
 
 // logsWorkspaceFailures aggregates recent failures across every
-// button + drawer so agents can triage in one tool call. Same bucket
-// that `buttons summary --json` surfaces under recent_failures, but
-// this command is the "show me what broke" direct path.
+// button + drawer so agents can triage in one tool call.
 func logsWorkspaceFailures() error {
 	n := logsLimit
 	if n <= 0 {
@@ -178,8 +108,7 @@ func logsWorkspaceFailures() error {
 
 	out := []failure{}
 
-	// Button runs.
-	allButtonRuns, _ := history.ListAll(n * 4) // overfetch; filter below
+	allButtonRuns, _ := history.ListAll(n * 4)
 	for _, r := range allButtonRuns {
 		if r.Status == "ok" {
 			continue
@@ -197,7 +126,6 @@ func logsWorkspaceFailures() error {
 		}
 	}
 
-	// Drawer runs — scan each drawer's history.
 	if len(out) < n {
 		dsvc := drawer.NewService()
 		drawers, _ := dsvc.List()
@@ -225,7 +153,17 @@ func logsWorkspaceFailures() error {
 		}
 	}
 
-	return config.WriteJSON(out)
+	if jsonOutput {
+		return config.WriteJSON(out)
+	}
+	if len(out) == 0 {
+		fmt.Fprintln(os.Stderr, "no recent failures")
+		return nil
+	}
+	for _, f := range out {
+		fmt.Printf("%s  %s  %s\n", f.Target, f.Status, f.ErrorType)
+	}
+	return nil
 }
 
 func lastFailedStep(r drawer.Run) string {
@@ -245,9 +183,7 @@ func truncateForSummary(s string, n int) string {
 }
 
 func init() {
-	logsCmd.Flags().StringArrayVar(&logsArgs, "arg", nil, "argument as key=value (with --follow, passed through to the press)")
 	logsCmd.Flags().BoolVar(&logsFailed, "failed", false, "only return runs that failed")
 	logsCmd.Flags().IntVar(&logsLimit, "limit", 20, "max runs to return")
-	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "press the button and stream live output in a TUI")
 	rootCmd.AddCommand(logsCmd)
 }

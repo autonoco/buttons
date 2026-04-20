@@ -5,21 +5,23 @@ description: "CLI reference for buttons logs"
 
 ## buttons logs
 
-View a button's past runs, or press and stream live
+View past runs for a button or workspace failures
 
 ### Synopsis
 
-View a button's run history. Preferred form is name-first to
-match the rest of the CLI:
+Structured run history. CLI only — no TUI. For a live-stream
+viewer of an in-flight press, use the board: `buttons board`.
 
-  buttons BUTTONNAME logs           — past runs for this button
-  buttons BUTTONNAME logs --follow  — press + stream live
-  buttons BUTTONNAME logs --failed  — just failures
-  buttons drawer DRAWERNAME logs    — past runs for this drawer
+  buttons BUTTONNAME logs            — past runs for this button
+  buttons BUTTONNAME logs --failed   — just failures
+  buttons BUTTONNAME logs --limit 10 — how many (default 20)
+  buttons drawer DRAWERNAME logs     — past runs for this drawer
+  buttons logs                       — recent failures across the workspace
 
-The verb-first form (buttons logs NAME) still works as an alias.
-buttons logs (no name) dumps recent failures across every button
-and drawer — same shape as summary.recent_failures.
+Agent mode (--json or non-TTY) returns the full Run shape (status,
+exit_code, duration_ms, stdout, stderr, error_type, args). TTY mode
+prints a compact one-line-per-run table. The verb-first form
+(buttons logs NAME) still works as an alias.
 
 ```
 buttons logs [name] [flags]
@@ -28,11 +30,9 @@ buttons logs [name] [flags]
 ### Options
 
 ```
-      --arg stringArray   argument as key=value (with --follow, passed through to the press)
-      --failed            only return runs that failed
-  -f, --follow            press the button and stream live output in a TUI
-  -h, --help              help for logs
-      --limit int         max runs to return (default 20)
+      --failed      only return runs that failed
+  -h, --help        help for logs
+      --limit int   max runs to return (default 20)
 ```
 
 ### Options inherited from parent commands
