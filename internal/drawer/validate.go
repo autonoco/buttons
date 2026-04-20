@@ -62,6 +62,18 @@ func Validate(d *Drawer, btnSvc *button.Service) ValidationReport {
 	for _, in := range d.Inputs {
 		inputNames[in.Name] = in
 	}
+	// When a drawer has a webhook trigger, the listener dispatches
+	// with inputs.webhook populated from the incoming POST (body,
+	// headers, query, etc.). Treat that as an implicit declared input
+	// so `${inputs.webhook.body.foo}` refs validate cleanly — without
+	// this, every webhook-triggered drawer reports a spurious
+	// "unknown drawer input 'webhook'" error.
+	for _, t := range d.Triggers {
+		if t.Kind == "webhook" {
+			inputNames["webhook"] = InputDef{Name: "webhook", Type: "any", Description: "Incoming webhook payload (implicit from kind=webhook trigger)"}
+			break
+		}
+	}
 
 	// Cache button specs as we look them up.
 	btnCache := map[string]*button.Button{}
@@ -451,6 +463,14 @@ func typesCompatible(src, dst string) bool {
 	}
 	// enum values are strings at the wire level.
 	if src == "enum" && dst == "string" {
+		return true
+	}
+	// "any" is used for the implicit `webhook` input on webhook-
+	// triggered drawers — the payload's field types are shaped by
+	// the sending service (Apify, Stripe, etc.) and aren't worth
+	// statically re-encoding in drawer.json. Fall through to a
+	// best-effort match at press time.
+	if src == "any" {
 		return true
 	}
 	return false
