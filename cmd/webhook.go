@@ -253,7 +253,7 @@ func runWebhookTest(cmd *cobra.Command, args []string) error {
 	if !jsonOutput {
 		fmt.Fprintf(os.Stderr, "  Starting tunnel (this takes ~15s)…\n")
 	}
-	t, err := webhook.StartTunnel(ctx, srv.LocalURL())
+	t, err := webhook.StartTunnel(ctx, srv.LocalURL(), srv.ReadyToken())
 	if err != nil {
 		return handleWebhookErr(err)
 	}
@@ -263,6 +263,12 @@ func runWebhookTest(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return handleWebhookErr(err)
 	}
+	// Register the waiter BEFORE publishing the URL (spawning the
+	// POST goroutine). Eliminates the "event arrives before Wait
+	// registers" race — no pending-map needed server-side.
+	waiterCh := srv.Register(corr)
+	defer srv.Deregister(corr)
+
 	postURL := fmt.Sprintf("%s/webhook/%s", t.URL, corr)
 
 	if !jsonOutput {
@@ -270,9 +276,8 @@ func runWebhookTest(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "  POSTing to %s …\n", postURL)
 	}
 
-	// Fire the test POST in the background; cloudflared sometimes
-	// needs a beat before the first edge request routes, so we retry
-	// with a short backoff.
+	// Fire the test POST in the background. Tunnel readiness is
+	// already verified by StartTunnel's /healthz + token check.
 	delivery := make(chan error, 1)
 	go func() {
 		delivery <- selfPost(ctx, postURL)
@@ -280,7 +285,14 @@ func runWebhookTest(cmd *cobra.Command, args []string) error {
 
 	waitCtx, waitCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer waitCancel()
-	ev, waitErr := srv.Wait(waitCtx, corr)
+
+	var ev webhook.Event
+	var waitErr error
+	select {
+	case ev = <-waiterCh:
+	case <-waitCtx.Done():
+		waitErr = waitCtx.Err()
+	}
 	if waitErr != nil {
 		postErr := <-delivery
 		return handleWebhookErr(fmt.Errorf("no webhook received within 60s (post err: %v, wait err: %w)", postErr, waitErr))
