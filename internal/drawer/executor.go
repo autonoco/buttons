@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -147,6 +148,9 @@ func (e *Executor) runStep(ctx context.Context, d *Drawer, step *Step, ctxMap Co
 	}
 	if kind == "aggregate" {
 		return e.runAggregateStep(step, ctxMap)
+	}
+	if kind == "wait" {
+		return e.runWaitStep(ctx, step, ctxMap)
 	}
 	if kind != "button" {
 		sr.Status = "failed"
@@ -683,6 +687,102 @@ func (e *Executor) runAggregateStep(step *Step, ctxMap Context) (StepRun, error)
 	return sr, nil
 }
 
+// runWaitStep handles kind=wait — pauses for Duration or until the
+// Until timestamp. Honors context cancellation so presses abort
+// cleanly on Ctrl-C. No output; the step just consumes wall time.
+//
+// Common uses: cool-off between API calls, delay retries, hold a
+// pipeline until a scheduled deploy window opens. Webhook-triggered
+// resumes ("wait for external signal") are deferred to when we
+// have a REST API — today this is purely a time-based pause.
+func (e *Executor) runWaitStep(ctx context.Context, step *Step, ctxMap Context) (StepRun, error) {
+	sr := StepRun{ID: step.ID}
+
+	if step.Duration == "" && step.Until == "" {
+		sr.Status = "failed"
+		sr.Error = &StepError{
+			Code:        "VALIDATION_ERROR",
+			Message:     "wait step needs either 'duration' or 'until'",
+			Remediation: "set step.duration='30s' or step.until='<RFC3339>' / ${ref}",
+		}
+		return sr, fmt.Errorf("wait without duration or until")
+	}
+
+	start := time.Now()
+	var target time.Time
+	switch {
+	case step.Duration != "":
+		// Resolve ${...} refs first so inputs.delay type flows work.
+		resolved, err := Resolve(step.Duration, ctxMap)
+		if err != nil {
+			sr.Status = "failed"
+			sr.Error = &StepError{Code: "RESOLVE_ERROR", Message: err.Error()}
+			return sr, err
+		}
+		durStr, ok := resolved.(string)
+		if !ok {
+			durStr = fmt.Sprintf("%v", resolved)
+		}
+		d, err := time.ParseDuration(durStr)
+		if err != nil {
+			sr.Status = "failed"
+			sr.Error = &StepError{
+				Code:        "VALIDATION_ERROR",
+				Message:     fmt.Sprintf("invalid duration %q: %v", durStr, err),
+				Remediation: "use Go duration syntax like '30s', '2m', '1h30m'",
+			}
+			return sr, err
+		}
+		target = start.Add(d)
+	default: // step.Until
+		resolved, err := Resolve(step.Until, ctxMap)
+		if err != nil {
+			sr.Status = "failed"
+			sr.Error = &StepError{Code: "RESOLVE_ERROR", Message: err.Error()}
+			return sr, err
+		}
+		untilStr, ok := resolved.(string)
+		if !ok {
+			untilStr = fmt.Sprintf("%v", resolved)
+		}
+		t, err := time.Parse(time.RFC3339, untilStr)
+		if err != nil {
+			sr.Status = "failed"
+			sr.Error = &StepError{
+				Code:        "VALIDATION_ERROR",
+				Message:     fmt.Sprintf("invalid RFC3339 timestamp %q: %v", untilStr, err),
+				Remediation: "use 2026-04-20T15:00:00Z format",
+			}
+			return sr, err
+		}
+		target = t
+	}
+
+	wait := time.Until(target)
+	if wait > 0 {
+		select {
+		case <-ctx.Done():
+			sr.Status = "failed"
+			sr.Error = &StepError{
+				Code:        "CANCELLED",
+				Message:     "wait cancelled before target time",
+				Remediation: "press was interrupted before the wait completed",
+			}
+			sr.DurationMs = time.Since(start).Milliseconds()
+			return sr, ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+
+	sr.Status = "ok"
+	sr.DurationMs = time.Since(start).Milliseconds()
+	sr.Output = map[string]any{
+		"waited_ms": sr.DurationMs,
+		"until":     target.UTC().Format(time.RFC3339),
+	}
+	return sr, nil
+}
+
 // computeReturn evaluates a drawer's Return block against its
 // completed run's step outputs, producing the map that flows into
 // the parent drawer's context as this step's .output. Returns an
@@ -727,11 +827,69 @@ func (e *Executor) finalize(res *ExecuteResult, d *Drawer) {
 		ErrorType:  errorCode(res.Error),
 	})
 
-	// Failures are already captured in the drawer's own pressed/
-	// history (RecordRun above). Agents triage via `buttons summary`
-	// (cross-target recent_failures) or `buttons drawer NAME` for
-	// the per-drawer view that surfaces recent_runs including the
-	// last failure and its remediation.
+	// Drawer-level on_error handler. When the drawer fails AND has
+	// an on_error pointer, invoke the handler drawer with a standard
+	// error payload so an agent's cleanup / alert drawer runs
+	// automatically. Handler failures are swallowed — we log but
+	// don't promote them to primary failures (the original error is
+	// still what matters).
+	if res.Status != "ok" && d.OnError != nil && d.OnError.Drawer != "" {
+		e.invokeErrorHandler(d, res, redacted)
+	}
+}
+
+// invokeErrorHandler runs the on_error handler drawer with a
+// standardized payload:
+//
+//	drawer       — the failing drawer's name
+//	run_id       — the failing run's id (cross-links history)
+//	failed_step  — id of the step that tripped the failure
+//	error        — { code, message, remediation }
+//	inputs       — the failing drawer's (redacted) inputs
+//
+// Handler-supplied With{} keys override these defaults, so agents
+// can inject literal config like severity/team/channel.
+func (e *Executor) invokeErrorHandler(parent *Drawer, res *ExecuteResult, redactedInputs map[string]any) {
+	handlerName := parent.OnError.Drawer
+	handler, err := e.DrawerSvc.Get(handlerName)
+	if err != nil {
+		// Missing handler is a misconfiguration, not a runtime
+		// failure. Surface to stderr and move on — the primary
+		// failure is already recorded.
+		fmt.Fprintf(os.Stderr, "drawer %s: on_error handler %q not found (%v)\n", parent.Name, handlerName, err)
+		return
+	}
+
+	errPayload := map[string]any{
+		"code": errorCode(res.Error),
+	}
+	if res.Error != nil {
+		errPayload["message"] = res.Error.Message
+		errPayload["remediation"] = res.Error.Remediation
+	}
+	inputs := map[string]any{
+		"drawer":      parent.Name,
+		"run_id":      res.RunID,
+		"failed_step": res.FailedStep,
+		"error":       errPayload,
+		"inputs":      redactedInputs,
+	}
+	// User-supplied With{} wins over defaults so agents can inject
+	// team / severity / channel literals without us having to model
+	// every possible enrichment field.
+	for k, v := range parent.OnError.With {
+		inputs[k] = v
+	}
+
+	// Fresh context for the handler — don't inherit the parent's
+	// cancellation state since the parent is done.
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	defer cancel()
+
+	handlerRes, herr := e.Execute(ctx, handler, inputs)
+	if herr != nil || (handlerRes != nil && handlerRes.Status != "ok") {
+		fmt.Fprintf(os.Stderr, "drawer %s: on_error handler %q failed (non-fatal)\n", parent.Name, handlerName)
+	}
 }
 
 // computeBackoff turns a retry policy + attempt number into a wait

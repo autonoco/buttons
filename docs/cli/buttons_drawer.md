@@ -18,6 +18,7 @@ Usage:
   buttons drawer NAME add BUTTON [BUTTON ...]         append button step(s)
   buttons drawer NAME add drawer/OTHER                append a sub-drawer step
   buttons drawer NAME add for_each:BUTTON             append a per-item loop wrapping BUTTON
+  buttons drawer NAME add wait:DURATION               append a time-based pause (e.g. wait:30s)
   buttons drawer NAME connect A to B                  auto-match output → args by name+type
   buttons drawer NAME connect A.output.x to B.args.y  explicit field path
   buttons drawer NAME set STEP.args.FIELD=value       literal or ${ref} into a step arg

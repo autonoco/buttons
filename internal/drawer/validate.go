@@ -178,6 +178,23 @@ func Validate(d *Drawer, btnSvc *button.Service) ValidationReport {
 			}
 			continue
 		}
+		if kind == "wait" {
+			if st.Duration == "" && st.Until == "" {
+				report.Errors = append(report.Errors, ValidationIssue{
+					Severity: "error", StepID: st.ID,
+					Message:     "wait step needs either 'duration' or 'until'",
+					Remediation: "set step.duration='30s' or step.until='<RFC3339>'",
+				})
+			}
+			if st.Duration != "" && st.Until != "" {
+				report.Warnings = append(report.Warnings, ValidationIssue{
+					Severity: "warning", StepID: st.ID,
+					Message:     "wait step sets both 'duration' and 'until' — duration wins",
+					Remediation: "keep only one",
+				})
+			}
+			continue
+		}
 		if kind != "button" {
 			// Future kinds are reserved but not runnable; the executor
 			// errors with KIND_NOT_IMPLEMENTED. Warn so the validator

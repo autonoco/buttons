@@ -168,6 +168,29 @@ func (s *Service) AddSteps(drawerName string, targets []string) (*Drawer, error)
 	}
 
 	for _, t := range targets {
+		// `wait:DURATION` → kind=wait step with the given duration.
+		// Most common shape; for `until`-form, use `add wait` then
+		// `set wait.until=<RFC3339>`.
+		if strings.HasPrefix(t, "wait:") {
+			dur := strings.TrimPrefix(t, "wait:")
+			if dur == "" {
+				return nil, &ServiceError{
+					Code:    "VALIDATION_ERROR",
+					Message: "wait:DURATION requires a duration (e.g. wait:30s)",
+				}
+			}
+			id := "wait"
+			for n := 2; taken[id]; n++ {
+				id = fmt.Sprintf("wait-%d", n)
+			}
+			taken[id] = true
+			d.Steps = append(d.Steps, Step{
+				ID:       id,
+				Kind:     "wait",
+				Duration: dur,
+			})
+			continue
+		}
 		// `for_each:BUTTON` → kind=for_each step wrapping one nested
 		// button step. Minimal shorthand so agents can author simple
 		// per-item loops without patching drawer.json directly.
@@ -324,10 +347,14 @@ func (s *Service) SetField(drawerName, stepID, field, value string) (*Drawer, er
 		d.Steps[idx].Button = value
 	case "drawer":
 		d.Steps[idx].Drawer = value
+	case "duration":
+		d.Steps[idx].Duration = value
+	case "until":
+		d.Steps[idx].Until = value
 	default:
 		return nil, &ServiceError{
 			Code:    "STEP_FIELD_UNKNOWN",
-			Message: fmt.Sprintf("unknown step field %q — allowed: over, as, on_item_failure, from, pluck, button, drawer", field),
+			Message: fmt.Sprintf("unknown step field %q — allowed: over, as, on_item_failure, from, pluck, button, drawer, duration, until", field),
 		}
 	}
 	d.UpdatedAt = time.Now().UTC()

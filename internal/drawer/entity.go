@@ -148,6 +148,18 @@ type Step struct {
 	// the result is collected into an output array.
 	From  string `json:"from,omitempty" jsonschema:"description=CEL expression producing the input array (kind=aggregate)"`
 	Pluck string `json:"pluck,omitempty" jsonschema:"description=CEL expression evaluated per item; 'item' is bound to the current entry (kind=aggregate)"`
+
+	// --- Fields below apply only to Kind == "wait" ---
+	//
+	// Duration is a Go-style duration string ("5s", "2m30s", "1h").
+	// Mutually exclusive with Until. If both are set, Duration wins
+	// and a warning surfaces at validate time.
+	Duration string `json:"duration,omitempty" jsonschema:"description=Go duration like '30s' (kind=wait)"`
+
+	// Until is an RFC3339 timestamp OR a CEL expression producing
+	// one. The runtime sleeps until that wall-clock instant, honoring
+	// ctx cancellation so presses cleanly abort on Ctrl-C.
+	Until string `json:"until,omitempty" jsonschema:"description=RFC3339 timestamp or CEL expression producing one (kind=wait)"`
 }
 
 // Case is one branch of a kind=switch step. When is a CEL predicate;
