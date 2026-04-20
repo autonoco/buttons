@@ -121,6 +121,10 @@
           "description": "Arg/input values or ${ref} strings to pass to the button or drawer",
           "type": "object"
         },
+        "as": {
+          "description": "Loop variable name bound to the current item (kind=for_each)",
+          "type": "string"
+        },
         "bindings": {
           "type": "object"
         },
@@ -153,6 +157,25 @@
         },
         "on_failure": {
           "$ref": "#/$defs/ErrorPolicy"
+        },
+        "on_item_failure": {
+          "description": "How to react to a per-item failure (kind=for_each)",
+          "enum": [
+            "stop",
+            "continue"
+          ],
+          "type": "string"
+        },
+        "over": {
+          "description": "CEL expression producing the array to iterate over (kind=for_each)",
+          "type": "string"
+        },
+        "steps": {
+          "description": "Nested steps run once per item (kind=for_each)",
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
         },
         "timeout_seconds": {
           "type": "integer"

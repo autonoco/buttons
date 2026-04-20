@@ -125,6 +125,23 @@ func Validate(d *Drawer, btnSvc *button.Service) ValidationReport {
 			}
 			continue
 		}
+		if kind == "for_each" {
+			if st.Over == "" {
+				report.Errors = append(report.Errors, ValidationIssue{
+					Severity: "error", StepID: st.ID,
+					Message:     "for_each step has no 'over' expression",
+					Remediation: "set step.over to a CEL expression that resolves to an array",
+				})
+			}
+			if len(st.Steps) == 0 {
+				report.Warnings = append(report.Warnings, ValidationIssue{
+					Severity: "warning", StepID: st.ID,
+					Message:     "for_each step has no nested steps — iteration will be a no-op",
+					Remediation: "add at least one step inside step.steps",
+				})
+			}
+			continue
+		}
 		if kind != "button" {
 			// Future kinds are reserved but not runnable; the executor
 			// errors with KIND_NOT_IMPLEMENTED. Warn so the validator
@@ -132,7 +149,7 @@ func Validate(d *Drawer, btnSvc *button.Service) ValidationReport {
 			report.Warnings = append(report.Warnings, ValidationIssue{
 				Severity: "warning", StepID: st.ID,
 				Message:     fmt.Sprintf("step kind %q is reserved but not executable yet", kind),
-				Remediation: "only kind=button and kind=drawer execute today; this step will error at press time",
+				Remediation: "only kind=button, kind=drawer, and kind=for_each execute today; this step will error at press time",
 			})
 			continue
 		}

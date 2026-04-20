@@ -105,6 +105,31 @@ type Step struct {
 	// Bindings is a legacy flat map from the drawer v0 stub. Retained
 	// so older drawer.json files load; new writes use Args instead.
 	Bindings map[string]string `json:"bindings,omitempty"`
+
+	// --- Fields below apply only to Kind == "for_each" ---
+	//
+	// Over is a CEL expression (string form, ${...} wrapping
+	// OPTIONAL for consistency with Args) that resolves to an
+	// array. The for_each step iterates that array, running Steps
+	// once per item.
+	Over string `json:"over,omitempty" jsonschema:"description=CEL expression producing the array to iterate over (kind=for_each)"`
+
+	// As is the variable name under which the current item is
+	// exposed to the nested Steps' ${...} context. Agents write
+	// ${<as>.field} or ${<as>} inside nested step args.
+	As string `json:"as,omitempty" jsonschema:"description=Loop variable name bound to the current item (kind=for_each)"`
+
+	// OnItemFailure decides whether a failing iteration aborts the
+	// loop ("stop", default) or is recorded and skipped ("continue").
+	// Separate from the drawer-level OnFailure so agents can say
+	// "fail-fast overall, but tolerate per-item errors here."
+	OnItemFailure string `json:"on_item_failure,omitempty" jsonschema:"enum=stop,enum=continue,description=How to react to a per-item failure (kind=for_each)"`
+
+	// Steps are the nested steps executed per item. Each iteration
+	// gets its own child context layered on the outer one; step ids
+	// inside Steps are namespaced to the iteration so outer refs
+	// can't accidentally punch through.
+	Steps []Step `json:"steps,omitempty" jsonschema:"description=Nested steps run once per item (kind=for_each)"`
 }
 
 // ErrorPolicy controls how a step failure is handled. Mirrors

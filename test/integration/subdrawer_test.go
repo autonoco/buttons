@@ -2,6 +2,7 @@ package integration
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,6 +221,150 @@ func TestDrawerSet_WritesArgs(t *testing.T) {
 	}
 	if !strings.Contains(r.Stdout, `built 7.7.7`) {
 		t.Errorf("expected output to contain 'built 7.7.7', got: %s", r.Stdout)
+	}
+}
+
+// TestForEach_IteratesNestedSteps verifies kind=for_each runs its
+// nested Steps once per item in the Over array, with ${<as>.field}
+// refs resolving against the current item. No dedicated CLI
+// authoring surface yet — the test patches the drawer.json directly,
+// which also exercises the schema round-trip.
+func TestForEach_IteratesNestedSteps(t *testing.T) {
+	env := newTestEnv(t)
+
+	// List buttons: emitter produces a JSON array of strings.
+	env.run("create", "list-names",
+		"--runtime", "shell",
+		"--code", `echo '{"names":["a","b","c"]}'`,
+		"--json",
+	)
+	// Greeter: takes a name arg, echoes back.
+	env.run("create", "greeter",
+		"--runtime", "shell",
+		"--code", `echo "{\"hi\":\"$BUTTONS_ARG_NAME\"}"`,
+		"--arg", "name:string:required",
+		"--json",
+	)
+
+	// Create drawer with list-names step + for_each wrapper around
+	// greeter. We patch drawer.json to plant the for_each step
+	// since the CLI doesn't yet author nested steps directly.
+	env.run("drawer", "create", "loop-demo", "--json")
+	env.run("drawer", "loop-demo", "add", "list-names", "--json")
+
+	drawerPath := filepath.Join(env.home, "drawers", "loop-demo", "drawer.json")
+	data, _ := os.ReadFile(drawerPath) // #nosec G304 — test scope
+	var d map[string]any
+	_ = json.Unmarshal(data, &d)
+	steps := d["steps"].([]any)
+	// Append a for_each step that iterates list-names.output.names
+	// and runs greeter per item.
+	forEach := map[string]any{
+		"id":   "each-name",
+		"kind": "for_each",
+		"over": "${list-names.output.names}",
+		"as":   "n",
+		"steps": []any{
+			map[string]any{
+				"id":     "greet",
+				"kind":   "button",
+				"button": "greeter",
+				"args": map[string]any{
+					"name": "${n}",
+				},
+			},
+		},
+	}
+	steps = append(steps, forEach)
+	d["steps"] = steps
+	out, _ := json.MarshalIndent(d, "", "  ")
+	if err := os.WriteFile(drawerPath, out, 0o600); err != nil {
+		t.Fatalf("write drawer: %v", err)
+	}
+
+	r := env.run("drawer", "loop-demo", "press", "--json")
+	if r.ExitCode != 0 {
+		t.Fatalf("press: exit %d, stderr=%s, stdout=%s", r.ExitCode, r.Stderr, r.Stdout)
+	}
+
+	// Expect the for_each step's output to report 3 iterations,
+	// each successful, each producing {"hi": "<name>"}.
+	var resp struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Status string `json:"status"`
+			Steps  []struct {
+				ID     string         `json:"id"`
+				Status string         `json:"status"`
+				Output map[string]any `json:"output"`
+			} `json:"steps"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(r.Stdout), &resp); err != nil {
+		t.Fatalf("parse: %v\nraw=%s", err, r.Stdout)
+	}
+	if !resp.OK || resp.Data.Status != "ok" {
+		t.Fatalf("drawer not ok: %s", r.Stdout)
+	}
+
+	// Find the for_each step in the output.
+	var each *struct {
+		ID     string         `json:"id"`
+		Status string         `json:"status"`
+		Output map[string]any `json:"output"`
+	}
+	for i := range resp.Data.Steps {
+		if resp.Data.Steps[i].ID == "each-name" {
+			each = &resp.Data.Steps[i]
+			break
+		}
+	}
+	if each == nil {
+		t.Fatalf("each-name step not found in output: %s", r.Stdout)
+	}
+	if each.Status != "ok" {
+		t.Errorf("each-name status = %q, want ok", each.Status)
+	}
+	totalAny, _ := each.Output["total"]
+	if fmt.Sprintf("%v", totalAny) != "3" {
+		t.Errorf("expected total=3, got %v", totalAny)
+	}
+	results, _ := each.Output["results"].([]any)
+	if len(results) != 3 {
+		t.Errorf("expected 3 results, got %d", len(results))
+	}
+}
+
+// TestForEach_MissingOverFails verifies the validator / executor
+// catch a missing 'over' expression.
+func TestForEach_MissingOverFails(t *testing.T) {
+	env := newTestEnv(t)
+	env.run("drawer", "create", "loopy", "--json")
+
+	drawerPath := filepath.Join(env.home, "drawers", "loopy", "drawer.json")
+	data, _ := os.ReadFile(drawerPath) // #nosec G304 — test scope
+	var d map[string]any
+	_ = json.Unmarshal(data, &d)
+	d["steps"] = []any{
+		map[string]any{
+			"id":   "broken-loop",
+			"kind": "for_each",
+			"as":   "x",
+			// over intentionally omitted
+			"steps": []any{},
+		},
+	}
+	out, _ := json.MarshalIndent(d, "", "  ")
+	if err := os.WriteFile(drawerPath, out, 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	r := env.run("drawer", "loopy", "press", "--json")
+	if r.ExitCode == 0 {
+		t.Fatal("expected failure on missing over")
+	}
+	if !strings.Contains(r.Stdout, "VALIDATION_ERROR") && !strings.Contains(r.Stdout, "no 'over'") {
+		t.Errorf("expected missing-over error, got: %s", r.Stdout)
 	}
 }
 

@@ -133,10 +133,14 @@ func (e *Executor) runStep(ctx context.Context, d *Drawer, step *Step, ctxMap Co
 		kind = "button"
 	}
 	// Route per-kind. kind=drawer recurses into another drawer
-	// (sub-drawer composition — stage 3). All other non-button
-	// kinds remain reserved until their executors land.
+	// (sub-drawer composition — stage 3). kind=for_each iterates
+	// nested steps per item. All other non-button kinds remain
+	// reserved until their executors land.
 	if kind == "drawer" {
 		return e.runDrawerStep(ctx, step, ctxMap)
+	}
+	if kind == "for_each" {
+		return e.runForEachStep(ctx, step, ctxMap)
 	}
 	if kind != "button" {
 		sr.Status = "failed"
@@ -388,6 +392,122 @@ func (e *Executor) runDrawerStep(ctx context.Context, step *Step, ctxMap Context
 	sr.Status = "ok"
 	sr.DurationMs = childRes.DurationMs
 	sr.Output = out
+	return sr, nil
+}
+
+// runForEachStep handles kind=for_each — runs nested Steps once per
+// item in the Over expression's resolved array. Each iteration gets
+// its own child context with the outer context plus the loop
+// variable (step.As) bound to the current item.
+//
+// v1 is serial (no parallelism). Per-item failures stop the loop by
+// default; OnItemFailure="continue" records the error and moves on.
+// Output is {results: [...]} — one entry per iteration, each a map
+// of {step_id: step.Output} for the nested steps. Downstream refs
+// walk this via ${<for_each_id>.output.results.0.step_id.field}
+// (indexed access) but will typically be consumed by an aggregator
+// step in later stages.
+func (e *Executor) runForEachStep(ctx context.Context, step *Step, ctxMap Context) (StepRun, error) {
+	sr := StepRun{ID: step.ID}
+
+	if step.Over == "" {
+		sr.Status = "failed"
+		sr.Error = &StepError{
+			Code:        "VALIDATION_ERROR",
+			Message:     "for_each step has no 'over' expression",
+			Remediation: "set step.over to a CEL expression that resolves to an array",
+		}
+		return sr, fmt.Errorf("missing over")
+	}
+	asName := step.As
+	if asName == "" {
+		asName = "item"
+	}
+
+	// Resolve Over. Accept both bare CEL expressions and the
+	// ${...}-wrapped form so agents can write either.
+	overExpr := step.Over
+	if !strings.HasPrefix(overExpr, "${") {
+		overExpr = "${" + overExpr + "}"
+	}
+	resolved, err := Resolve(overExpr, ctxMap)
+	if err != nil {
+		sr.Status = "failed"
+		sr.Error = &StepError{
+			Code:        "RESOLVE_ERROR",
+			Message:     err.Error(),
+			Remediation: "check the 'over' expression — must resolve to an array",
+		}
+		return sr, err
+	}
+	items, ok := resolved.([]any)
+	if !ok {
+		sr.Status = "failed"
+		sr.Error = &StepError{
+			Code:        "VALIDATION_ERROR",
+			Message:     fmt.Sprintf("'over' resolved to %T, not an array", resolved),
+			Remediation: "the 'over' expression must produce a JSON array",
+		}
+		return sr, fmt.Errorf("over is not an array")
+	}
+
+	continueOnFail := step.OnItemFailure == "continue"
+	results := make([]map[string]any, 0, len(items))
+
+	for i, item := range items {
+		// Per-iteration context: start from the outer ctxMap and
+		// overlay the loop variable so nested ${<as>.field} refs
+		// resolve. Don't mutate the outer map — each iter gets its
+		// own.
+		iterCtx := Context{}
+		for k, v := range ctxMap {
+			iterCtx[k] = v
+		}
+		iterCtx[asName] = item
+
+		iterOut := map[string]any{}
+		var iterErr error
+		for _, nested := range step.Steps {
+			nestedStep := nested
+			stepRes, serr := e.runStep(ctx, nil, &nestedStep, iterCtx)
+			iterOut[nestedStep.ID] = map[string]any{
+				"status": stepRes.Status,
+				"output": stepRes.Output,
+				"error":  stepRes.Error,
+			}
+			// Expose the just-completed nested step's output so
+			// later nested steps in the same iteration can chain.
+			iterCtx[nestedStep.ID] = map[string]any{"output": stepRes.Output}
+			if serr != nil {
+				iterErr = serr
+				break
+			}
+		}
+
+		results = append(results, map[string]any{
+			"index":  i,
+			"item":   item,
+			"steps":  iterOut,
+			"failed": iterErr != nil,
+		})
+
+		if iterErr != nil && !continueOnFail {
+			sr.Status = "failed"
+			sr.Output = map[string]any{"results": results, "completed": i + 1, "total": len(items)}
+			sr.Error = &StepError{
+				Code:        "FOREACH_ITEM_FAILED",
+				Message:     fmt.Sprintf("iteration %d failed: %v", i, iterErr),
+				Remediation: "fix the failing nested step or set on_item_failure: continue to tolerate per-item errors",
+			}
+			return sr, iterErr
+		}
+	}
+
+	sr.Status = "ok"
+	sr.Output = map[string]any{
+		"results": results,
+		"total":   len(items),
+	}
 	return sr, nil
 }
 

@@ -383,21 +383,28 @@ func drawerPress(name string, args []string) error {
 		return err
 	}
 	if jsonOutput {
-		return config.WriteJSON(result)
+		if result.Status == "ok" {
+			return config.WriteJSON(result)
+		}
+		// Drawer failed — still emit the full result on stdout so
+		// agents can parse the failure envelope, but exit non-zero
+		// via errSilent so pipelines notice.
+		_ = config.WriteJSON(result)
+		return errSilent
 	}
 	if result.Status == "ok" {
 		fmt.Fprintf(os.Stderr, "✓ drawer %s ok (%dms)\n", name, result.DurationMs)
 		printNextHint("buttons drawer %s logs", name)
-	} else {
-		fmt.Fprintf(os.Stderr, "✗ drawer %s failed at step %s: %s\n", name, result.FailedStep, func() string {
-			if result.Error != nil {
-				return result.Error.Message
-			}
-			return "unknown"
-		}())
-		printNextHint("buttons drawer %s logs --failed", name)
+		return nil
 	}
-	return nil
+	fmt.Fprintf(os.Stderr, "✗ drawer %s failed at step %s: %s\n", name, result.FailedStep, func() string {
+		if result.Error != nil {
+			return result.Error.Message
+		}
+		return "unknown"
+	}())
+	printNextHint("buttons drawer %s logs --failed", name)
+	return errSilent
 }
 
 // drawerSet writes literal values or ${ref} expressions into a
