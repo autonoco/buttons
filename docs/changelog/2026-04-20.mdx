@@ -1,0 +1,38 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-20" description="Drawer workflows, workspace summary, live press streaming, and per-button gitignore">
+## Drawer workflows, workspace summary, live press streaming, and per-button gitignore
+
+Buttons can now be chained into multi-step workflows called drawers, the CLI can stream live output from a running press, and scratch buttons can be kept out of git.
+
+### New features
+
+- **Drawer workflows** — chain buttons into typed, multi-step workflows with `buttons drawer create`. Each step can reference the output of a previous step using `${step.output.field}` expressions, and the drawer validates cross-step references at connect time so wiring errors surface before you run anything. See the [CLI reference](/cli/buttons_drawer).
+
+- **CEL expressions in drawers** — drawer step references support the full [Common Expression Language](https://cel.dev), so you can do string concatenation, arithmetic, ternary conditions, and null coalescing inside `${...}` expressions. Dotted-path references like `${build.output.version}` still work as before.
+
+- **Idempotent presses** — pass `--idempotency-key` and `--idempotency-ttl` to `buttons press` to cache a successful result. A second press with the same key returns the cached output without re-running the script. Failed presses always retry. See the [CLI reference](/cli/buttons_press).
+
+- **Concurrency queues** — buttons can declare a named queue with a concurrency limit in their config. Multiple buttons sharing the same queue name respect the limit across CLI invocations. Useful for rate-limited APIs or shared resources.
+
+- **Progress streaming with `buttons tail`** — scripts can write structured JSONL events to `$BUTTONS_PROGRESS_PATH` during execution. Run `buttons tail NAME -f` to follow the stream in real time. See the [CLI reference](/cli/buttons_tail).
+
+- **`buttons press --follow`** — stream a button's stdout and stderr to your terminal as the press runs. Stdout prints as-is, stderr lines are prefixed with `! `. The final structured result still goes to stdout, so you can pipe it to `jq` while watching progress on stderr. See the [CLI reference](/cli/buttons_press).
+
+- **`buttons summary`** — get a snapshot of your entire workspace in one command: buttons, drawers, recent runs, active runs, and recent failures. Pass `--deep` to inline full schemas and all history. See the [CLI reference](/cli/buttons_summary).
+
+- **`--summary` flag on mutating commands** — add `--summary` to any mutating command (`press`, `drawer add`, `drawer connect`, etc.) to preview what would happen without executing anything. Never mutates, never touches the network.
+
+- **`buttons ignore` / `unignore`** — keep scratch or test buttons out of git by adding them to `.buttons/.gitignore`. Run `buttons ignore NAME` to exclude a button, `buttons unignore NAME` to re-include it, or `buttons create NAME --ignore` to create and ignore in one step. Run `buttons ignore` with no arguments to list currently-ignored entries. See the [CLI reference](/cli/buttons_ignore).
+
+### Updates
+
+- **NAME-first log syntax** — you can now write `buttons NAME logs` as an alternative to `buttons logs NAME`. Both forms work identically. The same applies to drawer logs: `buttons drawer NAME logs`.
+
+- **Pretty logs in the terminal** — `buttons NAME logs` now prints a compact, human-readable table in interactive terminals instead of raw JSON. JSON output is still available with `--json` or when piping.
+
+- **`--follow` for logs** — run `buttons NAME logs --follow` to stream live progress from the latest press as plain text. Pipes cleanly, no TUI, interruptible with Ctrl+C.
+</Update>
