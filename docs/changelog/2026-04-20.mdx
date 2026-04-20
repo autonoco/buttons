@@ -1,0 +1,38 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-04-20" description="Drawer workflows, CEL expressions, workspace summary, and per-button gitignore">
+## Drawer workflows, CEL expressions, workspace summary, and per-button gitignore
+
+Buttons can now be chained into multi-step workflows called drawers, with CEL expressions for dynamic data passing, idempotency keys, concurrency queues, and live progress streaming. The CLI also gains a workspace summary command and per-button gitignore support.
+
+### New features
+
+- **Drawer workflows** — chain buttons into typed, schema-validated workflows with `buttons drawer create`. Add steps with `buttons drawer NAME add`, wire data between them with `buttons drawer NAME connect`, and run the whole sequence with `buttons drawer NAME press`. Steps pass data downstream via `${step.output.field}` references, with automatic type checking at connect time. See the [drawer CLI reference](/cli/buttons_drawer).
+
+- **CEL expressions in drawers** — drawer step references now support full [CEL](https://github.com/google/cel-spec) expressions. Beyond simple dotted paths like `${build.output.version}`, you can use string concatenation, arithmetic, ternary operators, and null coalescing — for example `${has(b.output.x) ? b.output.x : inputs.fallback}`. Environment variables are available via `${env.VAR}` or `$ENV{VAR}`.
+
+- **Idempotency keys** — pass `--idempotency-key` and `--idempotency-ttl` on `buttons press` to skip re-execution when the same key is seen within the TTL window. Only successful results are cached — failures always retry. Useful for making deploys and migrations safe to re-run. See the [press CLI reference](/cli/buttons_press).
+
+- **Concurrency queues** — buttons can declare a named queue with a concurrency limit in their config. Multiple buttons sharing the same queue name respect the pool across CLI invocations. Add a key to scope concurrency per dimension (e.g. three concurrent presses per user).
+
+- **Progress streaming** — every press now exports a `$BUTTONS_PROGRESS_PATH` environment variable pointing to a JSONL file. Scripts can append structured events (percent complete, log lines, custom data) and consumers can follow them live with `buttons tail NAME -f`. See the [tail CLI reference](/cli/buttons_tail).
+
+- **`buttons summary` command** — get a snapshot of your entire workspace in one call: buttons, drawers, recent runs, active runs, and recent failures. Use `--deep` to inline full schemas and all history. Ideal for agents that need workspace context in a single tool call. See the [summary CLI reference](/cli/buttons_summary).
+
+- **`buttons ignore` and `--ignore` flag** — keep scratch or test buttons out of git without editing your repo's `.gitignore`. Run `buttons ignore NAME` to add a button to `.buttons/.gitignore`, or pass `--ignore` when creating. Run `buttons ignore` with no arguments to list ignored entries, and `buttons unignore NAME` to re-include. See the [ignore CLI reference](/cli/buttons_ignore).
+
+- **`--summary` flag on mutating commands** — add `--summary` to any mutating command (`press`, `drawer add`, `drawer connect`, `drawer press`, `drawer remove`) to preview a read-only plan instead of executing. Never mutates, never touches the network.
+
+### Updates
+
+- **NAME-first log syntax** — `buttons NAME logs` now works as an alternative to `buttons logs NAME`. Both forms behave identically, but the NAME-first form reads more naturally and matches the pattern used by other commands. The verb-first form still works for backward compatibility.
+
+- **`--follow` flag on logs** — `buttons NAME logs --follow` streams the latest press's progress events to stdout as plain-text JSONL. No TUI, no color codes — pipes cleanly to other tools. Use this when an agent needs to watch a long-running press live. See the [logs CLI reference](/cli/buttons_logs).
+
+- **Board view toggle** — press `v` on the board to flip between the card grid and a single-column list. Your cursor position is preserved across the switch. See the [board CLI reference](/cli/buttons_board).
+
+- **Scrollable log detail view** — the full-screen log detail view on the board now supports PgUp/PgDn, `g`/`G`, mouse wheel scrolling, and a position indicator in the header showing where you are in the output.
+</Update>
