@@ -97,9 +97,10 @@ func MintReadyToken() (string, error) {
 var quickURLPattern = regexp.MustCompile(`https://[a-z0-9-]+\.trycloudflare\.com`)
 
 func startQuick(ctx context.Context, local, token string) (*Tunnel, error) {
-	cmd := exec.Command("cloudflared", "tunnel",
-		"--url", local,
+	cmd := exec.Command("cloudflared",
 		"--no-autoupdate",
+		"tunnel",
+		"--url", local,
 	) // #nosec G204 -- arguments are literals + local loopback URL
 	return runTunnel(ctx, cmd, ModeQuick, token, func(line string) (string, bool) {
 		if m := quickURLPattern.FindString(line); m != "" {
@@ -116,10 +117,14 @@ func startNamed(ctx context.Context, local, token string, cfg *Config) (*Tunnel,
 	if cfg.Hostname == "" {
 		return nil, errors.New("named tunnel config missing hostname — run `buttons webhook setup`")
 	}
-	cmd := exec.Command("cloudflared", "tunnel",
-		"run",
-		"--url", local,
+	// cloudflared 2026.x treats --no-autoupdate as a top-level flag;
+	// passing it to `tunnel run` makes the subcommand print usage
+	// help and exit 2, which our caller surfaces as "cloudflared
+	// exited before emitting URL". Put it before the `tunnel` verb.
+	cmd := exec.Command("cloudflared",
 		"--no-autoupdate",
+		"tunnel", "run",
+		"--url", local,
 		cfg.TunnelName,
 	) // #nosec G204 -- TunnelName validated by setup flow
 	url := "https://" + cfg.Hostname

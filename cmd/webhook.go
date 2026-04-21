@@ -104,6 +104,12 @@ var webhookSetupTunnelName string
 // root — clobbers their website unless they knew what they were doing.
 var webhookSetupAllowApex bool
 
+// webhookSetupOverwriteDNS is the explicit opt-in for replacing a
+// pre-existing Cloudflare DNS record at the target hostname. Off by
+// default — setup normally surfaces DNS_CONFLICT so the user can
+// delete the existing record manually before retrying.
+var webhookSetupOverwriteDNS bool
+
 // apexLikelyPublicSuffixes covers the common cases where a literal
 // "ccTLD + 1" is still an apex that would break a real website. Not
 // exhaustive (no PSL parse); the guardrail is best-effort — users who
@@ -214,10 +220,23 @@ func runWebhookSetup(cmd *cobra.Command, args []string) error {
 	}
 
 	result, err := webhook.RunSetup(ctx, webhook.SetupOpts{
-		Hostname:   hostname,
-		TunnelName: tunnelName,
+		Hostname:     hostname,
+		TunnelName:   tunnelName,
+		OverwriteDNS: webhookSetupOverwriteDNS,
 	})
 	if err != nil {
+		// DNS conflict gets its own error code so agents/scripts can
+		// distinguish it from generic setup failures and retry with
+		// --overwrite-dns after checking the existing record.
+		var dnsErr *webhook.DNSConflictError
+		if errors.As(err, &dnsErr) {
+			if jsonOutput {
+				_ = config.WriteJSONError("DNS_CONFLICT", err.Error())
+				return errSilent
+			}
+			fmt.Fprintln(os.Stderr, err.Error())
+			return errSilent
+		}
 		return handleWebhookErr(err)
 	}
 
@@ -434,4 +453,5 @@ func init() {
 	webhookSetupCmd.Flags().StringVar(&webhookSetupHostname, "hostname", "", "hostname for webhooks (e.g. webhooks.yourdomain.com)")
 	webhookSetupCmd.Flags().StringVar(&webhookSetupTunnelName, "tunnel", webhook.DefaultTunnelName, "Cloudflare tunnel name")
 	webhookSetupCmd.Flags().BoolVar(&webhookSetupAllowApex, "allow-apex", false, "allow an apex hostname (e.g. example.com); DANGEROUS — overrides root DNS")
+	webhookSetupCmd.Flags().BoolVar(&webhookSetupOverwriteDNS, "overwrite-dns", false, "replace any pre-existing Cloudflare DNS record at the hostname; DESTRUCTIVE")
 }

@@ -26,6 +26,11 @@ type SetupOpts struct {
 	// SkipLogin assumes `cloudflared tunnel login` has already been run
 	// on this machine. Used by the CLI after it confirms ~/.cloudflared/cert.pem exists.
 	SkipLogin bool
+	// OverwriteDNS authorises routeDNS to pass --overwrite-dns to
+	// cloudflared, replacing any pre-existing record at Hostname.
+	// Off by default — the safe fallback is to surface a
+	// DNSConflictError and let the user decide.
+	OverwriteDNS bool
 }
 
 // SetupResult reports what got persisted so the CLI can render a clean
@@ -130,15 +135,55 @@ func findTunnelID(ctx context.Context, name string) (string, error) {
 	return "", nil
 }
 
-// routeDNS attaches the hostname to the tunnel. Idempotent — repeated
-// calls surface "already exists" on stderr which we treat as success.
-func routeDNS(ctx context.Context, tunnelName, hostname string) error {
-	cmd := exec.CommandContext(ctx, "cloudflared", "tunnel", "route", "dns", tunnelName, hostname) // #nosec G204
+// DNSConflictError is returned by routeDNS when Cloudflare already has
+// a record at the target hostname that's not the tunnel's. Callers
+// surface this to the user verbatim so they can decide whether to
+// delete the existing record (safe) or re-run setup with
+// --overwrite-dns (destructive).
+type DNSConflictError struct {
+	Hostname   string
+	TunnelName string
+	Raw        string // stderr from cloudflared for diagnostics
+}
+
+func (e *DNSConflictError) Error() string {
+	return fmt.Sprintf(
+		"a DNS record already exists at %s and is not pointing at tunnel %q. "+
+			"Setup refuses to overwrite unowned records.\n\n"+
+			"To proceed, either:\n"+
+			"  • delete the existing record in your Cloudflare dashboard, then re-run setup, or\n"+
+			"  • re-run setup with --overwrite-dns to replace it (DESTRUCTIVE — point-of-no-return)\n\n"+
+			"cloudflared output:\n%s",
+		e.Hostname, e.TunnelName, e.Raw,
+	)
+}
+
+// routeDNS attaches the hostname to the tunnel. By default it refuses
+// to overwrite a pre-existing Cloudflare DNS record — surfaces a
+// DNSConflictError so the CLI can print actionable remediation. Pass
+// overwrite=true to run with --overwrite-dns (destructive).
+//
+// The idempotent "setup twice with the same hostname and tunnel"
+// case is handled correctly without --overwrite: cloudflared's
+// "already exists" error fires in both the "record points at us
+// already" and "record belongs to someone else" cases, and we can't
+// tell them apart from the exit code alone. We conservatively treat
+// ALL already-exists responses as a conflict — that's the safer
+// default. Users re-running setup after a successful initial run
+// should see the error and either confirm with --overwrite-dns or
+// recognise their config is already good and move on.
+func routeDNS(ctx context.Context, tunnelName, hostname string, overwrite bool) error {
+	args := []string{"tunnel", "route", "dns"}
+	if overwrite {
+		args = append(args, "--overwrite-dns")
+	}
+	args = append(args, tunnelName, hostname)
+	cmd := exec.CommandContext(ctx, "cloudflared", args...) // #nosec G204 -- static flags + validated tunnelName/hostname
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		combined := string(out)
 		if strings.Contains(combined, "already exists") || strings.Contains(combined, "record with that host") {
-			return nil
+			return &DNSConflictError{Hostname: hostname, TunnelName: tunnelName, Raw: combined}
 		}
 		return fmt.Errorf("route dns %s → %s: %w\n%s", hostname, tunnelName, err, combined)
 	}
@@ -173,7 +218,7 @@ func RunSetup(ctx context.Context, opts SetupOpts) (*SetupResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := routeDNS(opCtx, opts.TunnelName, opts.Hostname); err != nil {
+	if err := routeDNS(opCtx, opts.TunnelName, opts.Hostname, opts.OverwriteDNS); err != nil {
 		return nil, err
 	}
 
