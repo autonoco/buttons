@@ -379,7 +379,11 @@ buttons webhook setup [flags]
 
 | Flag | Type | Description |
 |------|------|-------------|
+| `--allow-apex` | bool | allow an apex hostname (e.g. example.com); DANGEROUS — overrides root DNS |
+| `--api-account-id` | string | pin the CF account id when the token is authorized on several |
+| `--api-token` | string | Cloudflare API token (recommended); or set $BUTTONS_CF_API_TOKEN |
 | `--hostname` | string | hostname for webhooks (e.g. webhooks.yourdomain.com) |
+| `--overwrite-dns` | bool | replace any pre-existing Cloudflare DNS record at the hostname; DESTRUCTIVE |
 | `--tunnel` | string | Cloudflare tunnel name |
 
 #### `buttons webhook status`
