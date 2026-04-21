@@ -97,9 +97,10 @@ func MintReadyToken() (string, error) {
 var quickURLPattern = regexp.MustCompile(`https://[a-z0-9-]+\.trycloudflare\.com`)
 
 func startQuick(ctx context.Context, local, token string) (*Tunnel, error) {
-	cmd := exec.Command("cloudflared", "tunnel",
-		"--url", local,
+	cmd := exec.Command("cloudflared",
 		"--no-autoupdate",
+		"tunnel",
+		"--url", local,
 	) // #nosec G204 -- arguments are literals + local loopback URL
 	return runTunnel(ctx, cmd, ModeQuick, token, func(line string) (string, bool) {
 		if m := quickURLPattern.FindString(line); m != "" {
@@ -110,18 +111,40 @@ func startQuick(ctx context.Context, local, token string) (*Tunnel, error) {
 }
 
 func startNamed(ctx context.Context, local, token string, cfg *Config) (*Tunnel, error) {
-	if cfg.TunnelName == "" {
-		return nil, errors.New("named tunnel config missing tunnel_name — run `buttons webhook setup`")
-	}
 	if cfg.Hostname == "" {
 		return nil, errors.New("named tunnel config missing hostname — run `buttons webhook setup`")
 	}
-	cmd := exec.Command("cloudflared", "tunnel",
-		"run",
-		"--url", local,
-		"--no-autoupdate",
-		cfg.TunnelName,
-	) // #nosec G204 -- TunnelName validated by setup flow
+	// Two runtime auth modes:
+	//
+	//   TunnelToken set (from --api-token setup):
+	//     cloudflared tunnel run --token <T> — tunnel-scoped credential
+	//     baked into the token, no cert.pem required. Headless-friendly.
+	//
+	//   TunnelName set (from cert.pem-based setup):
+	//     cloudflared tunnel run --url <LOCAL> <NAME> — classic path,
+	//     relies on ~/.cloudflared/cert.pem + <tunnel-uuid>.json
+	//     credentials file from the `tunnel create` step.
+	var cmd *exec.Cmd
+	switch {
+	case cfg.TunnelToken != "":
+		// #nosec G204 -- TunnelToken is an opaque credential we wrote ourselves; not user-templated at command time
+		cmd = exec.Command("cloudflared",
+			"--no-autoupdate",
+			"tunnel", "run",
+			"--url", local,
+			"--token", cfg.TunnelToken,
+		)
+	case cfg.TunnelName != "":
+		// #nosec G204 -- TunnelName validated by setup flow
+		cmd = exec.Command("cloudflared",
+			"--no-autoupdate",
+			"tunnel", "run",
+			"--url", local,
+			cfg.TunnelName,
+		)
+	default:
+		return nil, errors.New("named tunnel config missing both tunnel_name and tunnel_token — run `buttons webhook setup`")
+	}
 	url := "https://" + cfg.Hostname
 	// For named tunnels we know the URL up front; the "ready" signal
 	// is cloudflared's "Registered tunnel connection" log line.
@@ -218,9 +241,16 @@ func runTunnel(
 	// warm. Poll /healthz until it answers 200 so the URL we return to
 	// the caller is actually usable. Without this, the first request a
 	// drawer step makes often fails with "no such host" or 502.
-	if err := waitForReady(ctx, publicURL, readyToken, 60*time.Second); err != nil {
+	// Quick tunnels can take 1–3 minutes for the ephemeral
+	// *.trycloudflare.com subdomain to resolve through the caller's
+	// local DNS resolver, even after the edge connection is already
+	// "Registered". Named tunnels are usually instant (the hostname
+	// already exists in the user's own CF zone). 3-minute cap covers
+	// the slowest quick-tunnel DNS propagation we've observed without
+	// silently hanging forever on a truly broken tunnel.
+	if err := waitForReady(ctx, publicURL, readyToken, 3*time.Minute); err != nil {
 		_ = t.Stop()
-		return nil, fmt.Errorf("tunnel URL %s did not become reachable: %w; last output:\n%s", publicURL, err, t.stderr.String())
+		return nil, fmt.Errorf("tunnel URL %s did not become reachable: %w\n\nIf this was a DNS-propagation timeout, try `buttons webhook setup` to provision a stable named tunnel on your own CF account — the hostname resolves instantly because it lives in your zone.\n\nLast cloudflared output:\n%s", publicURL, err, t.stderr.String())
 	}
 	t.URL = publicURL
 	return t, nil

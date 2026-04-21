@@ -98,6 +98,75 @@ var webhookLogoutCmd = &cobra.Command{
 var webhookSetupHostname string
 var webhookSetupTunnelName string
 
+// webhookSetupAllowApex is the explicit opt-in for apex-domain
+// hostnames. Off by default because routing a user's apex (e.g.
+// example.com) through the tunnel overrides every DNS record at the
+// root — clobbers their website unless they knew what they were doing.
+var webhookSetupAllowApex bool
+
+// webhookSetupOverwriteDNS is the explicit opt-in for replacing a
+// pre-existing Cloudflare DNS record at the target hostname. Off by
+// default — setup normally surfaces DNS_CONFLICT so the user can
+// delete the existing record manually before retrying.
+var webhookSetupOverwriteDNS bool
+
+// webhookSetupAPIToken and webhookSetupAPIAccountID drive the
+// --api-token code path: setup via CF REST API instead of cert.pem.
+// Token permissions required: Account:Cloudflare Tunnel:Edit and
+// Zone:DNS:Edit on the target zone(s). Also accepts the value from
+// BUTTONS_CF_API_TOKEN so agents/CI never put the token in a
+// process-list-visible argv.
+var webhookSetupAPIToken string
+var webhookSetupAPIAccountID string
+
+// apexLikelyPublicSuffixes covers the common cases where a literal
+// "ccTLD + 1" is still an apex that would break a real website. Not
+// exhaustive (no PSL parse); the guardrail is best-effort — users who
+// own something unusual can opt out via --allow-apex.
+var apexLikelyPublicSuffixes = []string{
+	".co.uk", ".co.nz", ".com.au", ".com.br", ".co.jp", ".co.in",
+}
+
+// validateWebhookHostname enforces the shape we expect for a webhook
+// hostname: non-empty, dot-containing, and NOT an apex domain by our
+// heuristic. Returns a helpful error pointing at the safe subdomain
+// form when the user typed an apex.
+func validateWebhookHostname(s string) error {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return errors.New("hostname required")
+	}
+	if !strings.Contains(s, ".") {
+		return errors.New("looks like a bare word — need a full domain like webhooks.example.com")
+	}
+	// Apex heuristic: count dots. "example.com" → 1 dot. A safe
+	// subdomain like "webhooks.example.com" has 2+. ccTLD-style
+	// apexes like "example.co.uk" also have 2 dots but end in a
+	// known multi-part TLD — detect those separately.
+	for _, psl := range apexLikelyPublicSuffixes {
+		if strings.HasSuffix(s, psl) {
+			// Remove the PSL suffix and count dots in the rest.
+			rest := strings.TrimSuffix(s, psl)
+			if !strings.Contains(rest, ".") {
+				return apexHostnameError(s)
+			}
+			return nil
+		}
+	}
+	if strings.Count(s, ".") < 2 {
+		return apexHostnameError(s)
+	}
+	return nil
+}
+
+func apexHostnameError(s string) error {
+	return fmt.Errorf(
+		"hostname %q looks like an apex domain — routing the tunnel here will clobber every DNS record at the root (website, email, etc.). "+
+			"Use a subdomain like webhooks.%s instead. If you really want the apex, re-run with --allow-apex",
+		s, s,
+	)
+}
+
 // runWebhookSetup walks the user through: binary check → cloudflared
 // login if needed → hostname prompt → create + route tunnel → persist.
 func runWebhookSetup(cmd *cobra.Command, args []string) error {
@@ -119,19 +188,10 @@ func runWebhookSetup(cmd *cobra.Command, args []string) error {
 			huh.NewGroup(
 				huh.NewInput().
 					Title("Hostname to receive webhooks").
-					Description("Must be on a zone managed by the Cloudflare account you're about to log in to.\nExample: webhooks.yourdomain.com").
+					Description("Must be on a zone managed by the Cloudflare account you're about to log in to.\n\nUse a SUBDOMAIN like webhooks.yourdomain.com — a bare apex (yourdomain.com) routes\nall root traffic through the tunnel and will clobber any existing website DNS.").
 					Placeholder("webhooks.yourdomain.com").
 					Value(&hostname).
-					Validate(func(s string) error {
-						s = strings.TrimSpace(s)
-						if s == "" {
-							return errors.New("hostname required")
-						}
-						if !strings.Contains(s, ".") {
-							return errors.New("looks like a bare word — need a full domain like webhooks.example.com")
-						}
-						return nil
-					}),
+					Validate(validateWebhookHostname),
 			),
 		).Run(); err != nil {
 			if errors.Is(err, huh.ErrUserAborted) {
@@ -141,6 +201,18 @@ func runWebhookSetup(cmd *cobra.Command, args []string) error {
 		}
 		hostname = strings.TrimSpace(hostname)
 	}
+	// Non-interactive path runs the same validator so --hostname
+	// autono.co (an apex) gets the same guardrail as the Huh prompt.
+	if err := validateWebhookHostname(hostname); err != nil {
+		if webhookSetupAllowApex && strings.Contains(err.Error(), "apex") {
+			// Opt-in override for users who genuinely want the
+			// tunnel at their apex (e.g. they own the domain solely
+			// for webhook routing). Log prominently.
+			fmt.Fprintf(os.Stderr, "WARNING: proceeding with apex hostname %q — this will clobber any existing DNS at %s. --allow-apex was set.\n", hostname, hostname)
+		} else {
+			return handleWebhookErr(err)
+		}
+	}
 
 	// Login inherits the user's terminal so the browser prompt appears.
 	// SkipLogin piggybacks on cert.pem presence — the second run of
@@ -148,19 +220,55 @@ func runWebhookSetup(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Minute)
 	defer cancel()
 
+	// Resolve API token (here instead of near the RunSetup call so
+	// the banner can mention it). --api-token flag wins; otherwise
+	// pick up $BUTTONS_CF_API_TOKEN so secrets never appear in argv.
+	apiToken := webhookSetupAPIToken
+	if apiToken == "" {
+		apiToken = os.Getenv("BUTTONS_CF_API_TOKEN")
+	}
+
 	if !jsonOutput {
-		if webhook.HasCloudflaredCert() {
+		switch {
+		case apiToken != "":
+			fmt.Fprintln(os.Stderr, "  Using Cloudflare API token (skipping cert.pem flow).")
+		case webhook.HasCloudflaredCert():
 			fmt.Fprintln(os.Stderr, "  Using existing Cloudflare login (~/.cloudflared/cert.pem).")
-		} else {
+		default:
 			fmt.Fprintln(os.Stderr, "  Opening browser for Cloudflare login…")
 		}
 	}
 
 	result, err := webhook.RunSetup(ctx, webhook.SetupOpts{
-		Hostname:   hostname,
-		TunnelName: tunnelName,
+		Hostname:     hostname,
+		TunnelName:   tunnelName,
+		OverwriteDNS: webhookSetupOverwriteDNS,
+		APIToken:     apiToken,
+		APIAccountID: webhookSetupAPIAccountID,
 	})
 	if err != nil {
+		// DNS conflict gets its own error code so agents/scripts can
+		// distinguish it from generic setup failures and retry with
+		// --overwrite-dns after checking the existing record.
+		var dnsErr *webhook.DNSConflictError
+		if errors.As(err, &dnsErr) {
+			if jsonOutput {
+				_ = config.WriteJSONError("DNS_CONFLICT", err.Error())
+				return errSilent
+			}
+			fmt.Fprintln(os.Stderr, err.Error())
+			return errSilent
+		}
+		var zmErr *webhook.ZoneMismatchError
+		if errors.As(err, &zmErr) {
+			if jsonOutput {
+				_ = config.WriteJSONError("ZONE_MISMATCH", err.Error())
+				return errSilent
+			}
+			fmt.Fprintln(os.Stderr, err.Error())
+			fmt.Fprintln(os.Stderr, "\nTry: /tmp/buttons webhook setup --hostname <HOST> --re-login")
+			return errSilent
+		}
 		return handleWebhookErr(err)
 	}
 
@@ -376,4 +484,8 @@ func init() {
 
 	webhookSetupCmd.Flags().StringVar(&webhookSetupHostname, "hostname", "", "hostname for webhooks (e.g. webhooks.yourdomain.com)")
 	webhookSetupCmd.Flags().StringVar(&webhookSetupTunnelName, "tunnel", webhook.DefaultTunnelName, "Cloudflare tunnel name")
+	webhookSetupCmd.Flags().BoolVar(&webhookSetupAllowApex, "allow-apex", false, "allow an apex hostname (e.g. example.com); DANGEROUS — overrides root DNS")
+	webhookSetupCmd.Flags().BoolVar(&webhookSetupOverwriteDNS, "overwrite-dns", false, "replace any pre-existing Cloudflare DNS record at the hostname; DESTRUCTIVE")
+	webhookSetupCmd.Flags().StringVar(&webhookSetupAPIToken, "api-token", "", "Cloudflare API token (recommended); or set $BUTTONS_CF_API_TOKEN")
+	webhookSetupCmd.Flags().StringVar(&webhookSetupAPIAccountID, "api-account-id", "", "pin the CF account id when the token is authorized on several")
 }

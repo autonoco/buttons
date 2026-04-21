@@ -49,6 +49,12 @@ type Config struct {
 	Hostname      string `json:"hostname,omitempty"`
 	TunnelName    string `json:"tunnel_name,omitempty"`
 	TunnelID      string `json:"tunnel_id,omitempty"`
+	// TunnelToken is the opaque base64 credential `cloudflared
+	// tunnel run --token <X>` expects. Populated when setup used the
+	// --api-token path (CF REST API). When non-empty, the listener
+	// runs tunnel-via-token instead of tunnel-via-name so cert.pem
+	// isn't required at runtime.
+	TunnelToken string `json:"tunnel_token,omitempty"`
 }
 
 // ConfigPath returns ~/.buttons/webhook.json using the standard data

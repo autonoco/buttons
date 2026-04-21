@@ -26,6 +26,20 @@ type SetupOpts struct {
 	// SkipLogin assumes `cloudflared tunnel login` has already been run
 	// on this machine. Used by the CLI after it confirms ~/.cloudflared/cert.pem exists.
 	SkipLogin bool
+	// OverwriteDNS authorises routeDNS to pass --overwrite-dns to
+	// cloudflared, replacing any pre-existing record at Hostname.
+	// Off by default — the safe fallback is to surface a
+	// DNSConflictError and let the user decide.
+	OverwriteDNS bool
+	// APIToken, when non-empty, skips the cloudflared-based flow
+	// entirely and uses the CF REST API: list accounts, resolve
+	// zone, create tunnel, mint token, create DNS. Multi-zone
+	// capable, headless-friendly, no browser.
+	APIToken string
+	// APIAccountID optionally pins a specific CF account when the
+	// token is authorized on several. Empty = auto-pick if a single
+	// account is authorized, error out otherwise (caller prompts).
+	APIAccountID string
 }
 
 // SetupResult reports what got persisted so the CLI can render a clean
@@ -130,19 +144,111 @@ func findTunnelID(ctx context.Context, name string) (string, error) {
 	return "", nil
 }
 
-// routeDNS attaches the hostname to the tunnel. Idempotent — repeated
-// calls surface "already exists" on stderr which we treat as success.
-func routeDNS(ctx context.Context, tunnelName, hostname string) error {
-	cmd := exec.CommandContext(ctx, "cloudflared", "tunnel", "route", "dns", tunnelName, hostname) // #nosec G204
+// DNSConflictError is returned by routeDNS when Cloudflare already has
+// a record at the target hostname that's not the tunnel's. Callers
+// surface this to the user verbatim so they can decide whether to
+// delete the existing record (safe) or re-run setup with
+// --overwrite-dns (destructive).
+type DNSConflictError struct {
+	Hostname   string
+	TunnelName string
+	Raw        string // stderr from cloudflared for diagnostics
+}
+
+func (e *DNSConflictError) Error() string {
+	return fmt.Sprintf(
+		"a DNS record already exists at %s and is not pointing at tunnel %q. "+
+			"Setup refuses to overwrite unowned records.\n\n"+
+			"To proceed, either:\n"+
+			"  • delete the existing record in your Cloudflare dashboard, then re-run setup, or\n"+
+			"  • re-run setup with --overwrite-dns to replace it (DESTRUCTIVE — point-of-no-return)\n\n"+
+			"cloudflared output:\n%s",
+		e.Hostname, e.TunnelName, e.Raw,
+	)
+}
+
+// routeDNS attaches the hostname to the tunnel. By default it refuses
+// to overwrite a pre-existing Cloudflare DNS record — surfaces a
+// DNSConflictError so the CLI can print actionable remediation. Pass
+// overwrite=true to run with --overwrite-dns (destructive).
+//
+// The idempotent "setup twice with the same hostname and tunnel"
+// case is handled correctly without --overwrite: cloudflared's
+// "already exists" error fires in both the "record points at us
+// already" and "record belongs to someone else" cases, and we can't
+// tell them apart from the exit code alone. We conservatively treat
+// ALL already-exists responses as a conflict — that's the safer
+// default. Users re-running setup after a successful initial run
+// should see the error and either confirm with --overwrite-dns or
+// recognise their config is already good and move on.
+func routeDNS(ctx context.Context, tunnelName, hostname string, overwrite bool) error {
+	args := []string{"tunnel", "route", "dns"}
+	if overwrite {
+		args = append(args, "--overwrite-dns")
+	}
+	args = append(args, tunnelName, hostname)
+	cmd := exec.CommandContext(ctx, "cloudflared", args...) // #nosec G204 -- static flags + validated tunnelName/hostname
 	out, err := cmd.CombinedOutput()
+	combined := string(out)
 	if err != nil {
-		combined := string(out)
 		if strings.Contains(combined, "already exists") || strings.Contains(combined, "record with that host") {
-			return nil
+			return &DNSConflictError{Hostname: hostname, TunnelName: tunnelName, Raw: combined}
 		}
 		return fmt.Errorf("route dns %s → %s: %w\n%s", hostname, tunnelName, err, combined)
 	}
+	// Zone-drift detection. When the requested hostname's base
+	// domain isn't in the zone authorized by cert.pem, the CF API
+	// silently appends the authorized zone as a suffix (see
+	// cloudflared issue #1295). cloudflared's success line reports
+	// the EFFECTIVE hostname; if it differs from what we asked for,
+	// the caller's tunnel is wired to the wrong hostname and nothing
+	// they do after this will work.
+	if effective := parseEffectiveHostname(combined); effective != "" && effective != hostname {
+		return &ZoneMismatchError{
+			Requested: hostname,
+			Effective: effective,
+			Raw:       combined,
+		}
+	}
 	return nil
+}
+
+// ZoneMismatchError is returned when cloudflared silently re-routes a
+// DNS call to a hostname under the cert's authorized zone, appending
+// the zone as a suffix — the cloudflared #1295 bug. The caller (CLI)
+// maps this to a clear "your cert is authorized for zone X but you
+// asked for Y; re-auth?" prompt.
+type ZoneMismatchError struct {
+	Requested string
+	Effective string
+	Raw       string
+}
+
+func (e *ZoneMismatchError) Error() string {
+	return fmt.Sprintf(
+		"zone mismatch: asked cloudflared to route %q but it created %q instead. "+
+			"cloudflared's existing login is authorized for a different zone than %q's base domain. "+
+			"Re-run setup with --api-token (create one at https://dash.cloudflare.com/profile/api-tokens with Account:Cloudflare Tunnel:Edit + Zone:DNS:Edit) — the token path handles multi-zone cleanly without touching ~/.cloudflared/.",
+		e.Requested, e.Effective, e.Requested,
+	)
+}
+
+// parseEffectiveHostname picks the hostname cloudflared reported in
+// its success line out of its combined output. Two line formats
+// exist across cloudflared versions:
+//
+//   <HOST> is already configured to route to your tunnel ...
+//   <HOST> is now configured to route to your tunnel ...
+//
+// Returns "" when no match is found (shouldn't happen on success).
+var effectiveHostRe = regexp.MustCompile(`([A-Za-z0-9][A-Za-z0-9.\-]*)\s+is\s+(?:already|now)\s+configured\s+to\s+route`)
+
+func parseEffectiveHostname(combined string) string {
+	m := effectiveHostRe.FindStringSubmatch(combined)
+	if len(m) < 2 {
+		return ""
+	}
+	return strings.TrimSuffix(m[1], ".")
 }
 
 // RunSetup orchestrates the full named-tunnel setup: verify cloudflared,
@@ -154,6 +260,16 @@ func RunSetup(ctx context.Context, opts SetupOpts) (*SetupResult, error) {
 	}
 	if opts.TunnelName == "" {
 		opts.TunnelName = DefaultTunnelName
+	}
+	// --api-token path: full setup via CF REST API, no cert.pem.
+	// cloudflared is still needed at listener-time to run the data
+	// plane (we don't re-implement the tunnel proxy), but it's used
+	// in token mode (`tunnel run --token <T>`), not cert mode.
+	if opts.APIToken != "" {
+		if err := CheckCloudflared(); err != nil {
+			return nil, err
+		}
+		return runSetupViaAPI(ctx, opts)
 	}
 	if err := CheckCloudflared(); err != nil {
 		return nil, err
@@ -173,7 +289,9 @@ func RunSetup(ctx context.Context, opts SetupOpts) (*SetupResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := routeDNS(opCtx, opts.TunnelName, opts.Hostname); err != nil {
+	if err := routeDNS(opCtx, opts.TunnelName, opts.Hostname, opts.OverwriteDNS); err != nil {
+		// Zone mismatch surfaces as-is; the CLI maps it to a clear
+		// remediation pointing at --api-token (no cert.pem touching).
 		return nil, err
 	}
 
@@ -183,6 +301,81 @@ func RunSetup(ctx context.Context, opts SetupOpts) (*SetupResult, error) {
 		Hostname:      opts.Hostname,
 		TunnelName:    opts.TunnelName,
 		TunnelID:      id,
+	}
+	if err := SaveConfig(cfg); err != nil {
+		return nil, err
+	}
+	return &SetupResult{
+		Hostname:   cfg.Hostname,
+		TunnelName: cfg.TunnelName,
+		TunnelID:   cfg.TunnelID,
+	}, nil
+}
+
+// runSetupViaAPI implements the --api-token path. All work goes
+// through the CF REST API; cloudflared is only invoked at listener-
+// time and only in --token mode. Returns the same SetupResult shape
+// so the CLI handler doesn't branch.
+func runSetupViaAPI(ctx context.Context, opts SetupOpts) (*SetupResult, error) {
+	api := NewCFAPIClient(opts.APIToken)
+
+	// 1. Account — pin if caller specified, otherwise pick the only
+	// one the token sees. Multiple accounts + no pin = fail; caller
+	// (CLI) handles the prompt in a separate pass.
+	accountID := opts.APIAccountID
+	if accountID == "" {
+		accounts, err := api.ListAccounts(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list accounts (check token has Account:Read): %w", err)
+		}
+		switch len(accounts) {
+		case 0:
+			return nil, errors.New("token isn't authorized on any Cloudflare account")
+		case 1:
+			accountID = accounts[0].ID
+		default:
+			ids := make([]string, 0, len(accounts))
+			for _, a := range accounts {
+				ids = append(ids, fmt.Sprintf("  %s  %s", a.ID, a.Name))
+			}
+			return nil, fmt.Errorf("token is authorized on %d accounts — pick one with --api-account-id:\n%s", len(accounts), strings.Join(ids, "\n"))
+		}
+	}
+
+	// 2. Zone — walk up labels until a matching authorized zone shows
+	// up. Errors surface the "add this domain to CF first" remediation.
+	zone, err := api.FindZoneForHostname(ctx, opts.Hostname)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Tunnel — create or reuse by name.
+	tun, err := api.CreateOrFindTunnel(ctx, accountID, opts.TunnelName)
+	if err != nil {
+		return nil, fmt.Errorf("create tunnel (check token has Account:Cloudflare Tunnel:Edit): %w", err)
+	}
+
+	// 4. Token for `cloudflared tunnel run --token <X>`. Fetching
+	// here so the listener never needs the API token at runtime —
+	// config stores only the tunnel-scoped credential.
+	token, err := api.TunnelToken(ctx, accountID, tun.ID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch tunnel token: %w", err)
+	}
+
+	// 5. DNS — create CNAME → <tunnel>.cfargotunnel.com. Honors
+	// OverwriteDNS; returns DNSConflictError otherwise.
+	if err := api.CreateDNSRecord(ctx, zone.ID, opts.Hostname, tun.ID, opts.OverwriteDNS); err != nil {
+		return nil, err
+	}
+
+	cfg := &Config{
+		SchemaVersion: ConfigSchemaVersion,
+		Mode:          ModeNamed,
+		Hostname:      opts.Hostname,
+		TunnelName:    tun.Name,
+		TunnelID:      tun.ID,
+		TunnelToken:   token,
 	}
 	if err := SaveConfig(cfg); err != nil {
 		return nil, err
