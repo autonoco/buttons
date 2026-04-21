@@ -110,13 +110,6 @@ var webhookSetupAllowApex bool
 // delete the existing record manually before retrying.
 var webhookSetupOverwriteDNS bool
 
-// webhookSetupReLogin forces a fresh `cloudflared tunnel login`
-// flow, bypassing the existing ~/.cloudflared/cert.pem. Use when the
-// cert is bound to the wrong Cloudflare account/zone for the target
-// hostname and the automatic zone-drift recovery (on ZoneMismatch)
-// isn't kicking in, or when you want to explicitly re-pick accounts.
-var webhookSetupReLogin bool
-
 // webhookSetupAPIToken and webhookSetupAPIAccountID drive the
 // --api-token code path: setup via CF REST API instead of cert.pem.
 // Token permissions required: Account:Cloudflare Tunnel:Edit and
@@ -250,7 +243,6 @@ func runWebhookSetup(cmd *cobra.Command, args []string) error {
 		Hostname:     hostname,
 		TunnelName:   tunnelName,
 		OverwriteDNS: webhookSetupOverwriteDNS,
-		ForceLogin:   webhookSetupReLogin,
 		APIToken:     apiToken,
 		APIAccountID: webhookSetupAPIAccountID,
 	})
@@ -494,7 +486,6 @@ func init() {
 	webhookSetupCmd.Flags().StringVar(&webhookSetupTunnelName, "tunnel", webhook.DefaultTunnelName, "Cloudflare tunnel name")
 	webhookSetupCmd.Flags().BoolVar(&webhookSetupAllowApex, "allow-apex", false, "allow an apex hostname (e.g. example.com); DANGEROUS — overrides root DNS")
 	webhookSetupCmd.Flags().BoolVar(&webhookSetupOverwriteDNS, "overwrite-dns", false, "replace any pre-existing Cloudflare DNS record at the hostname; DESTRUCTIVE")
-	webhookSetupCmd.Flags().BoolVar(&webhookSetupReLogin, "re-login", false, "force fresh `cloudflared tunnel login`; use when the current cert.pem is bound to the wrong CF account")
-	webhookSetupCmd.Flags().StringVar(&webhookSetupAPIToken, "api-token", "", "Cloudflare API token (skips cert.pem flow; or set $BUTTONS_CF_API_TOKEN)")
+	webhookSetupCmd.Flags().StringVar(&webhookSetupAPIToken, "api-token", "", "Cloudflare API token (recommended); or set $BUTTONS_CF_API_TOKEN")
 	webhookSetupCmd.Flags().StringVar(&webhookSetupAPIAccountID, "api-account-id", "", "pin the CF account id when the token is authorized on several")
 }
