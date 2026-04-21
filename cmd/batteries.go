@@ -144,6 +144,7 @@ func ensureBatteriesGitignored() (string, error) {
 		body += "\n# Added by `buttons batteries set` — never commit.\n"
 	}
 	body += "batteries.json\n"
+	// #nosec G304 G306 G703 -- gitignorePath is filepath.Join(config.DataDir(), ".gitignore"). The filename is a literal and DataDir is constrained to BUTTONS_HOME, a discovered .buttons/ parent, or ~/.buttons. No user-tainted segment.
 	if err := os.WriteFile(gitignorePath, []byte(body), 0600); err != nil {
 		return "", err
 	}

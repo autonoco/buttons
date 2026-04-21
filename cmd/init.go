@@ -197,6 +197,7 @@ func ensureSecretPatterns(path string) error {
 	for _, p := range toAppend {
 		existing += p + "\n"
 	}
+	// #nosec G304 G306 G703 -- path is the caller's .buttons/.gitignore; filename is a literal, parent is our project-local data dir. Not user-tainted in any path-traversal sense.
 	return os.WriteFile(path, []byte(existing), 0600)
 }
 
