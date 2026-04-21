@@ -39,6 +39,15 @@ type SetupOpts struct {
 	// ZoneMismatchError. CLI / test convenience; production callers
 	// leave this false so zone-drift self-heals.
 	NoAutoRelogin bool
+	// APIToken, when non-empty, skips the cloudflared-based flow
+	// entirely and uses the CF REST API: list accounts, resolve
+	// zone, create tunnel, mint token, create DNS. Multi-zone
+	// capable, headless-friendly, no browser.
+	APIToken string
+	// APIAccountID optionally pins a specific CF account when the
+	// token is authorized on several. Empty = auto-pick if a single
+	// account is authorized, error out otherwise (caller prompts).
+	APIAccountID string
 }
 
 // SetupResult reports what got persisted so the CLI can render a clean
@@ -276,6 +285,16 @@ func RunSetup(ctx context.Context, opts SetupOpts) (*SetupResult, error) {
 	if opts.TunnelName == "" {
 		opts.TunnelName = DefaultTunnelName
 	}
+	// --api-token path: full setup via CF REST API, no cert.pem.
+	// cloudflared is still needed at listener-time to run the data
+	// plane (we don't re-implement the tunnel proxy), but it's used
+	// in token mode (`tunnel run --token <T>`), not cert mode.
+	if opts.APIToken != "" {
+		if err := CheckCloudflared(); err != nil {
+			return nil, err
+		}
+		return runSetupViaAPI(ctx, opts)
+	}
 	if err := CheckCloudflared(); err != nil {
 		return nil, err
 	}
@@ -332,6 +351,81 @@ func RunSetup(ctx context.Context, opts SetupOpts) (*SetupResult, error) {
 		Hostname:      opts.Hostname,
 		TunnelName:    opts.TunnelName,
 		TunnelID:      id,
+	}
+	if err := SaveConfig(cfg); err != nil {
+		return nil, err
+	}
+	return &SetupResult{
+		Hostname:   cfg.Hostname,
+		TunnelName: cfg.TunnelName,
+		TunnelID:   cfg.TunnelID,
+	}, nil
+}
+
+// runSetupViaAPI implements the --api-token path. All work goes
+// through the CF REST API; cloudflared is only invoked at listener-
+// time and only in --token mode. Returns the same SetupResult shape
+// so the CLI handler doesn't branch.
+func runSetupViaAPI(ctx context.Context, opts SetupOpts) (*SetupResult, error) {
+	api := NewCFAPIClient(opts.APIToken)
+
+	// 1. Account — pin if caller specified, otherwise pick the only
+	// one the token sees. Multiple accounts + no pin = fail; caller
+	// (CLI) handles the prompt in a separate pass.
+	accountID := opts.APIAccountID
+	if accountID == "" {
+		accounts, err := api.ListAccounts(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list accounts (check token has Account:Read): %w", err)
+		}
+		switch len(accounts) {
+		case 0:
+			return nil, errors.New("token isn't authorized on any Cloudflare account")
+		case 1:
+			accountID = accounts[0].ID
+		default:
+			ids := make([]string, 0, len(accounts))
+			for _, a := range accounts {
+				ids = append(ids, fmt.Sprintf("  %s  %s", a.ID, a.Name))
+			}
+			return nil, fmt.Errorf("token is authorized on %d accounts — pick one with --api-account-id:\n%s", len(accounts), strings.Join(ids, "\n"))
+		}
+	}
+
+	// 2. Zone — walk up labels until a matching authorized zone shows
+	// up. Errors surface the "add this domain to CF first" remediation.
+	zone, err := api.FindZoneForHostname(ctx, opts.Hostname)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Tunnel — create or reuse by name.
+	tun, err := api.CreateOrFindTunnel(ctx, accountID, opts.TunnelName)
+	if err != nil {
+		return nil, fmt.Errorf("create tunnel (check token has Account:Cloudflare Tunnel:Edit): %w", err)
+	}
+
+	// 4. Token for `cloudflared tunnel run --token <X>`. Fetching
+	// here so the listener never needs the API token at runtime —
+	// config stores only the tunnel-scoped credential.
+	token, err := api.TunnelToken(ctx, accountID, tun.ID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch tunnel token: %w", err)
+	}
+
+	// 5. DNS — create CNAME → <tunnel>.cfargotunnel.com. Honors
+	// OverwriteDNS; returns DNSConflictError otherwise.
+	if err := api.CreateDNSRecord(ctx, zone.ID, opts.Hostname, tun.ID, opts.OverwriteDNS); err != nil {
+		return nil, err
+	}
+
+	cfg := &Config{
+		SchemaVersion: ConfigSchemaVersion,
+		Mode:          ModeNamed,
+		Hostname:      opts.Hostname,
+		TunnelName:    tun.Name,
+		TunnelID:      tun.ID,
+		TunnelToken:   token,
 	}
 	if err := SaveConfig(cfg); err != nil {
 		return nil, err

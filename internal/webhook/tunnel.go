@@ -111,22 +111,40 @@ func startQuick(ctx context.Context, local, token string) (*Tunnel, error) {
 }
 
 func startNamed(ctx context.Context, local, token string, cfg *Config) (*Tunnel, error) {
-	if cfg.TunnelName == "" {
-		return nil, errors.New("named tunnel config missing tunnel_name — run `buttons webhook setup`")
-	}
 	if cfg.Hostname == "" {
 		return nil, errors.New("named tunnel config missing hostname — run `buttons webhook setup`")
 	}
-	// cloudflared 2026.x treats --no-autoupdate as a top-level flag;
-	// passing it to `tunnel run` makes the subcommand print usage
-	// help and exit 2, which our caller surfaces as "cloudflared
-	// exited before emitting URL". Put it before the `tunnel` verb.
-	cmd := exec.Command("cloudflared",
-		"--no-autoupdate",
-		"tunnel", "run",
-		"--url", local,
-		cfg.TunnelName,
-	) // #nosec G204 -- TunnelName validated by setup flow
+	// Two runtime auth modes:
+	//
+	//   TunnelToken set (from --api-token setup):
+	//     cloudflared tunnel run --token <T> — tunnel-scoped credential
+	//     baked into the token, no cert.pem required. Headless-friendly.
+	//
+	//   TunnelName set (from cert.pem-based setup):
+	//     cloudflared tunnel run --url <LOCAL> <NAME> — classic path,
+	//     relies on ~/.cloudflared/cert.pem + <tunnel-uuid>.json
+	//     credentials file from the `tunnel create` step.
+	var cmd *exec.Cmd
+	switch {
+	case cfg.TunnelToken != "":
+		// #nosec G204 -- TunnelToken is an opaque credential we wrote ourselves; not user-templated at command time
+		cmd = exec.Command("cloudflared",
+			"--no-autoupdate",
+			"tunnel", "run",
+			"--url", local,
+			"--token", cfg.TunnelToken,
+		)
+	case cfg.TunnelName != "":
+		// #nosec G204 -- TunnelName validated by setup flow
+		cmd = exec.Command("cloudflared",
+			"--no-autoupdate",
+			"tunnel", "run",
+			"--url", local,
+			cfg.TunnelName,
+		)
+	default:
+		return nil, errors.New("named tunnel config missing both tunnel_name and tunnel_token — run `buttons webhook setup`")
+	}
 	url := "https://" + cfg.Hostname
 	// For named tunnels we know the URL up front; the "ready" signal
 	// is cloudflared's "Registered tunnel connection" log line.

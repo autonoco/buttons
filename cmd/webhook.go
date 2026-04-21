@@ -117,6 +117,15 @@ var webhookSetupOverwriteDNS bool
 // isn't kicking in, or when you want to explicitly re-pick accounts.
 var webhookSetupReLogin bool
 
+// webhookSetupAPIToken and webhookSetupAPIAccountID drive the
+// --api-token code path: setup via CF REST API instead of cert.pem.
+// Token permissions required: Account:Cloudflare Tunnel:Edit and
+// Zone:DNS:Edit on the target zone(s). Also accepts the value from
+// BUTTONS_CF_API_TOKEN so agents/CI never put the token in a
+// process-list-visible argv.
+var webhookSetupAPIToken string
+var webhookSetupAPIAccountID string
+
 // apexLikelyPublicSuffixes covers the common cases where a literal
 // "ccTLD + 1" is still an apex that would break a real website. Not
 // exhaustive (no PSL parse); the guardrail is best-effort — users who
@@ -218,10 +227,21 @@ func runWebhookSetup(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Minute)
 	defer cancel()
 
+	// Resolve API token (here instead of near the RunSetup call so
+	// the banner can mention it). --api-token flag wins; otherwise
+	// pick up $BUTTONS_CF_API_TOKEN so secrets never appear in argv.
+	apiToken := webhookSetupAPIToken
+	if apiToken == "" {
+		apiToken = os.Getenv("BUTTONS_CF_API_TOKEN")
+	}
+
 	if !jsonOutput {
-		if webhook.HasCloudflaredCert() {
+		switch {
+		case apiToken != "":
+			fmt.Fprintln(os.Stderr, "  Using Cloudflare API token (skipping cert.pem flow).")
+		case webhook.HasCloudflaredCert():
 			fmt.Fprintln(os.Stderr, "  Using existing Cloudflare login (~/.cloudflared/cert.pem).")
-		} else {
+		default:
 			fmt.Fprintln(os.Stderr, "  Opening browser for Cloudflare login…")
 		}
 	}
@@ -231,6 +251,8 @@ func runWebhookSetup(cmd *cobra.Command, args []string) error {
 		TunnelName:   tunnelName,
 		OverwriteDNS: webhookSetupOverwriteDNS,
 		ForceLogin:   webhookSetupReLogin,
+		APIToken:     apiToken,
+		APIAccountID: webhookSetupAPIAccountID,
 	})
 	if err != nil {
 		// DNS conflict gets its own error code so agents/scripts can
@@ -473,4 +495,6 @@ func init() {
 	webhookSetupCmd.Flags().BoolVar(&webhookSetupAllowApex, "allow-apex", false, "allow an apex hostname (e.g. example.com); DANGEROUS — overrides root DNS")
 	webhookSetupCmd.Flags().BoolVar(&webhookSetupOverwriteDNS, "overwrite-dns", false, "replace any pre-existing Cloudflare DNS record at the hostname; DESTRUCTIVE")
 	webhookSetupCmd.Flags().BoolVar(&webhookSetupReLogin, "re-login", false, "force fresh `cloudflared tunnel login`; use when the current cert.pem is bound to the wrong CF account")
+	webhookSetupCmd.Flags().StringVar(&webhookSetupAPIToken, "api-token", "", "Cloudflare API token (skips cert.pem flow; or set $BUTTONS_CF_API_TOKEN)")
+	webhookSetupCmd.Flags().StringVar(&webhookSetupAPIAccountID, "api-account-id", "", "pin the CF account id when the token is authorized on several")
 }
