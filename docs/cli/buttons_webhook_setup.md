@@ -14,9 +14,13 @@ buttons webhook setup [flags]
 ### Options
 
 ```
-  -h, --help              help for setup
-      --hostname string   hostname for webhooks (e.g. webhooks.yourdomain.com)
-      --tunnel string     Cloudflare tunnel name (default "buttons")
+      --allow-apex              allow an apex hostname (e.g. example.com); DANGEROUS — overrides root DNS
+      --api-account-id string   pin the CF account id when the token is authorized on several
+      --api-token string        Cloudflare API token (recommended); or set $BUTTONS_CF_API_TOKEN
+  -h, --help                    help for setup
+      --hostname string         hostname for webhooks (e.g. webhooks.yourdomain.com)
+      --overwrite-dns           replace any pre-existing Cloudflare DNS record at the hostname; DESTRUCTIVE
+      --tunnel string           Cloudflare tunnel name (default "buttons")
 ```
 
 ### Options inherited from parent commands
