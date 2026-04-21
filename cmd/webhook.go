@@ -98,6 +98,60 @@ var webhookLogoutCmd = &cobra.Command{
 var webhookSetupHostname string
 var webhookSetupTunnelName string
 
+// webhookSetupAllowApex is the explicit opt-in for apex-domain
+// hostnames. Off by default because routing a user's apex (e.g.
+// example.com) through the tunnel overrides every DNS record at the
+// root — clobbers their website unless they knew what they were doing.
+var webhookSetupAllowApex bool
+
+// apexLikelyPublicSuffixes covers the common cases where a literal
+// "ccTLD + 1" is still an apex that would break a real website. Not
+// exhaustive (no PSL parse); the guardrail is best-effort — users who
+// own something unusual can opt out via --allow-apex.
+var apexLikelyPublicSuffixes = []string{
+	".co.uk", ".co.nz", ".com.au", ".com.br", ".co.jp", ".co.in",
+}
+
+// validateWebhookHostname enforces the shape we expect for a webhook
+// hostname: non-empty, dot-containing, and NOT an apex domain by our
+// heuristic. Returns a helpful error pointing at the safe subdomain
+// form when the user typed an apex.
+func validateWebhookHostname(s string) error {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return errors.New("hostname required")
+	}
+	if !strings.Contains(s, ".") {
+		return errors.New("looks like a bare word — need a full domain like webhooks.example.com")
+	}
+	// Apex heuristic: count dots. "example.com" → 1 dot. A safe
+	// subdomain like "webhooks.example.com" has 2+. ccTLD-style
+	// apexes like "example.co.uk" also have 2 dots but end in a
+	// known multi-part TLD — detect those separately.
+	for _, psl := range apexLikelyPublicSuffixes {
+		if strings.HasSuffix(s, psl) {
+			// Remove the PSL suffix and count dots in the rest.
+			rest := strings.TrimSuffix(s, psl)
+			if !strings.Contains(rest, ".") {
+				return apexHostnameError(s)
+			}
+			return nil
+		}
+	}
+	if strings.Count(s, ".") < 2 {
+		return apexHostnameError(s)
+	}
+	return nil
+}
+
+func apexHostnameError(s string) error {
+	return fmt.Errorf(
+		"hostname %q looks like an apex domain — routing the tunnel here will clobber every DNS record at the root (website, email, etc.). "+
+			"Use a subdomain like webhooks.%s instead. If you really want the apex, re-run with --allow-apex",
+		s, s,
+	)
+}
+
 // runWebhookSetup walks the user through: binary check → cloudflared
 // login if needed → hostname prompt → create + route tunnel → persist.
 func runWebhookSetup(cmd *cobra.Command, args []string) error {
@@ -119,19 +173,10 @@ func runWebhookSetup(cmd *cobra.Command, args []string) error {
 			huh.NewGroup(
 				huh.NewInput().
 					Title("Hostname to receive webhooks").
-					Description("Must be on a zone managed by the Cloudflare account you're about to log in to.\nExample: webhooks.yourdomain.com").
+					Description("Must be on a zone managed by the Cloudflare account you're about to log in to.\n\nUse a SUBDOMAIN like webhooks.yourdomain.com — a bare apex (yourdomain.com) routes\nall root traffic through the tunnel and will clobber any existing website DNS.").
 					Placeholder("webhooks.yourdomain.com").
 					Value(&hostname).
-					Validate(func(s string) error {
-						s = strings.TrimSpace(s)
-						if s == "" {
-							return errors.New("hostname required")
-						}
-						if !strings.Contains(s, ".") {
-							return errors.New("looks like a bare word — need a full domain like webhooks.example.com")
-						}
-						return nil
-					}),
+					Validate(validateWebhookHostname),
 			),
 		).Run(); err != nil {
 			if errors.Is(err, huh.ErrUserAborted) {
@@ -140,6 +185,18 @@ func runWebhookSetup(cmd *cobra.Command, args []string) error {
 			return handleWebhookErr(err)
 		}
 		hostname = strings.TrimSpace(hostname)
+	}
+	// Non-interactive path runs the same validator so --hostname
+	// autono.co (an apex) gets the same guardrail as the Huh prompt.
+	if err := validateWebhookHostname(hostname); err != nil {
+		if webhookSetupAllowApex && strings.Contains(err.Error(), "apex") {
+			// Opt-in override for users who genuinely want the
+			// tunnel at their apex (e.g. they own the domain solely
+			// for webhook routing). Log prominently.
+			fmt.Fprintf(os.Stderr, "WARNING: proceeding with apex hostname %q — this will clobber any existing DNS at %s. --allow-apex was set.\n", hostname, hostname)
+		} else {
+			return handleWebhookErr(err)
+		}
 	}
 
 	// Login inherits the user's terminal so the browser prompt appears.
@@ -376,4 +433,5 @@ func init() {
 
 	webhookSetupCmd.Flags().StringVar(&webhookSetupHostname, "hostname", "", "hostname for webhooks (e.g. webhooks.yourdomain.com)")
 	webhookSetupCmd.Flags().StringVar(&webhookSetupTunnelName, "tunnel", webhook.DefaultTunnelName, "Cloudflare tunnel name")
+	webhookSetupCmd.Flags().BoolVar(&webhookSetupAllowApex, "allow-apex", false, "allow an apex hostname (e.g. example.com); DANGEROUS — overrides root DNS")
 }
