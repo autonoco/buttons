@@ -31,6 +31,14 @@ type SetupOpts struct {
 	// Off by default — the safe fallback is to surface a
 	// DNSConflictError and let the user decide.
 	OverwriteDNS bool
+	// ForceLogin wipes ~/.cloudflared/cert.pem and re-runs `tunnel
+	// login` so the user can pick a different Cloudflare account.
+	// Matches the CLI's --re-login flag.
+	ForceLogin bool
+	// NoAutoRelogin disables the implicit re-auth path that fires on
+	// ZoneMismatchError. CLI / test convenience; production callers
+	// leave this false so zone-drift self-heals.
+	NoAutoRelogin bool
 }
 
 // SetupResult reports what got persisted so the CLI can render a clean
@@ -45,6 +53,22 @@ type SetupResult struct {
 // We never read it — we only check existence so the CLI can decide
 // whether to trigger the login step.
 const CertPath = "cert.pem"
+
+// resetCloudflaredCert deletes ~/.cloudflared/cert.pem so a subsequent
+// Login() re-opens the browser and lets the user pick a different
+// Cloudflare account. Missing file is not an error — target state is
+// "no cert" either way.
+func resetCloudflaredCert() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("%s/.cloudflared/%s", home, CertPath)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
 
 // HasCloudflaredCert returns true when ~/.cloudflared/cert.pem exists,
 // which is cloudflared's indicator that `tunnel login` has run.
@@ -180,14 +204,66 @@ func routeDNS(ctx context.Context, tunnelName, hostname string, overwrite bool) 
 	args = append(args, tunnelName, hostname)
 	cmd := exec.CommandContext(ctx, "cloudflared", args...) // #nosec G204 -- static flags + validated tunnelName/hostname
 	out, err := cmd.CombinedOutput()
+	combined := string(out)
 	if err != nil {
-		combined := string(out)
 		if strings.Contains(combined, "already exists") || strings.Contains(combined, "record with that host") {
 			return &DNSConflictError{Hostname: hostname, TunnelName: tunnelName, Raw: combined}
 		}
 		return fmt.Errorf("route dns %s → %s: %w\n%s", hostname, tunnelName, err, combined)
 	}
+	// Zone-drift detection. When the requested hostname's base
+	// domain isn't in the zone authorized by cert.pem, the CF API
+	// silently appends the authorized zone as a suffix (see
+	// cloudflared issue #1295). cloudflared's success line reports
+	// the EFFECTIVE hostname; if it differs from what we asked for,
+	// the caller's tunnel is wired to the wrong hostname and nothing
+	// they do after this will work.
+	if effective := parseEffectiveHostname(combined); effective != "" && effective != hostname {
+		return &ZoneMismatchError{
+			Requested: hostname,
+			Effective: effective,
+			Raw:       combined,
+		}
+	}
 	return nil
+}
+
+// ZoneMismatchError is returned when cloudflared silently re-routes a
+// DNS call to a hostname under the cert's authorized zone, appending
+// the zone as a suffix — the cloudflared #1295 bug. The caller (CLI)
+// maps this to a clear "your cert is authorized for zone X but you
+// asked for Y; re-auth?" prompt.
+type ZoneMismatchError struct {
+	Requested string
+	Effective string
+	Raw       string
+}
+
+func (e *ZoneMismatchError) Error() string {
+	return fmt.Sprintf(
+		"zone mismatch: asked cloudflared to route %q but it created %q instead. "+
+			"Your cloudflared login is authorized for a different zone than %q's base domain. "+
+			"Re-run `cloudflared tunnel login` (or pass --re-login) and pick the Cloudflare account that owns %q.",
+		e.Requested, e.Effective, e.Requested, e.Requested,
+	)
+}
+
+// parseEffectiveHostname picks the hostname cloudflared reported in
+// its success line out of its combined output. Two line formats
+// exist across cloudflared versions:
+//
+//   <HOST> is already configured to route to your tunnel ...
+//   <HOST> is now configured to route to your tunnel ...
+//
+// Returns "" when no match is found (shouldn't happen on success).
+var effectiveHostRe = regexp.MustCompile(`([A-Za-z0-9][A-Za-z0-9.\-]*)\s+is\s+(?:already|now)\s+configured\s+to\s+route`)
+
+func parseEffectiveHostname(combined string) string {
+	m := effectiveHostRe.FindStringSubmatch(combined)
+	if len(m) < 2 {
+		return ""
+	}
+	return strings.TrimSuffix(m[1], ".")
 }
 
 // RunSetup orchestrates the full named-tunnel setup: verify cloudflared,
@@ -202,6 +278,14 @@ func RunSetup(ctx context.Context, opts SetupOpts) (*SetupResult, error) {
 	}
 	if err := CheckCloudflared(); err != nil {
 		return nil, err
+	}
+	// ForceLogin wipes cert.pem and re-authenticates so the user can
+	// pick a different CF account. Used by the --re-login flag for
+	// cases where the existing cert is bound to the wrong zone.
+	if opts.ForceLogin {
+		if err := resetCloudflaredCert(); err != nil {
+			return nil, fmt.Errorf("reset cloudflared cert: %w", err)
+		}
 	}
 	if !opts.SkipLogin && !HasCloudflaredCert() {
 		if err := Login(ctx); err != nil {
@@ -218,7 +302,27 @@ func RunSetup(ctx context.Context, opts SetupOpts) (*SetupResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := routeDNS(opCtx, opts.TunnelName, opts.Hostname, opts.OverwriteDNS); err != nil {
+	err = routeDNS(opCtx, opts.TunnelName, opts.Hostname, opts.OverwriteDNS)
+	// Auto-recover from zone-mismatch: the existing cert is authorized
+	// for a different zone. Delete it, re-login, retry routeDNS once.
+	// Skip when --re-login was already tried (infinite loop guard) or
+	// when caller asked not to auto-retry.
+	if zmErr := (*ZoneMismatchError)(nil); errors.As(err, &zmErr) && !opts.ForceLogin && !opts.NoAutoRelogin {
+		if err := resetCloudflaredCert(); err != nil {
+			return nil, fmt.Errorf("zone mismatch on %q — tried to reset cert.pem for re-auth but: %w", opts.Hostname, err)
+		}
+		if err := Login(ctx); err != nil {
+			return nil, fmt.Errorf("zone mismatch on %q — cert.pem cleared; re-login failed: %w", opts.Hostname, err)
+		}
+		// Fresh cert → the tunnel itself may now belong to a different
+		// account. Re-discover it.
+		id, err = createOrFindTunnel(opCtx, opts.TunnelName)
+		if err != nil {
+			return nil, err
+		}
+		err = routeDNS(opCtx, opts.TunnelName, opts.Hostname, opts.OverwriteDNS)
+	}
+	if err != nil {
 		return nil, err
 	}
 

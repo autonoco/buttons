@@ -110,6 +110,13 @@ var webhookSetupAllowApex bool
 // delete the existing record manually before retrying.
 var webhookSetupOverwriteDNS bool
 
+// webhookSetupReLogin forces a fresh `cloudflared tunnel login`
+// flow, bypassing the existing ~/.cloudflared/cert.pem. Use when the
+// cert is bound to the wrong Cloudflare account/zone for the target
+// hostname and the automatic zone-drift recovery (on ZoneMismatch)
+// isn't kicking in, or when you want to explicitly re-pick accounts.
+var webhookSetupReLogin bool
+
 // apexLikelyPublicSuffixes covers the common cases where a literal
 // "ccTLD + 1" is still an apex that would break a real website. Not
 // exhaustive (no PSL parse); the guardrail is best-effort — users who
@@ -223,6 +230,7 @@ func runWebhookSetup(cmd *cobra.Command, args []string) error {
 		Hostname:     hostname,
 		TunnelName:   tunnelName,
 		OverwriteDNS: webhookSetupOverwriteDNS,
+		ForceLogin:   webhookSetupReLogin,
 	})
 	if err != nil {
 		// DNS conflict gets its own error code so agents/scripts can
@@ -235,6 +243,16 @@ func runWebhookSetup(cmd *cobra.Command, args []string) error {
 				return errSilent
 			}
 			fmt.Fprintln(os.Stderr, err.Error())
+			return errSilent
+		}
+		var zmErr *webhook.ZoneMismatchError
+		if errors.As(err, &zmErr) {
+			if jsonOutput {
+				_ = config.WriteJSONError("ZONE_MISMATCH", err.Error())
+				return errSilent
+			}
+			fmt.Fprintln(os.Stderr, err.Error())
+			fmt.Fprintln(os.Stderr, "\nTry: /tmp/buttons webhook setup --hostname <HOST> --re-login")
 			return errSilent
 		}
 		return handleWebhookErr(err)
@@ -454,4 +472,5 @@ func init() {
 	webhookSetupCmd.Flags().StringVar(&webhookSetupTunnelName, "tunnel", webhook.DefaultTunnelName, "Cloudflare tunnel name")
 	webhookSetupCmd.Flags().BoolVar(&webhookSetupAllowApex, "allow-apex", false, "allow an apex hostname (e.g. example.com); DANGEROUS — overrides root DNS")
 	webhookSetupCmd.Flags().BoolVar(&webhookSetupOverwriteDNS, "overwrite-dns", false, "replace any pre-existing Cloudflare DNS record at the hostname; DESTRUCTIVE")
+	webhookSetupCmd.Flags().BoolVar(&webhookSetupReLogin, "re-login", false, "force fresh `cloudflared tunnel login`; use when the current cert.pem is bound to the wrong CF account")
 }
