@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -120,14 +121,101 @@ func ensureButtonsDir(buttonsDir string) error {
 
 	gitignorePath := filepath.Join(buttonsDir, ".gitignore")
 	if !fileExists(gitignorePath) {
-		gitignore := "# Button specs, code files, and AGENT.md are committed.\n" +
-			"# Run history is per-machine and excluded.\n" +
-			"buttons/*/pressed/\n"
-		if err := os.WriteFile(gitignorePath, []byte(gitignore), 0600); err != nil {
+		if err := os.WriteFile(gitignorePath, []byte(defaultButtonsGitignore()), 0600); err != nil {
 			return fmt.Errorf("failed to write .gitignore: %w", err)
+		}
+	} else {
+		// Existing .gitignore — ensure the secret-bearing patterns are
+		// present. Idempotent: only appends missing ones so a user who
+		// customised their .gitignore keeps their additions.
+		if err := ensureSecretPatterns(gitignorePath); err != nil {
+			return fmt.Errorf("failed to update .gitignore: %w", err)
 		}
 	}
 	return nil
+}
+
+// defaultButtonsGitignore is the template written on init. Lists
+// every path in .buttons/ that can hold secrets or per-machine state
+// and must never be committed.
+//
+// batteries.json — holds plaintext API keys. 0600 on disk, but that
+//                  doesn't stop an accidental `git add -A`.
+// webhook.json   — Cloudflare tunnel config (hostname + tunnel id).
+//                  Not secret per se, but machine-specific.
+// buttons/*/pressed/ — run history including stdin args; can leak
+//                      sensitive values passed at press time.
+// drawers/*/pressed/ — same, for drawer runs.
+// idempotency/   — cached successful results keyed on args. Can
+//                  contain secret-derived data.
+// queues/        — file-lock semaphore state; machine-local.
+func defaultButtonsGitignore() string {
+	return `# Files that hold secrets — never commit.
+batteries.json
+# Machine-specific tunnel / listener config.
+webhook.json
+# Run history (per-machine, may contain sensitive args).
+buttons/*/pressed/
+drawers/*/pressed/
+# Local execution state.
+idempotency/
+queues/
+`
+}
+
+// secretPatterns is the set of .gitignore lines we consider
+// load-bearing for secret hygiene. ensureSecretPatterns appends any
+// missing ones to an existing .buttons/.gitignore so an older project
+// upgrading past the init that introduced the pattern gets the
+// coverage retroactively.
+var secretPatterns = []string{
+	"batteries.json",
+	"webhook.json",
+}
+
+func ensureSecretPatterns(path string) error {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is .buttons/.gitignore
+	if err != nil {
+		return err
+	}
+	existing := string(data)
+	var toAppend []string
+	for _, pat := range secretPatterns {
+		if !gitignoreContainsPattern(existing, pat) {
+			toAppend = append(toAppend, pat)
+		}
+	}
+	if len(toAppend) == 0 {
+		return nil
+	}
+	// Preserve the user's trailing newline, then append our additions
+	// with a header so it's clear they came from buttons upgrade.
+	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
+		existing += "\n"
+	}
+	existing += "\n# Added by buttons upgrade — never commit these.\n"
+	for _, p := range toAppend {
+		existing += p + "\n"
+	}
+	// #nosec G304 G306 G703 -- path is the caller's .buttons/.gitignore; filename is a literal, parent is our project-local data dir. Not user-tainted in any path-traversal sense.
+	return os.WriteFile(path, []byte(existing), 0600)
+}
+
+// gitignoreContainsPattern scans a .gitignore body for a literal line
+// matching `pattern`. Doesn't handle globs / negations — we only use
+// it for our own fixed patterns so a simple line-equality check is
+// fine and avoids pulling a .gitignore parser in.
+func gitignoreContainsPattern(body, pattern string) bool {
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if line == pattern {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveAgentTargets picks the agent skill files to install based on
