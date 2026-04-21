@@ -218,9 +218,16 @@ func runTunnel(
 	// warm. Poll /healthz until it answers 200 so the URL we return to
 	// the caller is actually usable. Without this, the first request a
 	// drawer step makes often fails with "no such host" or 502.
-	if err := waitForReady(ctx, publicURL, readyToken, 60*time.Second); err != nil {
+	// Quick tunnels can take 1–3 minutes for the ephemeral
+	// *.trycloudflare.com subdomain to resolve through the caller's
+	// local DNS resolver, even after the edge connection is already
+	// "Registered". Named tunnels are usually instant (the hostname
+	// already exists in the user's own CF zone). 3-minute cap covers
+	// the slowest quick-tunnel DNS propagation we've observed without
+	// silently hanging forever on a truly broken tunnel.
+	if err := waitForReady(ctx, publicURL, readyToken, 3*time.Minute); err != nil {
 		_ = t.Stop()
-		return nil, fmt.Errorf("tunnel URL %s did not become reachable: %w; last output:\n%s", publicURL, err, t.stderr.String())
+		return nil, fmt.Errorf("tunnel URL %s did not become reachable: %w\n\nIf this was a DNS-propagation timeout, try `buttons webhook setup` to provision a stable named tunnel on your own CF account — the hostname resolves instantly because it lives in your zone.\n\nLast cloudflared output:\n%s", publicURL, err, t.stderr.String())
 	}
 	t.URL = publicURL
 	return t, nil
