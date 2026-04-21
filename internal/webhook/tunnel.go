@@ -119,11 +119,20 @@ func startNamed(ctx context.Context, local, token string, cfg *Config) (*Tunnel,
 	//   TunnelToken set (from --api-token setup):
 	//     cloudflared tunnel run --token <T> — tunnel-scoped credential
 	//     baked into the token, no cert.pem required. Headless-friendly.
+	//     Token mode skips `cloudflared tunnel cleanup` because the
+	//     cleanup subcommand requires cert.pem and we may not have one.
 	//
 	//   TunnelName set (from cert.pem-based setup):
 	//     cloudflared tunnel run --url <LOCAL> <NAME> — classic path,
 	//     relies on ~/.cloudflared/cert.pem + <tunnel-uuid>.json
-	//     credentials file from the `tunnel create` step.
+	//     credentials file from the `tunnel create` step. We also call
+	//     `cloudflared tunnel cleanup <NAME>` first to drop stale edge
+	//     connectors from prior `listen` invocations that didn't shut
+	//     down cleanly (crash, SIGKILL, or Stop() returning before
+	//     cloudflared exits). Without this, CF load-balances the
+	//     tunnel's hostname across dead + live connectors and readiness
+	//     probes flake. See:
+	//     https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/tunnel-commands/#cleanup
 	var cmd *exec.Cmd
 	switch {
 	case cfg.TunnelToken != "":
@@ -135,6 +144,7 @@ func startNamed(ctx context.Context, local, token string, cfg *Config) (*Tunnel,
 			"--token", cfg.TunnelToken,
 		)
 	case cfg.TunnelName != "":
+		cleanupCloudflaredConnectors(ctx, cfg.TunnelName)
 		// #nosec G204 -- TunnelName validated by setup flow
 		cmd = exec.Command("cloudflared",
 			"--no-autoupdate",
@@ -177,6 +187,11 @@ func runTunnel(
 	if err != nil {
 		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
+	// Own a process group so Stop() can SIGTERM/SIGKILL the whole
+	// tree on unix — cloudflared can fork helpers, and signalling just
+	// the parent PID occasionally leaves the child connector running
+	// (and registered at the CF edge) after we return. No-op on Windows.
+	setProcessGroup(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start cloudflared: %w", err)
 	}
@@ -329,16 +344,40 @@ func waitForReady(ctx context.Context, publicURL, expectedToken string, total ti
 	return lastErr
 }
 
-// Stop terminates cloudflared. Safe to call multiple times.
+// Stop terminates cloudflared. Safe to call multiple times. Signals the
+// full process group on unix so any helpers cloudflared forked die with
+// the parent — otherwise a stale connector stays registered at the CF
+// edge and load-balances new traffic onto a dead local port.
 func (t *Tunnel) Stop() error {
 	if t == nil || t.cmd == nil || t.cmd.Process == nil {
 		return nil
 	}
-	_ = t.cmd.Process.Signal(signalTerm)
-	select {
-	case <-t.done:
-	case <-time.After(3 * time.Second):
-		_ = t.cmd.Process.Kill()
-	}
+	stopProcessGroup(t.cmd, t.done, 3*time.Second)
 	return nil
+}
+
+// cleanupCloudflaredRunner is the real implementation of the edge
+// cleanup step. Swapped out by tests to verify invocation without
+// shelling out. Package-level variable so the test file can reach it.
+var cleanupCloudflaredRunner = func(ctx context.Context, tunnelName string) {
+	// 10s cap — cleanup is best-effort. If the CF API is slow or the
+	// network is flaky we'd rather fall through and let the fresh
+	// `tunnel run` take over than block the user's `listen`.
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	// #nosec G204 -- tunnelName is validated by setup; we pass it as a
+	// literal argv entry, never interpolated into a shell.
+	cmd := exec.CommandContext(cctx, "cloudflared", "tunnel", "cleanup", tunnelName)
+	_ = cmd.Run() // errors are informational only; no stale connectors is success
+}
+
+// cleanupCloudflaredConnectors drops any stale connectors still
+// registered at the Cloudflare edge for this tunnel. Intended to run
+// before `tunnel run` so CF's load balancer doesn't split traffic
+// between our fresh process and a dead prior one.
+func cleanupCloudflaredConnectors(ctx context.Context, tunnelName string) {
+	if tunnelName == "" {
+		return
+	}
+	cleanupCloudflaredRunner(ctx, tunnelName)
 }
