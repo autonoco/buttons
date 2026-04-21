@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -68,16 +69,85 @@ var batteriesSetCmd = &cobra.Command{
 			return handleBatteryError(err)
 		}
 
+		// Creation-time git-leak check: if the file we just wrote
+		// is project-local (under .buttons/), verify git treats it as
+		// ignored. If not, auto-add the pattern to .buttons/.gitignore
+		// and surface a notice so the user knows we touched their
+		// repo on their behalf. For --global scope the file is under
+		// ~/.buttons/ which is outside any repo — skip the check.
+		gitignoreNotice := ""
+		if scope == battery.ScopeLocal {
+			notice, gerr := ensureBatteriesGitignored()
+			if gerr != nil {
+				// Not fatal — the battery was saved. Warn so the user
+				// can check manually.
+				fmt.Fprintf(os.Stderr, "warning: could not verify .buttons/batteries.json is gitignored: %v\n", gerr)
+			}
+			gitignoreNotice = notice
+		}
+
 		if jsonOutput {
-			return config.WriteJSON(map[string]any{
+			out := map[string]any{
 				"key":   key,
 				"scope": string(scope),
-			})
+			}
+			if gitignoreNotice != "" {
+				out["gitignore"] = gitignoreNotice
+			}
+			return config.WriteJSON(out)
 		}
 		fmt.Fprintf(os.Stderr, "set %s (%s)\n", key, scope)
+		if gitignoreNotice != "" {
+			fmt.Fprintf(os.Stderr, "  %s\n", gitignoreNotice)
+		}
 		printNextHint("use $BUTTONS_BAT_%s in any shell/code button", key)
 		return nil
 	},
+}
+
+// ensureBatteriesGitignored verifies that the project-local
+// .buttons/batteries.json path is covered by a .gitignore rule. If
+// not, appends `batteries.json` to .buttons/.gitignore (creating the
+// file if it's absent) and returns a human-readable notice. Returns
+// "" when the pattern was already present.
+//
+// We don't shell out to git — some users run `buttons batteries set`
+// outside a repo, or before `git init`. A pure .gitignore read is
+// enough since our gitignore template has always put batteries.json
+// at the project-root-relative location.
+func ensureBatteriesGitignored() (string, error) {
+	base, err := config.DataDir()
+	if err != nil {
+		return "", err
+	}
+	// Only act when the data dir is a project-local .buttons/. The
+	// global path (~/.buttons/) isn't inside a repo so git concerns
+	// don't apply.
+	if !config.IsProjectLocal() {
+		return "", nil
+	}
+	gitignorePath := filepath.Join(base, ".gitignore")
+	data, rerr := os.ReadFile(gitignorePath) // #nosec G304 -- fixed .gitignore path
+	if rerr != nil && !os.IsNotExist(rerr) {
+		return "", rerr
+	}
+	body := string(data)
+	if gitignoreContainsPattern(body, "batteries.json") {
+		return "", nil
+	}
+	if len(body) > 0 && body[len(body)-1] != '\n' {
+		body += "\n"
+	}
+	if body == "" {
+		body = "# Buttons-managed patterns — never commit secret-bearing files.\n"
+	} else {
+		body += "\n# Added by `buttons batteries set` — never commit.\n"
+	}
+	body += "batteries.json\n"
+	if err := os.WriteFile(gitignorePath, []byte(body), 0600); err != nil {
+		return "", err
+	}
+	return "added batteries.json to .buttons/.gitignore", nil
 }
 
 var batteriesGetCmd = &cobra.Command{
