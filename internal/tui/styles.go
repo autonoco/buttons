@@ -278,16 +278,16 @@ func BuildStyles() Styles {
 			Bold(true),
 
 		// ActionPrimary — the board's single primary CTA ("press").
-		// Flat white pill, no border, dark text. Reads as a clean
-		// "click me" affordance without borrowing the indicator-
-		// orange, which is reserved for active/running state. The
-		// earlier thick-bordered orange variant produced a visible
-		// gap where the border and fill met on some terminals —
-		// dropping the border eliminates that class of render bug.
+		// Bordered chip (no background fill) — matches the pinned-card
+		// border treatment so the press reads as a real button. We
+		// avoid the border + background-fill combo here because that
+		// pairing previously produced a visible gap where the border
+		// met the fill on some terminals.
 		ActionPrimary: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(hexInk)).
-			Background(lipgloss.Color(hexPaper)).
-			Padding(0, 3).
+			Foreground(c.primary).
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(c.primary).
+			Padding(0, 2).
 			Bold(true),
 
 		ActionSecondary: lipgloss.NewStyle().
@@ -297,8 +297,9 @@ func BuildStyles() Styles {
 
 		ActionPrimaryDisabled: lipgloss.NewStyle().
 			Foreground(c.secondary).
-			Background(c.chipBg).
-			Padding(0, 3),
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(c.muted).
+			Padding(0, 2),
 
 		KeyChip: lipgloss.NewStyle().
 			Foreground(c.primary).

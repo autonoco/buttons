@@ -10,7 +10,9 @@
 
 ────────────────────────────────────────────────────────────────────────────────
 
-     press                     ↑↓  nav  ·   ↵  press  ·   L  logs  ·   v  list
+  ┌─────────┐                                                                 
+  │  press  │                  ↑↓  nav  ·   ↵  press  ·   L  logs  ·   v  list
+  └─────────┘                                                                 
 
   ● deploy running… stdout streaming to ~/.buttons/buttons/deploy/pressed/
 
