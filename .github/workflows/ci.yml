@@ -16,11 +16,12 @@ permissions:
 
 env:
   # Pinned Go toolchain. Bumping this also resolves stdlib CVEs
-  # tracked in autonoco/autono#331. 1.26.2 adds fixes for four
-  # more vulnerabilities (GO-2026-4866 x509 auth bypass, -4870
-  # TLS 1.3 KeyUpdate DoS, -4946/-4947 x509 DoS) that 1.26.1
-  # is still exposed to.
-  GO_VERSION: "1.26.2"
+  # tracked in autonoco/autono#331. 1.26.4 clears four reachable
+  # vulnerabilities that 1.26.2 is exposed to: GO-2026-4918 (net/http
+  # HTTP/2 infinite loop) and GO-2026-4971 (net) fixed in 1.26.3, plus
+  # GO-2026-5037 (crypto/x509) and GO-2026-5039 (net/textproto) fixed
+  # in 1.26.4.
+  GO_VERSION: "1.26.4"
 
 jobs:
   test:
@@ -91,7 +92,11 @@ jobs:
           cache: true
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        # Pinned so Dependabot (or a follow-up PR) can bump it intentionally.
+        # v1.4.0 bundles x/tools v0.46.0, which panics ("ForEachElement called
+        # on type containing *types.TypeParam") during symbol-level analysis of
+        # generics under Go 1.26. Bump once upstream ships the x/tools fix.
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
 
       - name: Run govulncheck
         run: govulncheck ./...
