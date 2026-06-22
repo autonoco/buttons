@@ -66,7 +66,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.2"
+          # Keep in sync with GO_VERSION in ci.yml.
+          go-version: "1.26.4"
           cache: true
 
       - name: Set up QEMU
