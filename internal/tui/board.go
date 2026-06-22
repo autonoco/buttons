@@ -859,7 +859,7 @@ const (
 	cardHeightIdle = 5
 	// cardGutter is the vertical blank between card grid rows.
 	cardGutter    = 1
-	footerHeight  = 1 // flat pill (no border) is a single row
+	footerHeight  = 3 // bordered press chip = top border + label + bottom border
 	actionGap     = 2
 	headerHeight  = 1
 	dividerHeight = 1
@@ -901,9 +901,8 @@ func (m Model) computeLayout() layout {
 	l.footerY0 = y
 	l.footerY1 = y + footerHeight - 1
 
-	// Press pill width = label("press" = 5) + padding(6). No border
-	// on the flat pill so no extra cells.
-	pressW := 5 + 6
+	// Press chip width = label("press" = 5) + padding(4) + border(2).
+	pressW := 5 + 4 + 2
 	l.pressX0 = leftPad
 	l.pressX1 = l.pressX0 + pressW
 

@@ -13,6 +13,8 @@
 
 ────────────────────────────────────────────────────────────────────────────────
 
-     press                     ↑↓  nav  ·   ↵  press  ·   L  logs  ·   v  list
+  ┌─────────┐                                                                 
+  │  press  │                  ↑↓  nav  ·   ↵  press  ·   L  logs  ·   v  list
+  └─────────┘                                                                 
 
   TTY 1 · UTF-8 · 256-COLOR                             ARGS 2 · DRY-RUN READY
