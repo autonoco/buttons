@@ -91,7 +91,11 @@ jobs:
           cache: true
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        # Pinned so Dependabot (or a follow-up PR) can bump it intentionally.
+        # v1.4.0 bundles x/tools v0.46.0, which panics ("ForEachElement called
+        # on type containing *types.TypeParam") during symbol-level analysis of
+        # generics under Go 1.26. Bump once upstream ships the x/tools fix.
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
 
       - name: Run govulncheck
         run: govulncheck ./...
