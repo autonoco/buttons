@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/autonoco/buttons/internal/config"
+	"github.com/autonoco/buttons/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -24,134 +25,198 @@ const (
 	repoName    = "buttons"
 )
 
-var updateCheck bool
+var (
+	updateCheck   bool
+	updateBinary  bool
+	updateContent bool
+)
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Update buttons to the latest version",
-	Long: `Check for and install the latest version of buttons from GitHub Releases.
+	Short: "Update buttons — the CLI binary and installed buttons",
+	Long: `Bring everything current: the buttons CLI binary (from GitHub Releases)
+and the content of any installed buttons (re-fetched from the source each
+was installed from, when it has drifted).
 
-Downloads the correct archive for your OS and architecture, verifies
-the SHA256 checksum, and atomically replaces the running binary.
+By default both are updated. Scope with --binary or --content. The binary
+download verifies its SHA256 and atomically replaces the running binary;
+button content is re-verified against its install-time content hash and only
+rewritten when it changed.
 
 Examples:
-  buttons update              # download and install the latest version
-  buttons update --check      # just check, don't install
+  buttons update              # binary + installed buttons
+  buttons update --check      # report what would change, install nothing
+  buttons update --binary     # only the CLI binary
+  buttons update --content    # only installed buttons
   buttons update --json       # structured output`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		current := normalizeVersion(version)
+		// Default (neither flag) = do both.
+		doBinary := updateBinary || !updateContent
+		doContent := updateContent || !updateBinary
 
-		latest, err := fetchLatestRelease()
-		if err != nil {
-			if jsonOutput {
-				_ = config.WriteJSONError("INTERNAL_ERROR", fmt.Sprintf("failed to check for updates: %v", err))
-				return errSilent
+		out := map[string]any{}
+
+		if doBinary {
+			bin, err := runBinaryUpdate(updateCheck)
+			if err != nil {
+				if jsonOutput {
+					_ = config.WriteJSONError("INTERNAL_ERROR", err.Error())
+					return errSilent
+				}
+				return err
 			}
-			return fmt.Errorf("failed to check for updates: %w", err)
+			out["binary"] = bin
 		}
 
-		latestVersion := normalizeVersion(latest.TagName)
-		upToDate := current == latestVersion
-
-		if upToDate {
-			if jsonOutput {
-				return config.WriteJSON(map[string]any{
-					"current":    current,
-					"latest":     latestVersion,
-					"up_to_date": true,
-				})
+		if doContent {
+			content, err := store.UpdateInstalled(store.DefaultSourceResolver, updateCheck)
+			if err != nil {
+				if jsonOutput {
+					_ = config.WriteJSONError("INTERNAL_ERROR", err.Error())
+					return errSilent
+				}
+				return err
 			}
-			fmt.Fprintf(os.Stderr, "Already up to date (%s)\n", current)
-			return nil
-		}
-
-		if updateCheck {
-			if jsonOutput {
-				return config.WriteJSON(map[string]any{
-					"current":    current,
-					"latest":     latestVersion,
-					"up_to_date": false,
-				})
+			if !jsonOutput {
+				printContentSummary(content, updateCheck)
 			}
-			fmt.Fprintf(os.Stderr, "Update available: %s → %s\n", current, latestVersion)
-			fmt.Fprintf(os.Stderr, "Run 'buttons update' to install.\n")
-			return nil
-		}
-
-		// Resolve the path to the currently running binary.
-		execPath, err := os.Executable()
-		if err != nil {
-			return fmt.Errorf("cannot determine executable path: %w", err)
-		}
-		execPath, err = filepath.EvalSymlinks(execPath)
-		if err != nil {
-			return fmt.Errorf("cannot resolve executable path: %w", err)
-		}
-
-		if isHomebrewManaged(execPath) {
-			if jsonOutput {
-				_ = config.WriteJSONError("VALIDATION_ERROR", "this binary is managed by Homebrew — run 'brew upgrade buttons' instead")
-				return errSilent
-			}
-			return fmt.Errorf("this binary is managed by Homebrew — run 'brew upgrade buttons' instead")
-		}
-
-		// Find the right archive for this platform.
-		archiveName := archiveNameForPlatform(latestVersion)
-		archiveAsset := latest.findAsset(archiveName)
-		if archiveAsset == nil {
-			return fmt.Errorf("no release asset found for %s (looked for %s)", runtime.GOOS+"/"+runtime.GOARCH, archiveName)
-		}
-		checksumsAsset := latest.findAsset("checksums.txt")
-		if checksumsAsset == nil {
-			return fmt.Errorf("checksums.txt not found in release %s", latest.TagName)
-		}
-
-		fmt.Fprintf(os.Stderr, "Updating %s → %s\n", current, latestVersion)
-
-		// Download the archive.
-		fmt.Fprintf(os.Stderr, "  downloading %s\n", archiveName)
-		archiveData, err := downloadAsset(archiveAsset.URL)
-		if err != nil {
-			return fmt.Errorf("failed to download archive: %w", err)
-		}
-
-		// Download and verify checksum.
-		fmt.Fprintf(os.Stderr, "  verifying checksum\n")
-		checksumsData, err := downloadAsset(checksumsAsset.URL)
-		if err != nil {
-			return fmt.Errorf("failed to download checksums: %w", err)
-		}
-		if err := verifyChecksum(archiveData, archiveName, checksumsData); err != nil {
-			return fmt.Errorf("checksum verification failed: %w", err)
-		}
-
-		// Extract the binary from the tarball.
-		fmt.Fprintf(os.Stderr, "  extracting binary\n")
-		binaryData, err := extractBinaryFromTarGz(archiveData, "buttons")
-		if err != nil {
-			return fmt.Errorf("failed to extract binary: %w", err)
-		}
-
-		// Atomically swap the binary.
-		fmt.Fprintf(os.Stderr, "  replacing %s\n", execPath)
-		if err := atomicReplace(execPath, binaryData); err != nil {
-			return fmt.Errorf("failed to replace binary: %w", err)
+			out["content"] = content
 		}
 
 		if jsonOutput {
-			return config.WriteJSON(map[string]any{
-				"current":    current,
-				"latest":     latestVersion,
-				"up_to_date": true,
-				"updated":    true,
-				"path":       execPath,
-			})
+			return config.WriteJSON(out)
 		}
-		fmt.Fprintf(os.Stderr, "Updated to %s\n", latestVersion)
 		return nil
 	},
+}
+
+// binaryUpdate is the structured result of the self-update half.
+type binaryUpdate struct {
+	Current  string `json:"current"`
+	Latest   string `json:"latest"`
+	UpToDate bool   `json:"up_to_date"`
+	Updated  bool   `json:"updated,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Skipped  string `json:"skipped,omitempty"` // reason the binary was not replaced
+}
+
+// runBinaryUpdate checks GitHub Releases and, unless check is set, downloads,
+// verifies, and atomically swaps the running binary. A Homebrew-managed binary
+// is reported as skipped (not a hard error) so a combined run can still update
+// button content.
+func runBinaryUpdate(check bool) (*binaryUpdate, error) {
+	current := normalizeVersion(version)
+
+	latest, err := fetchLatestRelease()
+	if err != nil {
+		return nil, fmt.Errorf("failed to check for updates: %w", err)
+	}
+	latestVersion := normalizeVersion(latest.TagName)
+	bu := &binaryUpdate{Current: current, Latest: latestVersion, UpToDate: current == latestVersion}
+
+	if bu.UpToDate {
+		if !jsonOutput {
+			fmt.Fprintf(os.Stderr, "Binary already up to date (%s)\n", current)
+		}
+		return bu, nil
+	}
+
+	if check {
+		if !jsonOutput {
+			fmt.Fprintf(os.Stderr, "Binary update available: %s → %s (run 'buttons update')\n", current, latestVersion)
+		}
+		return bu, nil
+	}
+
+	// Resolve the path to the currently running binary.
+	execPath, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("cannot determine executable path: %w", err)
+	}
+	execPath, err = filepath.EvalSymlinks(execPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve executable path: %w", err)
+	}
+
+	if isHomebrewManaged(execPath) {
+		bu.Skipped = "homebrew-managed"
+		if !jsonOutput {
+			fmt.Fprintf(os.Stderr, "Binary is managed by Homebrew — run 'brew upgrade buttons' (skipping binary)\n")
+		}
+		return bu, nil
+	}
+
+	// Find the right archive for this platform.
+	archiveName := archiveNameForPlatform(latestVersion)
+	archiveAsset := latest.findAsset(archiveName)
+	if archiveAsset == nil {
+		return nil, fmt.Errorf("no release asset found for %s (looked for %s)", runtime.GOOS+"/"+runtime.GOARCH, archiveName)
+	}
+	checksumsAsset := latest.findAsset("checksums.txt")
+	if checksumsAsset == nil {
+		return nil, fmt.Errorf("checksums.txt not found in release %s", latest.TagName)
+	}
+
+	fmt.Fprintf(os.Stderr, "Updating binary %s → %s\n", current, latestVersion)
+
+	fmt.Fprintf(os.Stderr, "  downloading %s\n", archiveName)
+	archiveData, err := downloadAsset(archiveAsset.URL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download archive: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "  verifying checksum\n")
+	checksumsData, err := downloadAsset(checksumsAsset.URL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download checksums: %w", err)
+	}
+	if err := verifyChecksum(archiveData, archiveName, checksumsData); err != nil {
+		return nil, fmt.Errorf("checksum verification failed: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "  extracting binary\n")
+	binaryData, err := extractBinaryFromTarGz(archiveData, "buttons")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract binary: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "  replacing %s\n", execPath)
+	if err := atomicReplace(execPath, binaryData); err != nil {
+		return nil, fmt.Errorf("failed to replace binary: %w", err)
+	}
+
+	bu.Updated = true
+	bu.Path = execPath
+	if !jsonOutput {
+		fmt.Fprintf(os.Stderr, "Updated binary to %s\n", latestVersion)
+	}
+	return bu, nil
+}
+
+// printContentSummary renders the installed-button half for humans.
+func printContentSummary(res *store.UpdateResult, check bool) {
+	counts := res.Counts()
+	if len(res.Buttons) == 0 {
+		fmt.Fprintln(os.Stderr, "No installed buttons to update.")
+		return
+	}
+	for _, b := range res.Buttons {
+		switch b.Action {
+		case "updated":
+			fmt.Fprintf(os.Stderr, "  ✓ %s %s → %s\n", b.Name, b.From, b.To)
+		case "available":
+			fmt.Fprintf(os.Stderr, "  ↑ %s %s → %s (available)\n", b.Name, b.From, b.To)
+		case "error":
+			fmt.Fprintf(os.Stderr, "  ✗ %s: %s\n", b.Name, b.Reason)
+		}
+	}
+	verb := "updated"
+	if check {
+		verb = "available"
+	}
+	fmt.Fprintf(os.Stderr, "Buttons: %d %s, %d unchanged, %d skipped, %d errors\n",
+		counts["updated"]+counts["available"], verb, counts["unchanged"], counts["skipped"], counts["error"])
 }
 
 // ghRelease is a minimal representation of a GitHub API release.
@@ -327,6 +392,8 @@ func isHomebrewManaged(path string) bool {
 }
 
 func init() {
-	updateCmd.Flags().BoolVar(&updateCheck, "check", false, "check for updates without installing")
+	updateCmd.Flags().BoolVar(&updateCheck, "check", false, "report what would change without installing")
+	updateCmd.Flags().BoolVar(&updateBinary, "binary", false, "update only the CLI binary")
+	updateCmd.Flags().BoolVar(&updateContent, "content", false, "update only installed buttons")
 	rootCmd.AddCommand(updateCmd)
 }
