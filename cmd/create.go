@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/autonoco/buttons/internal/agentskill"
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/settings"
@@ -158,23 +159,30 @@ Examples:
 			}
 		}
 
+		agentsMdAction := updateProjectAgentsMD(svc)
+
 		if jsonOutput {
 			return config.WriteJSON(struct {
 				*button.Button
 				CodePath  string `json:"code_path,omitempty"`
 				ButtonDir string `json:"button_dir"`
 				Ignored   bool   `json:"ignored,omitempty"`
+				AgentsMD  string `json:"agents_md,omitempty"`
 			}{
 				Button:    btn,
 				CodePath:  codePath,
 				ButtonDir: btnDir,
 				Ignored:   ignored,
+				AgentsMD:  agentsMdAction,
 			})
 		}
 
 		fmt.Fprintf(os.Stderr, "Created button: %s\n", btn.Name)
 		if ignored {
 			fmt.Fprintf(os.Stderr, "  (added to .buttons/.gitignore — not tracked by git)\n")
+		}
+		if agentsMdAction != "" {
+			fmt.Fprintf(os.Stderr, "  AGENTS.md button list %s\n", agentsMdAction)
 		}
 		if codePath != "" {
 			fmt.Fprintf(os.Stderr, "  Edit:  %s\n", codePath)
@@ -237,4 +245,51 @@ func init() {
 	createCmd.Flags().StringArrayVar(&createArgs, "arg", nil, "argument definition (name:type:required|optional)")
 	createCmd.Flags().BoolVar(&createIgnore, "ignore", false, "add this button to .buttons/.gitignore so git won't track it (good for scratch/test buttons)")
 	rootCmd.AddCommand(createCmd)
+}
+
+// updateProjectAgentsMD keeps AGENTS.md's project button list current after a
+// project-local create inside a git repo. Best-effort: returns the action
+// ("created"/"updated"/"appended") or "" when skipped or on error — a docs
+// refresh must never fail the create.
+func updateProjectAgentsMD(svc *button.Service) string {
+	if !config.IsProjectLocal() {
+		return ""
+	}
+	dataDir, err := config.DataDir()
+	if err != nil {
+		return ""
+	}
+	projectRoot := filepath.Dir(dataDir)
+	if !isGitRepo(projectRoot) {
+		return ""
+	}
+	list, err := svc.List()
+	if err != nil {
+		return ""
+	}
+	entries := make([]agentskill.ButtonEntry, 0, len(list))
+	for _, b := range list {
+		entries = append(entries, agentskill.ButtonEntry{Name: b.Name, Description: b.Description})
+	}
+	res, err := agentskill.WriteButtonList(projectRoot, entries)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not update AGENTS.md button list: %v\n", err)
+		return ""
+	}
+	return res.Action
+}
+
+// isGitRepo reports whether dir or any ancestor contains a .git entry — the way
+// git itself discovers the repo root.
+func isGitRepo(dir string) bool {
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
 }
