@@ -114,6 +114,18 @@ call the exact code `buttons list`/`press`/`detail` do. The agent may discover v
 either way; nothing is ever MCP-only or CLI-only.** The MCP server is a presentation layer over the
 engine, so parity is structural, not something to maintain by hand.
 
+**The MCP server is a runtime/execution surface (not the control plane)**, and as a runtime adapter it owes
+a few architecture-required behaviors — today mostly gaps to close, named honestly:
+- **Identity on press.** A `buttons_press` should carry actor / principal / runtime / session from the
+  runtime's identity (not model-asserted text), so brain-touching buttons resolve the *invoking principal's*
+  partition and every press emits an audit event. v1: a single local principal is implied.
+- **Reduced-mode preflight.** A button whose required secret bindings are unmet is mounted **visible but
+  flagged unrunnable** (or omitted) — never silently mountable-then-failing.
+- **Mutation gate.** Read vs. mutating buttons are distinguished (`mutates`); a mutating press surfaces a
+  preview/confirm at the adapter boundary so model-invoked mutations aren't auto-executed; read buttons run
+  directly. Auto-update-on-by-default applies to **content updates**, never to silently broadening what a
+  model may auto-press.
+
 ---
 
 ## 4. The two build tracks
@@ -122,11 +134,21 @@ engine, so parity is structural, not something to maintain by hand.
 
 All small, additive Go changes in a repo you own; most is the already‑scoped `#274`.
 
-1. **Schema (the load‑bearing missing field).** Extend `internal/button/entity.go`: add `Version
-   string`, `Tags []string`, `Requires []string` (peer buttons), `RequiresBatteries []string` (secret
-   *names*) — all `omitempty`, so existing buttons are unaffected. Add a **`pack.json`** (new
-   `internal/pack`): `{ name, version, description, buttons[], dependencies[], requires_batteries[] }`.
-   This is the versioned, pinnable unit the Go code completely lacks today.
+1. **Schema (the load‑bearing unit).** Two tiers:
+   - **Shipped (#186):** `Version`, `Tags`, `Requires` (peer buttons), `RequiresBatteries` (secret *names*),
+     `Source`, `ContentHash` on `button.json`; a `pack.json` (`{ name, version, description, buttons[],
+     dependencies[], requires_batteries[] }`). All `omitempty`.
+   - **Architecture-aligned target (add as the store/IAM layers land):** per button — `Mutates bool` +
+     `RiskLevel` (read vs. mutation; gates the call-time confirm), **`Capabilities []string`** (stable
+     capability IDs like `calendar.free_busy.read`, *decoupled from pack version* — the join key to IAM
+     grant/policy/audit; a version bump must not silently change them), `Classification` + `SourcePolicy`
+     (most-restrictive-wins; an install/press must not loosen a stricter source), `AuthMode`
+     (`local-native|brokered|service-side|governed-platform|static-local`), `AllowedEnvironments`/
+     `AllowedRuntimes`, `TokenAudience`. Upgrade `RequiresBatteries` from a name list to structured **secret
+     bindings** `{ logical_name, inject_as{type}, provider_ref?, environments[], allowed_runtimes[],
+     rotation_hint }` — today only `inject_as=env` is implemented (brokered / service-side injection is a
+     named gap, §9). **`Tags` (discovery) and `Capabilities`/`Mutates` (policy) are different axes — don't
+     conflate them.**
 2. **Implement `buttons store`** (`cmd/store.go`, today the stub): `store add <git-url>` / `store
    install <pack>` / `store update [--all]` — backed by `internal/store` that clones/pulls a pinned ref
    and **copies** each button folder into `ButtonsDir()`, stamping `Source`+`Version` into `button.json`.
@@ -146,7 +168,11 @@ All small, additive Go changes in a repo you own; most is the already‑scoped `
    (`<pack>/<name>`) in `paths.go`/resolver; (b) **project‑vs‑global is winner‑take‑all and the docs are
    wrong about it** (code returns only the nearest `.buttons/`, never a union with `~/.buttons/`) → make
    it union/layered (or an explicit `--global`) so a globally‑installed autono pack isn't shadowed by any
-   project `.buttons/`.
+   project `.buttons/`; (c) **resolution is name‑scoping only — it MUST NOT widen *data* scope:** a
+   globally‑installed pack still binds each invocation to a **single principal's brain/lake partition**,
+   resolved from the invoking identity, never shared across principals on a multi‑tenant machine. (The union
+   resolver is also *step one* toward the architecture's `base→team→env→runtime→identity` **overlay** model —
+   flat copy‑install satisfies the no‑symlink constraint but not yet overlays; §9.)
 5. **MCP meta‑tools + `tags` + `buttons search`** (§3).
 
 ### Track B — make the autono buttons distributable (this repo)
@@ -199,24 +225,81 @@ same verified way.
 launchd  sh.buttons.autoupdate.plist  (StartInterval 1h, RunAtLoad)
    └─ buttons update --background           # CLI binary  (existing self-updater)
    └─ buttons store update --all            # button packs (new, same fetch+sha256+atomic-swap)
-        ↑ pulls pinned pack tags from the private content repos (GITHUB_TOKEN on trusted machines)
+        ↑ pulls the catalog + signed pack tarballs from the registry (one bearer key; #275)
 on-run passive fallback: root PersistentPreRunE → detached --background check when LastUpdateCheck stale
 ```
 
-Channels mirror the binary pipeline (`stable` = semver tags, `latest` = main). Trusted private team
-now → `GITHUB_TOKEN`/deploy key auth; the only thing that changes when you later add untrusted installs
-is turning on the planned **signature verification** (SECURITY.md already flags it as not‑yet‑shipped).
+Source is the **registry** (R2 + a thin Worker), **not** a git pull — one centrally‑rotatable bearer key, not
+per‑machine GitHub tokens (`buttons-registry/docs/PLAN.md`). Channels are `stable`/`latest` pointers in the
+catalog. Untrusted/public installs later add **signature verification** (`SECURITY.md` flags it as
+not‑yet‑shipped).
+
+**Architecture-required behaviors:**
+- **Hot‑swap safety** — `store update` must not mutate a button mid‑press; in‑flight presses pin the version
+  resolved at press start; a content update invalidates the *next* session's catalog, not the running one.
+- **Yank reaches installed packs** — the updater honors a `yanked` signal and rolls a machine off a revoked
+  `<name>@<version>` (fail‑closed), not just blocking new installs.
+- **Structured audit, not a free‑text log** — install/update/press/publish each emit an event into the minimal
+  observability envelope `{ event_id, occurred_at, actor, principal, runtime, component,
+  config_version=pack@version, content_hash, decision/result-class }` (`pack.installed`, `pack.updated`,
+  `runtime.synced`, `button.pressed`, `pack.published`). **IDs + versions + result‑class only — never battery
+  values or raw sensitive stdout.** So the toolset version a runtime ran survives its teardown (Ex.18).
 
 ---
 
-## 7. How this fits the drafted architecture
+## 7. How this fits the drafted architecture (and where it deliberately stops)
 
-Buttons‑as‑distribution **is** the concrete first slice of the control plane, with Buttons as the
-substrate: the **store = tool registry** (versioned, installable capability surfaces), **batteries =
-secret bindings** (requirements not values), **pack `source_policy`/classification** carries provenance,
-the **MCP meta‑tool server = the runtime adapter's tool mount**, and **`buttons update`/`store update` =
-the boot/sync‑time materialization** the control plane calls for. The earlier control‑plane mapping still
-holds — Buttons just makes it real today instead of as a spec.
+Buttons‑as‑distribution is the **first concrete slice of the control plane — but only the config /
+materialization / mount‑time slice.** The architecture's load‑bearing boundary is **config vs. execution**:
+the control plane *describes and materializes* what a runtime may mount; it **never executes**. So the
+mapping must be **split, not collapsed onto "Buttons"**:
+
+| Architecture | Buttons realization | Plane |
+|---|---|---|
+| Control plane / config + tool registry (mount‑time) | `buttons store` · `pack.json` · the registry — distribute + version *which* button surfaces a runtime may mount | **config — no execution** |
+| Runtime / execution (call‑time) | `buttons press` · the `buttons_press` MCP tool — actually *runs* a button | **runtime — NOT the control plane** |
+| Secret bindings | `batteries` materialize the *injection* half; the pack manifest carries the full binding contract (`provider_ref`, `inject_as`, `environments`, `allowed_runtimes`, `rotation_hint`) — **requirements/refs, never values** | config |
+| Runtime adapter | Buttons‑on‑local is **one** adapter (generic‑local); the pack format stays runtime‑neutral so OpenClaw/Codex/Hermes/Docker adapters render the same packs into native config (e.g. bindings → OpenClaw SecretRefs). The Buttons MCP server is one **mount**, not THE adapter. | config→native |
+| Observability spine | installed `pack@version` + `content_hash` **are** the `config_version`/`toolset_version`; every press + OTA + publish stamps them into a structured audit event | telemetry |
+
+**Mount‑time vs. call‑time — the split the store does NOT cross.** `buttons store install` is *mount‑time*:
+it materializes *which* buttons a runtime *may* mount. Whether a specific actor/session may *press* a button
+that touches a shared, sensitive, or data‑service resource is a **call‑time** decision the architecture
+assigns downstream (IAM / a data service / a tool gateway / an authz‑aware MCP). Today each button's own
+confirm‑gate is the only call‑time control; the target is a shared authorizer. **Local, self‑contained,
+provider‑native buttons** (the plan's sweet spot) are the fast path with no platform IAM in the hot loop;
+**governed buttons** must obtain a call‑time decision before executing.
+
+**Possession ≠ authorization.** Installing a pack and holding its batteries is credential *possession* — not
+the right to exercise a capability. The store deliberately does **not** collapse the two (the exact shape the
+IAM notes reject). A governed button maps its press to a *capability + resource + action* and asks a shared
+authorizer for a decision — it must **not** invent per‑integration grant logic (coarse‑mount / fine‑enforce).
+
+**Buttons is not a data plane.** Brain/lake‑touching buttons (sync/graph/`adb‑*`) are data‑service *consumers*:
+once the data service exists they route through it (the button *resolves + invokes*; the service *governs +
+executes*, injecting per‑principal partition/scope). `pack.json` declares only the **coarse adapter surface** —
+capability families, secret *names*, token audience — and **never** the data‑service resource catalog (tables,
+fields, AutonoDB scopes) or row/field policy.
+
+**Resolved runtime contract — partial.** `store.lock` (installed + pinned packs) is a *partial* resolved
+contract: it pins the tool/capability axis but does **not** yet carry prompt/model refs, persona, IAM context,
+or token audiences — which the architecture requires for a fully versioned, globally‑rollback‑able agent
+snapshot. Those live in `CLAUDE.md`/`agentskill` markers today (a gap — §9).
+
+**Honesty clause — what the store deliberately leaves to IAM / data‑service / tool‑gateway:** call‑time
+authorization, actor‑vs‑principal carriage, token brokering, per‑resource redaction/limits/grants. Naming these
+as out‑of‑scope (not silently absent) is what keeps Buttons‑as‑distribution a faithful *slice* of the control
+plane rather than an overclaim that it *is* the control plane.
+
+### How packs explain the canonical examples (the design test suite)
+- **Ex.6 local personal coding agent** — self‑contained packs mount **local‑provider‑native** tools, no
+  platform IAM in the hot path. *The plan's sweet spot.*
+- **Ex.1 Slack CoS free/busy** — installing an `autono-cal` pack only **mounts** the surface; the per‑call
+  *busy‑only* redaction + grant is **not** something the store or the button provides — it exposes the
+  call‑time gap a downstream authorizer must close.
+- **Ex.18 ephemeral remote agent** — pack pins + secret bindings give boot‑time materialization, but
+  **accountability/audit must survive teardown**: install/update/press emit durable central events
+  (machine, `pack@version`, `content_hash`), not just a local log.
 
 ---
 
@@ -256,3 +339,22 @@ done once against the validated store.
    (the right fix) over renaming buttons.
 5. **Build order** — Track A and Track B are independent and parallelizable; the store (A2) and the desk
    CLI (B1) are the two critical‑path items.
+
+Architecture-alignment deferrals (named, not silently absent):
+
+6. **Call‑time authorizer for governed buttons** — a pre‑exec `authorize(actor, principal, capability,
+   resource, action)` hook governed buttons call before `main.sh`; local provider‑native buttons are exempt.
+7. **Brokered / service‑side secret bindings** — batteries inject env vars only; a credential the runtime
+   must *never receive* (brokered exchange, service‑side adapter) isn't yet expressible.
+8. **Prompt/model/persona axis** — the resolved contract should pin these too; today they live in
+   `CLAUDE.md`/`agentskill`. Should they become a pack (or a sibling agent‑definition artifact)?
+9. **Registry token model** — static shared read key (MVP) → short‑lived audience‑bound minted tokens per
+   machine before any non‑read scope / untrusted fleet.
+10. **Hot‑swap + session/catalog invalidation** — `store update` must not mutate a button mid‑press (in‑flight
+    presses pin the version at start); a content update invalidates the *next* session's catalog, not the
+    running one.
+11. **Yank / revocation reaches installed packs** — a `yanked` signal the background updater honors
+    (fail‑closed), not just blocking new installs.
+12. **Non‑local runtime adapters** — OpenClaw/Codex/Hermes/Docker render the same packs into native config
+    (tool policy, SecretRefs, sandbox profiles); out of v1, but the pack format must not bake in
+    Buttons/flat‑files assumptions.
