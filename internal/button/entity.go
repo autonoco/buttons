@@ -6,9 +6,18 @@ import (
 )
 
 type Button struct {
-	SchemaVersion        int               `json:"schema_version"`
-	Name                 string            `json:"name"`
-	Description          string            `json:"description,omitempty"`
+	SchemaVersion int    `json:"schema_version"`
+	Name          string `json:"name"`
+	Description   string `json:"description,omitempty"`
+	// Tags group/categorize a button for discovery and pack filtering
+	// (e.g. "finance", "sync"). Omitted when empty so existing buttons
+	// don't grow a noisy field.
+	Tags []string `json:"tags,omitempty"`
+	// Version is the button's content release (semver), distinct from
+	// SchemaVersion (the on-disk format counter). Set by pack/store
+	// tooling so an installed copy can be pinned and diffed for updates.
+	// Empty for hand-authored local buttons (treated as "unversioned").
+	Version              string            `json:"version,omitempty"`
 	Runtime              string            `json:"runtime"`
 	URL                  string            `json:"url,omitempty"`
 	Method               string            `json:"method,omitempty"`
@@ -35,7 +44,7 @@ type Button struct {
 	// controlled host — a real exfil vector the private-network
 	// SSRF block didn't cover.
 	AllowedHost string `json:"allowed_host,omitempty"`
-	MCPEnabled           bool              `json:"mcp_enabled"`
+	MCPEnabled  bool   `json:"mcp_enabled"`
 	// Pinned buttons render as large, clickable cards at the top of the
 	// `buttons board` TUI. Omitted from JSON when false to avoid polluting
 	// every existing button.json — most buttons aren't pinned.
@@ -51,9 +60,26 @@ type Button struct {
 	// same Queue.Name share a slot pool. Queue.Key (e.g. "${inputs.user_id}")
 	// scopes the pool by dimension so "openai, 3 concurrent per user"
 	// is expressible without per-user buttons. Omitted → no limit.
-	Queue        *QueueConfig `json:"queue,omitempty"`
-	CreatedAt    time.Time    `json:"created_at"`
-	UpdatedAt    time.Time    `json:"updated_at"`
+	Queue *QueueConfig `json:"queue,omitempty"`
+	// Requires names peer buttons this button presses (e.g. an autono
+	// sync button requires "pd-proxy-request"). The store uses it to
+	// install dependencies and to resolve presses by button id rather
+	// than by cwd. Omitted when empty.
+	Requires []string `json:"requires,omitempty"`
+	// RequiresBatteries names the secret keys this button needs (e.g.
+	// "PIPEDREAM_CLIENT_ID"). A pack ships requirement NAMES, never
+	// values; `store install` prompts for them via `buttons batteries`.
+	RequiresBatteries []string `json:"requires_batteries,omitempty"`
+	// Source records where an installed button came from (the store
+	// source ref, e.g. "git+https://github.com/autonoco/autono-packs@v1").
+	// Empty for locally-created buttons.
+	Source string `json:"source,omitempty"`
+	// ContentHash is the SHA256 of the button's content at install time —
+	// the lock-file pin used to detect drift and available updates. Set
+	// by the store, never by `create`.
+	ContentHash string    `json:"content_hash,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // QueueConfig declares per-button concurrency limits. Enforced at

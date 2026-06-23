@@ -154,6 +154,14 @@ func buttonSummary(b button.Button, recent []history.Run) map[string]any {
 	} else if len(b.OutputSchema) > 0 {
 		entry["output_schema_ref"] = b.Name + ".output"
 	}
+	// Surface pack/discovery metadata when present so an agent can filter
+	// (e.g. all "finance" buttons) and see installed versions.
+	if len(b.Tags) > 0 {
+		entry["tags"] = b.Tags
+	}
+	if b.Version != "" {
+		entry["version"] = b.Version
+	}
 	entry["recent_runs"] = summarizeButtonRuns(recent)
 	return entry
 }
