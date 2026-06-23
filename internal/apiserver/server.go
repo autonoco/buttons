@@ -27,6 +27,12 @@ type Config struct {
 	APIKey string
 	// MaxBodyBytes caps a press request body. 0 → 1 MiB default.
 	MaxBodyBytes int64
+	// AllowHTTPButtons permits pressing runtime:"http" buttons over the REST
+	// API. Off by default: an HTTP button makes an outbound request whose
+	// path/query can carry request-supplied args, so exposing it to network
+	// callers is an SSRF surface (the host is locked at create time, but we
+	// gate it anyway). Shell/code/prompt buttons are always pressable.
+	AllowHTTPButtons bool
 }
 
 // Server is the buttons REST handler. Construct with New and mount its Handler.
@@ -142,6 +148,18 @@ func (s *Server) handlePress(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body: "+err.Error())
 				return
 			}
+		}
+	}
+
+	// Gate HTTP buttons: pressing one makes an outbound request whose
+	// path/query carry request-supplied args. The host is locked at create
+	// time (no arbitrary-host SSRF), but exposing the outbound request to
+	// network callers is still opt-in. Shell/code/prompt buttons are unaffected.
+	if !s.cfg.AllowHTTPButtons {
+		if btn, gerr := s.svc.Get(name); gerr == nil && btn.Runtime == "http" {
+			writeError(w, http.StatusForbidden, "HTTP_BUTTON_BLOCKED",
+				"pressing http buttons over the API is disabled; start `buttons serve --allow-http-buttons` to enable")
+			return
 		}
 	}
 

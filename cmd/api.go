@@ -13,9 +13,10 @@ import (
 )
 
 var (
-	servePort   int
-	serveHost   string
-	serveAPIKey string
+	servePort        int
+	serveHost        string
+	serveAPIKey      string
+	serveAllowHTTPBt bool
 )
 
 var serveCmd = &cobra.Command{
@@ -69,7 +70,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	}
 
 	addr := fmt.Sprintf("%s:%d", host, servePort)
-	srv := apiserver.New(apiserver.Config{APIKey: apiKey})
+	srv := apiserver.New(apiserver.Config{APIKey: apiKey, AllowHTTPButtons: serveAllowHTTPBt})
 
 	if jsonOutput {
 		_ = config.WriteJSON(map[string]any{
@@ -134,5 +135,6 @@ func init() {
 	serveCmd.Flags().IntVar(&servePort, "port", 8080, "port to listen on")
 	serveCmd.Flags().StringVar(&serveHost, "host", "127.0.0.1", "host/interface to bind (use 0.0.0.0 to expose; requires an API key)")
 	serveCmd.Flags().StringVar(&serveAPIKey, "api-key", "", "bearer key required on all endpoints (else the 'API_KEY' battery or $BUTTONS_API_KEY)")
+	serveCmd.Flags().BoolVar(&serveAllowHTTPBt, "allow-http-buttons", false, "allow pressing http (outbound-request) buttons over the API (SSRF surface; off by default)")
 	rootCmd.AddCommand(serveCmd)
 }

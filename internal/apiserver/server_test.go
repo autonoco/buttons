@@ -123,3 +123,25 @@ func TestNoAuthConfigAllowsAccess(t *testing.T) {
 		t.Fatalf("no-auth list should 200, got %d", resp.StatusCode)
 	}
 }
+
+func TestHTTPButtonsGated(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	dir := filepath.Join(home, "buttons", "fetch")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	spec := `{"schema_version":1,"name":"fetch","runtime":"http","url":"https://api.example.com/x","method":"GET","allowed_host":"api.example.com","env":{},"timeout_seconds":30,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`
+	if err := os.WriteFile(filepath.Join(dir, "button.json"), []byte(spec), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Default: http buttons are blocked over the API (403).
+	if resp, env := do(t, New(Config{}), "POST", "/api/buttons/fetch/press", "", `{}`); resp.StatusCode != 403 {
+		t.Fatalf("http button should be 403 by default, got %d (%v)", resp.StatusCode, env)
+	}
+	// With AllowHTTPButtons it's no longer gated (reaches the press path).
+	if resp, _ := do(t, New(Config{AllowHTTPButtons: true}), "POST", "/api/buttons/fetch/press", "", `{}`); resp.StatusCode == 403 {
+		t.Fatal("http button should be pressable when AllowHTTPButtons is set")
+	}
+}
