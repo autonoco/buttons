@@ -175,15 +175,39 @@ func TestSafeJoin(t *testing.T) {
 		if err != nil {
 			t.Errorf("safeJoin(%q) should be allowed: %v", r, err)
 		}
-		if !strings.HasPrefix(dst, dir) {
+		if dst != dir && !strings.HasPrefix(dst, dir+string(filepath.Separator)) {
 			t.Errorf("safeJoin(%q) escaped: %q", r, dst)
 		}
 	}
 }
 
 func TestInstallRejectsTraversalBundle(t *testing.T) {
-	t.Setenv("BUTTONS_HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
 	if _, err := install(traversalSource{}, "evil", "", "local:test"); err == nil {
 		t.Fatal("install should reject a bundle file that escapes the button dir")
+	}
+	// a rejected bundle must not leave a partial install behind
+	if _, err := os.Stat(filepath.Join(home, "buttons", "evil")); !os.IsNotExist(err) {
+		t.Fatal("rejected traversal install left a partial button dir behind")
+	}
+}
+
+func TestFetchSkipsSymlinks(t *testing.T) {
+	src := t.TempDir()
+	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "ok", Runtime: "shell", Version: "1.0.0"})
+	secret := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(secret, []byte("top secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(src, "ok", "leak.txt")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	b, err := (&LocalSource{Root: src}).Fetch("ok", "")
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if _, leaked := b.Files["leak.txt"]; leaked {
+		t.Fatal("Fetch followed a symlink and leaked an out-of-root file")
 	}
 }

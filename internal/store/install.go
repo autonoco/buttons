@@ -98,14 +98,21 @@ func install(src Source, name, version, sourceRef string) (*button.Button, error
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "pressed"), 0700); err != nil {
-		return nil, fmt.Errorf("create button dir: %w", err)
-	}
-	for rel, data := range bundle.Files {
+	// Validate every bundle path BEFORE creating dirs or writing, so a rejected
+	// (traversal) bundle leaves nothing partially installed.
+	dsts := make(map[string]string, len(bundle.Files))
+	for rel := range bundle.Files {
 		dst, err := safeJoin(dir, rel)
 		if err != nil {
 			return nil, err
 		}
+		dsts[rel] = dst
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "pressed"), 0700); err != nil {
+		return nil, fmt.Errorf("create button dir: %w", err)
+	}
+	for rel, data := range bundle.Files {
+		dst := dsts[rel]
 		mode := os.FileMode(0600)
 		if strings.HasPrefix(rel, "main.") {
 			mode = 0700 // #nosec G302 -- code files need the exec bit to run via sh/python/node

@@ -129,6 +129,9 @@ func (s *LocalSource) Fetch(name, version string) (*Bundle, error) {
 		if e.IsDir() {
 			continue // skip pressed/
 		}
+		if e.Type()&os.ModeSymlink != 0 {
+			continue // don't follow symlinks — they can point outside the source root
+		}
 		// #nosec G304 -- dir/name both come from enumerated entries under s.Root.
 		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
