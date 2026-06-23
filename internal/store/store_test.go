@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/autonoco/buttons/internal/button"
@@ -116,5 +117,73 @@ func TestSplitVersion(t *testing.T) {
 		if n != c.name || v != c.ver {
 			t.Errorf("splitVersion(%q) = (%q,%q), want (%q,%q)", c.in, n, v, c.name, c.ver)
 		}
+	}
+}
+
+// traversalSource is a Source whose Fetch returns a bundle file that escapes the
+// install dir — exercises the install write-path containment check (#2).
+type traversalSource struct{}
+
+func (traversalSource) Index() ([]ButtonRef, error) { return nil, nil }
+func (traversalSource) Fetch(name, _ string) (*Bundle, error) {
+	bj, _ := json.Marshal(button.Button{SchemaVersion: 1, Name: name, Runtime: "shell"})
+	return &Bundle{
+		Name:   name,
+		SHA256: "deadbeef",
+		Files:  map[string][]byte{"button.json": bj, "../escape.sh": []byte("x")},
+	}, nil
+}
+
+func TestFetchRejectsTraversalName(t *testing.T) {
+	src := t.TempDir()
+	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "ok", Runtime: "shell", Version: "1.0.0"})
+	ls := &LocalSource{Root: src}
+	for _, bad := range []string{"../escape", "..", ".", "a/b", "/abs"} {
+		if _, err := ls.Fetch(bad, ""); err == nil {
+			t.Errorf("Fetch(%q) should be rejected", bad)
+		}
+	}
+	if _, err := ls.Fetch("ok", ""); err != nil {
+		t.Errorf("Fetch(\"ok\") should succeed: %v", err)
+	}
+}
+
+func TestFetchVersionMismatch(t *testing.T) {
+	src := t.TempDir()
+	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "pin", Runtime: "shell", Version: "1.0.0"})
+	ls := &LocalSource{Root: src}
+	if _, err := ls.Fetch("pin", "9.9.9"); err == nil {
+		t.Error("Fetch with mismatched version pin should error")
+	}
+	if _, err := ls.Fetch("pin", "1.0.0"); err != nil {
+		t.Errorf("Fetch with matching version pin should succeed: %v", err)
+	}
+	if _, err := ls.Fetch("pin", ""); err != nil {
+		t.Errorf("Fetch with empty version (latest) should succeed: %v", err)
+	}
+}
+
+func TestSafeJoin(t *testing.T) {
+	dir := filepath.Clean("/tmp/install/alpha")
+	for _, r := range []string{"../evil", "../../etc/passwd", "..", "/abs/path", "sub/../../escape"} {
+		if _, err := safeJoin(dir, r); err == nil {
+			t.Errorf("safeJoin(%q) should be rejected", r)
+		}
+	}
+	for _, r := range []string{"button.json", "main.sh", "AGENT.md", "sub/file.txt"} {
+		dst, err := safeJoin(dir, r)
+		if err != nil {
+			t.Errorf("safeJoin(%q) should be allowed: %v", r, err)
+		}
+		if !strings.HasPrefix(dst, dir) {
+			t.Errorf("safeJoin(%q) escaped: %q", r, dst)
+		}
+	}
+}
+
+func TestInstallRejectsTraversalBundle(t *testing.T) {
+	t.Setenv("BUTTONS_HOME", t.TempDir())
+	if _, err := install(traversalSource{}, "evil", "", "local:test"); err == nil {
+		t.Fatal("install should reject a bundle file that escapes the button dir")
 	}
 }

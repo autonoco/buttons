@@ -102,11 +102,18 @@ func install(src Source, name, version, sourceRef string) (*button.Button, error
 		return nil, fmt.Errorf("create button dir: %w", err)
 	}
 	for rel, data := range bundle.Files {
+		dst, err := safeJoin(dir, rel)
+		if err != nil {
+			return nil, err
+		}
 		mode := os.FileMode(0600)
 		if strings.HasPrefix(rel, "main.") {
 			mode = 0700 // #nosec G302 -- code files need the exec bit to run via sh/python/node
 		}
-		if err := os.WriteFile(filepath.Join(dir, rel), data, mode); err != nil {
+		if err := os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
+			return nil, fmt.Errorf("create parent for %s: %w", rel, err)
+		}
+		if err := os.WriteFile(dst, data, mode); err != nil {
 			return nil, fmt.Errorf("write %s: %w", rel, err)
 		}
 	}

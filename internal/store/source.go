@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/autonoco/buttons/internal/button"
 )
@@ -56,6 +57,33 @@ func hashFiles(files map[string][]byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// validName rejects a button name that is not a single path component. A name
+// reaches Fetch from the CLI spec or another button's `requires`, so without
+// this an entry like "../../etc" would let an (untrusted) source escape its
+// root. filepath.Base catches separators; "." and ".." are caught explicitly.
+func validName(name string) error {
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
+		return fmt.Errorf("invalid button name %q", name)
+	}
+	return nil
+}
+
+// safeJoin joins rel onto dir and guarantees the result stays within dir. The
+// install write loop feeds every bundle file key through it so a malicious
+// Source (the registry, #275) cannot traverse out via "../" entries.
+func safeJoin(dir, rel string) (string, error) {
+	cleaned := filepath.Clean(rel)
+	if cleaned == "." || cleaned == ".." || filepath.IsAbs(cleaned) ||
+		strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("unsafe bundle path %q", rel)
+	}
+	dst := filepath.Join(dir, cleaned)
+	if dst != dir && !strings.HasPrefix(dst, dir+string(filepath.Separator)) {
+		return "", fmt.Errorf("unsafe bundle path %q", rel)
+	}
+	return dst, nil
+}
+
 // LocalSource installs from a directory laid out like a buttons dir:
 // <Root>/<name>/{button.json, main.*, AGENT.md}. For dev/testing without a
 // registry server, and the reference for what an HTTPSource must reproduce.
@@ -87,7 +115,10 @@ func (s *LocalSource) Index() ([]ButtonRef, error) {
 	return refs, nil
 }
 
-func (s *LocalSource) Fetch(name, _ string) (*Bundle, error) {
+func (s *LocalSource) Fetch(name, version string) (*Bundle, error) {
+	if err := validName(name); err != nil {
+		return nil, err
+	}
 	dir := filepath.Join(s.Root, name)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -111,6 +142,11 @@ func (s *LocalSource) Fetch(name, _ string) (*Bundle, error) {
 	var b button.Button
 	if err := json.Unmarshal(files["button.json"], &b); err != nil {
 		return nil, fmt.Errorf("button %q: invalid button.json: %w", name, err)
+	}
+	// A LocalSource holds one version per button on disk; honor an explicit pin
+	// by validating it matches rather than silently returning whatever is there.
+	if version != "" && b.Version != version {
+		return nil, fmt.Errorf("button %q version mismatch: requested %q, found %q", name, version, b.Version)
 	}
 	return &Bundle{Name: b.Name, Version: b.Version, SHA256: hashFiles(files), Files: files}, nil
 }
