@@ -11,6 +11,7 @@ require (
 	github.com/mattn/go-isatty v0.0.22
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
+	golang.org/x/sync v0.20.0
 )
 
 require (
@@ -47,7 +48,6 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
-	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
