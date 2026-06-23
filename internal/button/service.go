@@ -22,13 +22,15 @@ import (
 // destination at create time.
 //
 // Existing patterns that stay valid:
-//   https://api.example.com/users/{{user}}
-//   https://api.example.com/things?filter={{filter}}
+//
+//	https://api.example.com/users/{{user}}
+//	https://api.example.com/things?filter={{filter}}
 //
 // Patterns rejected (with remediation):
-//   https://{{host}}.example.com/x      // host templating
-//   {{scheme}}://api.example.com/x      // scheme templating
-//   https://api.{{tenant}}/foo          // mid-host templating
+//
+//	https://{{host}}.example.com/x      // host templating
+//	{{scheme}}://api.example.com/x      // scheme templating
+//	https://api.{{tenant}}/foo          // mid-host templating
 //
 // Returns the literal lowercased host on success. "*" as the whole
 // URL is reserved — not used here.
@@ -392,6 +394,28 @@ func (s *Service) PressedDir(name string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(btnDir, "pressed"), nil
+}
+
+// Update persists a modified button spec back to its button.json, refreshing
+// UpdatedAt. Used by `buttons trigger` to add/remove triggers on a button.
+func (s *Service) Update(btn *Button) error {
+	name := Slugify(btn.Name)
+	btnDir, err := s.buttonDir(name)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(btnDir); os.IsNotExist(err) {
+		return &ServiceError{Code: "NOT_FOUND", Message: fmt.Sprintf("button not found: %s", name)}
+	}
+	btn.UpdatedAt = time.Now()
+	data, err := json.MarshalIndent(btn, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal button: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(btnDir, "button.json"), data, 0600); err != nil {
+		return fmt.Errorf("failed to write button spec: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) Remove(name string) error {

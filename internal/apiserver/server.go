@@ -57,6 +57,13 @@ func New(cfg Config) *Server {
 // Handler returns the http.Handler for mounting (also used directly in tests).
 func (s *Server) Handler() http.Handler { return s.mux }
 
+// HandleFunc registers an additional route on the server mux, bypassing the
+// bearer-auth wrapper. Used to mount webhook trigger endpoints (#272), which
+// carry their own per-trigger token auth. Call before ListenAndServe.
+func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) {
+	s.mux.HandleFunc(pattern, h)
+}
+
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/health", s.handleHealth)
 	s.mux.HandleFunc("GET /api/buttons", s.auth(s.handleList))

@@ -77,9 +77,32 @@ type Button struct {
 	// ContentHash is the SHA256 of the button's content at install time —
 	// the lock-file pin used to detect drift and available updates. Set
 	// by the store, never by `create`.
-	ContentHash string    `json:"content_hash,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ContentHash string `json:"content_hash,omitempty"`
+	// Triggers fire this button on an event — a cron schedule, a watched
+	// file change, or a webhook POST (served by `buttons serve`). Managed
+	// via `buttons trigger`. Omitted when empty.
+	Triggers  []Trigger `json:"triggers,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Trigger declares an event that presses this button automatically. The engine
+// runs under `buttons serve`: cron schedules tick in-process, watch triggers
+// poll a file, and webhook triggers mount an HTTP route on the serve listener.
+type Trigger struct {
+	ID   string `json:"id"`   // short stable id (for `trigger rm`)
+	Kind string `json:"kind"` // "cron" | "watch" | "webhook"
+	// Schedule is a 5-field cron expression (kind=cron), e.g. "0 */6 * * *".
+	Schedule string `json:"schedule,omitempty"`
+	// Path is the watched file (kind=watch) or the webhook URL path
+	// (kind=webhook), e.g. "/hooks/health".
+	Path string `json:"path,omitempty"`
+	// Token, when set on a webhook trigger, must match the X-Buttons-Token
+	// header (or ?token= query) or the request is rejected 401.
+	Token string `json:"token,omitempty"`
+	// Args are passed to the press when the trigger fires.
+	Args      map[string]string `json:"args,omitempty"`
+	CreatedAt time.Time         `json:"created_at"`
 }
 
 // QueueConfig declares per-button concurrency limits. Enforced at

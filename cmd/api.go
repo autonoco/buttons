@@ -8,7 +8,9 @@ import (
 	"syscall"
 
 	"github.com/autonoco/buttons/internal/apiserver"
+	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
+	"github.com/autonoco/buttons/internal/trigger"
 	"github.com/spf13/cobra"
 )
 
@@ -17,6 +19,7 @@ var (
 	serveHost        string
 	serveAPIKey      string
 	serveAllowHTTPBt bool
+	serveNoTriggers  bool
 )
 
 var serveCmd = &cobra.Command{
@@ -72,10 +75,40 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	addr := fmt.Sprintf("%s:%d", host, servePort)
 	srv := apiserver.New(apiserver.Config{APIKey: apiKey, AllowHTTPButtons: serveAllowHTTPBt})
 
+	// Shutdown on signal or parent context cancel.
+	ctx, cancel := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	// Start the trigger engine (cron + watch in-process, webhook routes mounted
+	// here) unless disabled. Webhook routes share this listener per #272.
+	var webhookCount int
+	if !serveNoTriggers {
+		eng := trigger.NewEngine(button.NewService(), func(format string, a ...any) {
+			if !jsonOutput {
+				fmt.Fprintf(os.Stderr, "[trigger] "+format+"\n", a...)
+			}
+		})
+		routes, terr := eng.Start(ctx)
+		if terr != nil {
+			if jsonOutput {
+				_ = config.WriteJSONError("INTERNAL_ERROR", terr.Error())
+				return errSilent
+			}
+			return terr
+		}
+		for _, rt := range routes {
+			srv.HandleFunc("POST "+rt.Path, eng.WebhookHandler(rt))
+		}
+		webhookCount = len(routes)
+		defer eng.Stop()
+	}
+
 	if jsonOutput {
 		_ = config.WriteJSON(map[string]any{
-			"addr": addr,
-			"auth": apiKey != "",
+			"addr":             addr,
+			"auth":             apiKey != "",
+			"triggers_enabled": !serveNoTriggers,
+			"webhook_routes":   webhookCount,
 			"endpoints": []string{
 				"GET /api/health",
 				"GET /api/buttons",
@@ -89,12 +122,12 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		if apiKey == "" {
 			fmt.Fprintln(os.Stderr, "  ⚠ no API key set — auth disabled (loopback only)")
 		}
+		if !serveNoTriggers {
+			fmt.Fprintf(os.Stderr, "  triggers: on (%d webhook route(s) mounted)\n", webhookCount)
+		}
 		fmt.Fprintln(os.Stderr, "  Ctrl-C to stop.")
 	}
 
-	// Shutdown on signal or parent context cancel.
-	ctx, cancel := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
 	shutdown := make(chan struct{})
 	go func() {
 		<-ctx.Done()
@@ -136,5 +169,6 @@ func init() {
 	serveCmd.Flags().StringVar(&serveHost, "host", "127.0.0.1", "host/interface to bind (use 0.0.0.0 to expose; requires an API key)")
 	serveCmd.Flags().StringVar(&serveAPIKey, "api-key", "", "bearer key required on all endpoints (else the 'API_KEY' battery or $BUTTONS_API_KEY)")
 	serveCmd.Flags().BoolVar(&serveAllowHTTPBt, "allow-http-buttons", false, "allow pressing http (outbound-request) buttons over the API (SSRF surface; off by default)")
+	serveCmd.Flags().BoolVar(&serveNoTriggers, "no-triggers", false, "do not run the trigger engine (cron/watch/webhook) alongside the API")
 	rootCmd.AddCommand(serveCmd)
 }
