@@ -5,6 +5,7 @@
 package apiserver
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -33,6 +34,12 @@ type Config struct {
 	// callers is an SSRF surface (the host is locked at create time, but we
 	// gate it anyway). Shell/code/prompt buttons are always pressable.
 	AllowHTTPButtons bool
+	// MaxTimeoutSeconds caps the effective press timeout regardless of the
+	// per-request `timeout` or the button's own setting. 0 → 300.
+	MaxTimeoutSeconds int
+	// MaxConcurrentPresses bounds in-flight presses across the API; excess
+	// requests get 503. 0 → 8. A button's own Queue still applies on top.
+	MaxConcurrentPresses int
 }
 
 // Server is the buttons REST handler. Construct with New and mount its Handler.
@@ -40,6 +47,7 @@ type Server struct {
 	cfg Config
 	svc *button.Service
 	mux *http.ServeMux
+	sem chan struct{} // bounds concurrent presses
 }
 
 // New builds a Server. Routes are registered once; button state is read from
@@ -49,7 +57,18 @@ func New(cfg Config) *Server {
 	if cfg.MaxBodyBytes <= 0 {
 		cfg.MaxBodyBytes = 1 << 20
 	}
-	s := &Server{cfg: cfg, svc: button.NewService(), mux: http.NewServeMux()}
+	if cfg.MaxTimeoutSeconds <= 0 {
+		cfg.MaxTimeoutSeconds = 300
+	}
+	if cfg.MaxConcurrentPresses <= 0 {
+		cfg.MaxConcurrentPresses = 8
+	}
+	s := &Server{
+		cfg: cfg,
+		svc: button.NewService(),
+		mux: http.NewServeMux(),
+		sem: make(chan struct{}, cfg.MaxConcurrentPresses),
+	}
 	s.routes()
 	return s
 }
@@ -138,8 +157,14 @@ func (s *Server) handlePress(w http.ResponseWriter, r *http.Request) {
 
 	var req pressRequest
 	if r.Body != nil {
-		body, err := io.ReadAll(io.LimitReader(r.Body, s.cfg.MaxBodyBytes))
+		r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxBodyBytes)
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			var mbe *http.MaxBytesError
+			if errors.As(err, &mbe) {
+				writeError(w, http.StatusRequestEntityTooLarge, "BODY_TOO_LARGE", "request body exceeds limit")
+				return
+			}
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "could not read body")
 			return
 		}
@@ -163,9 +188,20 @@ func (s *Server) handlePress(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Bound concurrent presses — this path executes shell/code. Excess → 503.
+	select {
+	case s.sem <- struct{}{}:
+		defer func() { <-s.sem }()
+	default:
+		w.Header().Set("Retry-After", "1")
+		writeError(w, http.StatusServiceUnavailable, "BUSY", "too many concurrent presses; retry shortly")
+		return
+	}
+
 	result, err := runner.Press(r.Context(), name, req.Args, runner.Options{
-		TimeoutSeconds: req.Timeout,
-		RecordHistory:  true,
+		TimeoutSeconds:    req.Timeout,
+		MaxTimeoutSeconds: s.cfg.MaxTimeoutSeconds,
+		RecordHistory:     true,
 	})
 	if err != nil {
 		// Map pre-flight failures (missing button, bad args) to 4xx.
@@ -233,6 +269,7 @@ func (s *Server) ListenAndServe(addr string, shutdown <-chan struct{}) error {
 		Addr:              addr,
 		Handler:           s.mux,
 		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
@@ -243,7 +280,9 @@ func (s *Server) ListenAndServe(addr string, shutdown <-chan struct{}) error {
 		}
 		return err
 	case <-shutdown:
-		return srv.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return srv.Shutdown(ctx)
 	}
 }
 

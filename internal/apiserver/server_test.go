@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -143,5 +144,32 @@ func TestHTTPButtonsGated(t *testing.T) {
 	// With AllowHTTPButtons it's no longer gated (reaches the press path).
 	if resp, _ := do(t, New(Config{AllowHTTPButtons: true}), "POST", "/api/buttons/fetch/press", "", `{}`); resp.StatusCode == 403 {
 		t.Fatal("http button should be pressable when AllowHTTPButtons is set")
+	}
+}
+
+func TestPressConcurrencyCap(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	writeButton(t, home, "slow", "#!/bin/sh\nsleep 0.5\necho done\n")
+	srv := New(Config{MaxConcurrentPresses: 1}) // only one press at a time
+
+	codes := make([]int, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			req := httptest.NewRequest("POST", "/api/buttons/slow/press", strings.NewReader(`{}`))
+			rec := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rec, req)
+			codes[i] = rec.Code
+		}(i)
+	}
+	wg.Wait()
+
+	got := map[int]int{codes[0]: 1}
+	got[codes[1]]++
+	if got[200] != 1 || got[503] != 1 {
+		t.Fatalf("want one 200 + one 503 under cap, got %v", codes)
 	}
 }
