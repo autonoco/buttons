@@ -2,9 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
-	"strings"
+	"strconv"
 	"syscall"
 
 	"github.com/autonoco/buttons/internal/apiserver"
@@ -69,7 +70,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("%s", msg)
 	}
 
-	addr := fmt.Sprintf("%s:%d", host, servePort)
+	addr := net.JoinHostPort(host, strconv.Itoa(servePort))
 	srv := apiserver.New(apiserver.Config{APIKey: apiKey, AllowHTTPButtons: serveAllowHTTPBt})
 
 	if jsonOutput {
@@ -124,11 +125,11 @@ func resolveServeAPIKey() string {
 }
 
 func isLoopbackHost(host string) bool {
-	switch host {
-	case "127.0.0.1", "::1", "localhost":
-		return true
+	if host == "localhost" {
+		return true // a hostname, not an IP literal — ParseIP can't resolve it
 	}
-	return strings.HasPrefix(host, "127.")
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func init() {
