@@ -125,6 +125,33 @@
             ]
           },
           {
+            "group": "Registry commands",
+            "public": true,
+            "expanded": false,
+            "pages": [
+              "cli/buttons_install",
+              "cli/buttons_publish",
+              "cli/buttons_import",
+              "cli/buttons_import_skill",
+              "cli/buttons_import_code",
+              "cli/buttons_import_url",
+              "cli/buttons_import_mcp"
+            ]
+          },
+          {
+            "group": "Server & integrations",
+            "public": true,
+            "expanded": false,
+            "pages": [
+              "cli/buttons_serve",
+              "cli/buttons_mcp",
+              "cli/buttons_trigger",
+              "cli/buttons_trigger_add",
+              "cli/buttons_trigger_list",
+              "cli/buttons_trigger_rm"
+            ]
+          },
+          {
             "group": "Webhook commands",
             "public": true,
             "expanded": false,
@@ -153,8 +180,7 @@
             "public": true,
             "expanded": false,
             "pages": [
-              "cli/buttons_board",
-              "cli/buttons_store"
+              "cli/buttons_board"
             ]
           }
         ]
