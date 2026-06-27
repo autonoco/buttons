@@ -221,6 +221,51 @@ Keep a button or drawer out of git (writes .buttons/.gitignore)
 buttons ignore
 ```
 
+### `buttons import`
+
+Create buttons from external sources (skill, code, url)
+
+```
+buttons import [command]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--name` | string | override the generated button name (code/url) |
+| `-y, --yes` | bool | skip the confirmation prompt |
+
+#### `buttons import code`
+
+Wrap a script file as a button
+
+```
+buttons import code
+```
+
+#### `buttons import mcp`
+
+Create buttons from an MCP server's tools (planned)
+
+```
+buttons import mcp
+```
+
+#### `buttons import skill`
+
+Create buttons from an AgentSkills skill directory
+
+```
+buttons import skill
+```
+
+#### `buttons import url`
+
+Create a button from a spec fetched over HTTP
+
+```
+buttons import url
+```
+
 ### `buttons init`
 
 Initialize a project-local .buttons directory
@@ -232,6 +277,18 @@ buttons init [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `--agent` | stringSlice | agent integrations to install (cursor,claude,cline,copilot,agents-md); 'none' skips |
+
+### `buttons install`
+
+Install a button (or every button with a tag) from a source
+
+```
+buttons install [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--source` | string | source directory to install from (until the registry lands, #275) |
 
 ### `buttons list`
 
@@ -278,14 +335,6 @@ Run multiple buttons in parallel
 
 ```
 buttons smash
-```
-
-### `buttons store`
-
-Marketplace (search/install/import/publish)
-
-```
-buttons store
 ```
 
 ### `buttons summary`
