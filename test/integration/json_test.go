@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -37,20 +38,43 @@ func TestDrawerCreateReturnsJSON(t *testing.T) {
 	}
 }
 
-func TestStub_SmashReturnsJSON(t *testing.T) {
+func TestSmashReturnsJSON(t *testing.T) {
 	env := newTestEnv(t)
 
+	// smash runs each named button in parallel and returns a per-button
+	// report. With no such buttons, every press fails: the command exits
+	// non-zero and data.failures equals the number of names. The envelope
+	// ok stays true — smash is a batch reporter, so per-button outcomes live
+	// in data.results[].error and the aggregate in data.failures.
 	res := env.run("smash", "a", "b", "--json")
 	if res.ExitCode == 0 {
-		t.Fatal("expected non-zero exit for stub command")
+		t.Fatal("expected non-zero exit when every smashed button fails")
 	}
 
-	resp := parseJSON(t, res.Stdout)
-	if resp.OK {
-		t.Fatal("expected ok: false")
+	var resp struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Total    int `json:"total"`
+			Failures int `json:"failures"`
+			Results  []struct {
+				Button string `json:"button"`
+				Error  string `json:"error"`
+			} `json:"results"`
+		} `json:"data"`
 	}
-	if resp.Error.Code != "NOT_IMPLEMENTED" {
-		t.Errorf("code = %q, want NOT_IMPLEMENTED", resp.Error.Code)
+	if err := json.Unmarshal([]byte(res.Stdout), &resp); err != nil {
+		t.Fatalf("smash --json did not emit valid JSON: %v\n%s", err, res.Stdout)
+	}
+	if resp.Data.Total != 2 || resp.Data.Failures != 2 {
+		t.Fatalf("want total=2 failures=2, got total=%d failures=%d", resp.Data.Total, resp.Data.Failures)
+	}
+	if len(resp.Data.Results) != 2 {
+		t.Fatalf("want 2 per-button results, got %d", len(resp.Data.Results))
+	}
+	for _, r := range resp.Data.Results {
+		if r.Error == "" {
+			t.Errorf("button %q: expected an error for a missing button", r.Button)
+		}
 	}
 }
 
