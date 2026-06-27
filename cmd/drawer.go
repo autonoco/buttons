@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -415,6 +416,13 @@ func drawerPress(name string, args []string) error {
 		return err
 	}
 
+	// Pull execution-mode flags (--mode, --on-failure, --concurrency) out
+	// before parseKV, which only understands key=value pairs.
+	args, pressMode, onFailure, concurrency, err := extractDrawerPressFlags(args)
+	if err != nil {
+		return err
+	}
+
 	inputValues, err := parseKV(args)
 	if err != nil {
 		return err
@@ -436,7 +444,15 @@ func drawerPress(name string, args []string) error {
 	}
 
 	exec := drawer.NewExecutor()
-	result, err := exec.Execute(context.Background(), d, inputValues)
+	var result *drawer.ExecuteResult
+	if pressMode == "parallel" {
+		result, err = exec.ExecuteParallel(context.Background(), d, inputValues, drawer.ParallelOptions{
+			OnFailure: onFailure,
+			Limit:     concurrency,
+		})
+	} else {
+		result, err = exec.Execute(context.Background(), d, inputValues)
+	}
 	if err != nil {
 		return err
 	}
@@ -833,6 +849,74 @@ func extractWebhookBody(args []string) ([]string, any, error) {
 		parsed = rawVal
 	}
 	return rest, parsed, nil
+}
+
+// extractDrawerPressFlags pulls --mode, --on-failure, and --concurrency
+// (each in both "--flag value" and "--flag=value" forms) out of a drawer
+// press arg list, returning the remaining key=value args plus the parsed
+// values. Defaults: mode "sequential", on-failure "stop", concurrency 0
+// (→ NumCPU). Validates the enum values so typos fail loudly.
+func extractDrawerPressFlags(args []string) (rest []string, mode, onFailure string, concurrency int, err error) {
+	mode, onFailure = "sequential", "stop"
+	rest = make([]string, 0, len(args))
+
+	// next consumes a separate-form flag value ("--flag value"), advancing i.
+	next := func(i int, flag string) (string, int, error) {
+		if i+1 >= len(args) {
+			return "", i, fmt.Errorf("%s needs a value", flag)
+		}
+		return args[i+1], i + 1, nil
+	}
+
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		var v string
+		switch {
+		case a == "--mode":
+			if v, i, err = next(i, "--mode"); err != nil {
+				return nil, "", "", 0, err
+			}
+			mode = v
+		case strings.HasPrefix(a, "--mode="):
+			mode = strings.TrimPrefix(a, "--mode=")
+		case a == "--on-failure":
+			if v, i, err = next(i, "--on-failure"); err != nil {
+				return nil, "", "", 0, err
+			}
+			onFailure = v
+		case strings.HasPrefix(a, "--on-failure="):
+			onFailure = strings.TrimPrefix(a, "--on-failure=")
+		case a == "--concurrency":
+			if v, i, err = next(i, "--concurrency"); err != nil {
+				return nil, "", "", 0, err
+			}
+			if concurrency, err = parseConcurrency(v); err != nil {
+				return nil, "", "", 0, err
+			}
+		case strings.HasPrefix(a, "--concurrency="):
+			if concurrency, err = parseConcurrency(strings.TrimPrefix(a, "--concurrency=")); err != nil {
+				return nil, "", "", 0, err
+			}
+		default:
+			rest = append(rest, a)
+		}
+	}
+
+	if mode != "sequential" && mode != "parallel" {
+		return nil, "", "", 0, fmt.Errorf("--mode must be 'sequential' or 'parallel', got %q", mode)
+	}
+	if onFailure != "stop" && onFailure != "continue" {
+		return nil, "", "", 0, fmt.Errorf("--on-failure must be 'stop' or 'continue', got %q", onFailure)
+	}
+	return rest, mode, onFailure, concurrency, nil
+}
+
+func parseConcurrency(v string) (int, error) {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("--concurrency must be a non-negative integer, got %q", v)
+	}
+	return n, nil
 }
 
 // webhookTriggerPath returns the drawer's registered webhook path so
