@@ -233,6 +233,18 @@ buttons init [flags]
 |------|------|-------------|
 | `--agent` | stringSlice | agent integrations to install (cursor,claude,cline,copilot,agents-md); 'none' skips |
 
+### `buttons install`
+
+Install a button (or every button with a tag) from a source
+
+```
+buttons install [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--source` | string | source directory to install from (until the registry lands, #275) |
+
 ### `buttons list`
 
 List all buttons
@@ -278,14 +290,6 @@ Run multiple buttons in parallel
 
 ```
 buttons smash
-```
-
-### `buttons store`
-
-Marketplace (search/install/import/publish)
-
-```
-buttons store
 ```
 
 ### `buttons summary`
