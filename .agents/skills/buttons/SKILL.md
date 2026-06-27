@@ -221,6 +221,51 @@ Keep a button or drawer out of git (writes .buttons/.gitignore)
 buttons ignore
 ```
 
+### `buttons import`
+
+Create buttons from external sources (skill, code, url)
+
+```
+buttons import [command]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--name` | string | override the generated button name (code/url) |
+| `-y, --yes` | bool | skip the confirmation prompt |
+
+#### `buttons import code`
+
+Wrap a script file as a button
+
+```
+buttons import code
+```
+
+#### `buttons import mcp`
+
+Create buttons from an MCP server's tools (planned)
+
+```
+buttons import mcp
+```
+
+#### `buttons import skill`
+
+Create buttons from an AgentSkills skill directory
+
+```
+buttons import skill
+```
+
+#### `buttons import url`
+
+Create a button from a spec fetched over HTTP
+
+```
+buttons import url
+```
+
 ### `buttons init`
 
 Initialize a project-local .buttons directory
@@ -283,6 +328,21 @@ buttons press [flags]
 | `--idempotency-key` | string | reuse the cached result for this key if present (cross-run dedup) |
 | `--idempotency-ttl` | duration | how long idempotency entries stay valid (e.g. 1h, 24h) |
 | `--timeout` | int | override timeout in seconds |
+
+### `buttons serve`
+
+Run a REST API server exposing buttons over HTTP
+
+```
+buttons serve [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--allow-http-buttons` | bool | allow pressing http (outbound-request) buttons over the API (SSRF surface; off by default) |
+| `--api-key` | string | bearer key required on all endpoints (else the 'API_KEY' battery or $BUTTONS_API_KEY) |
+| `--host` | string | host/interface to bind (use 0.0.0.0 to expose; requires an API key) |
+| `--port` | int | port to listen on |
 
 ### `buttons smash`
 
