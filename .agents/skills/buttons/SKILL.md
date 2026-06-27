@@ -221,6 +221,51 @@ Keep a button or drawer out of git (writes .buttons/.gitignore)
 buttons ignore
 ```
 
+### `buttons import`
+
+Create buttons from external sources (skill, code, url)
+
+```
+buttons import [command]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--name` | string | override the generated button name (code/url) |
+| `-y, --yes` | bool | skip the confirmation prompt |
+
+#### `buttons import code`
+
+Wrap a script file as a button
+
+```
+buttons import code
+```
+
+#### `buttons import mcp`
+
+Create buttons from an MCP server's tools (planned)
+
+```
+buttons import mcp
+```
+
+#### `buttons import skill`
+
+Create buttons from an AgentSkills skill directory
+
+```
+buttons import skill
+```
+
+#### `buttons import url`
+
+Create a button from a spec fetched over HTTP
+
+```
+buttons import url
+```
+
 ### `buttons init`
 
 Initialize a project-local .buttons directory
@@ -267,6 +312,18 @@ buttons logs [flags]
 | `-f, --follow` | bool | stream the latest press's progress events live (agent-friendly, no TUI) |
 | `--limit` | int | max runs to return |
 
+### `buttons mcp`
+
+Run an MCP server over stdio (expose buttons to agents)
+
+```
+buttons mcp [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--allow-create` | bool | expose the buttons_create tool (off by default) |
+
 ### `buttons press`
 
 Run a button
@@ -284,13 +341,47 @@ buttons press [flags]
 | `--idempotency-ttl` | duration | how long idempotency entries stay valid (e.g. 1h, 24h) |
 | `--timeout` | int | override timeout in seconds |
 
+### `buttons publish`
+
+Publish a local button to a source so others can install it
+
+```
+buttons publish [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--source` | string | source directory to publish to (until the registry lands, #276) |
+
+### `buttons serve`
+
+Run a REST API server exposing buttons over HTTP
+
+```
+buttons serve [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--allow-http-buttons` | bool | allow pressing http (outbound-request) buttons over the API (SSRF surface; off by default) |
+| `--api-key` | string | bearer key required on all endpoints (else the 'API_KEY' battery or $BUTTONS_API_KEY) |
+| `--host` | string | host/interface to bind (use 0.0.0.0 to expose; requires an API key) |
+| `--no-triggers` | bool | do not run the trigger engine (cron/watch/webhook) alongside the API |
+| `--port` | int | port to listen on |
+
 ### `buttons smash`
 
 Run multiple buttons in parallel
 
 ```
-buttons smash
+buttons smash [flags]
 ```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--concurrency` | int | max buttons running at once (0 = NumCPU; hard cap 50) |
+| `--on-failure` | string | stop | continue |
+| `--timeout` | int | per-button timeout override (seconds) |
 
 ### `buttons summary`
 
@@ -315,6 +406,49 @@ buttons tail [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `-f, --follow` | bool | keep tailing as new lines arrive |
+
+### `buttons trigger`
+
+Manage button triggers (cron, watch, webhook)
+
+```
+buttons trigger [command]
+```
+
+#### `buttons trigger add`
+
+Add a trigger to a button
+
+```
+buttons trigger add [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--arg` | stringArray | argument key=value passed when the trigger fires (repeatable) |
+| `--cron` | bool | cron-scheduled trigger |
+| `--path` | string | file path to watch |
+| `--schedule` | string | cron schedule, 5-field (e.g. "0 */6 * * *") |
+| `--token` | string | shared secret required on webhook POSTs (X-Buttons-Token or ?token=) |
+| `--watch` | bool | file-watch trigger |
+| `--webhook` | bool | webhook (HTTP POST) trigger |
+| `--webhook-path` | string | URL path for the webhook (e.g. /hooks/deploy) |
+
+#### `buttons trigger list`
+
+List triggers (all buttons, or one)
+
+```
+buttons trigger list
+```
+
+#### `buttons trigger rm`
+
+Remove a trigger from a button
+
+```
+buttons trigger rm
+```
 
 ### `buttons unignore`
 
