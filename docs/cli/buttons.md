@@ -35,11 +35,11 @@ buttons [flags]
 * [buttons history](buttons_history.md)	 - Show run history
 * [buttons ignore](buttons_ignore.md)	 - Keep a button or drawer out of git (writes .buttons/.gitignore)
 * [buttons init](buttons_init.md)	 - Initialize a project-local .buttons directory
+* [buttons install](buttons_install.md)	 - Install a button (or every button with a tag) from a source
 * [buttons list](buttons_list.md)	 - List all buttons
 * [buttons logs](buttons_logs.md)	 - View past runs for a button or tail the live progress stream
 * [buttons press](buttons_press.md)	 - Run a button
 * [buttons smash](buttons_smash.md)	 - Run multiple buttons in parallel
-* [buttons store](buttons_store.md)	 - Marketplace (search/install/import/publish)
 * [buttons summary](buttons_summary.md)	 - Print a workspace snapshot (buttons, drawers, recent runs)
 * [buttons tail](buttons_tail.md)	 - Follow the progress JSONL of a press
 * [buttons unignore](buttons_unignore.md)	 - Re-include a previously-ignored button or drawer in git
