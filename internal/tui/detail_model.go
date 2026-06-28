@@ -17,7 +17,7 @@ type DetailModel struct {
 
 	btn      *button.Button
 	lastRun  *history.Run // nil if never pressed
-	agentMD  string       // AGENT.md contents if non-default
+	agentMD  string       // AGENTS.md contents if non-default
 	codePath string       // resolved on-disk code path for `e` edit
 
 	// Terminal size; tracked for the footer right-alignment.

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 
+	"github.com/autonoco/buttons/internal/agentdoc"
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/history"
@@ -16,9 +16,9 @@ import (
 //
 // Three paths:
 //
-//   --json          structured detail dict (agents, pipes)
-//   non-TTY         plain stderr printout (legacy / piped workflows)
-//   TTY + human     full-screen Bubble Tea detail page (internal/tui)
+//	--json          structured detail dict (agents, pipes)
+//	non-TTY         plain stderr printout (legacy / piped workflows)
+//	TTY + human     full-screen Bubble Tea detail page (internal/tui)
 func showButtonDetail(name string) error {
 	svc := button.NewService()
 	btn, err := svc.Get(name)
@@ -65,7 +65,7 @@ func renderDetailTUI(svc *button.Service, btn *button.Button) error {
 		}
 	} else if btn.Runtime == "prompt" {
 		if dir, err := config.ButtonDir(btn.Name); err == nil {
-			codePath = filepath.Join(dir, "AGENT.md")
+			codePath = agentdoc.Path(dir)
 		}
 	}
 
@@ -175,7 +175,7 @@ func readAgentMD(buttonName string) string {
 	}
 	// #nosec G304 -- btnDir comes from config.ButtonDir() which rejects any
 	// path escaping ButtonsDir; caller passes an already-slugified btn.Name.
-	data, err := os.ReadFile(filepath.Join(btnDir, "AGENT.md"))
+	data, err := os.ReadFile(agentdoc.Path(btnDir))
 	if err != nil {
 		return ""
 	}

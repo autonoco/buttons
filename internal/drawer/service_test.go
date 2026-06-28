@@ -60,15 +60,15 @@ func TestService_Create_ScaffoldsAgentMD(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	path := filepath.Join(home, "drawers", "scaffold-doc", "AGENT.md")
+	path := filepath.Join(home, "drawers", "scaffold-doc", "AGENTS.md")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("expected AGENT.md scaffolded at %s: %v", path, err)
+		t.Fatalf("expected AGENTS.md scaffolded at %s: %v", path, err)
 	}
 	got := string(data)
 	for _, want := range []string{"# scaffold-doc", "groups the slides verbs", "## Notes"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("AGENT.md missing %q; got:\n%s", want, got)
+			t.Errorf("AGENTS.md missing %q; got:\n%s", want, got)
 		}
 	}
 }

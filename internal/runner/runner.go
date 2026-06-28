@@ -7,10 +7,10 @@ package runner
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/autonoco/buttons/internal/agentdoc"
 	"github.com/autonoco/buttons/internal/battery"
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
@@ -79,7 +79,7 @@ func Press(ctx context.Context, name string, args map[string]string, opts Option
 			if derr != nil {
 				return nil, derr
 			}
-			codePath = filepath.Join(dir, "AGENT.md")
+			codePath = agentdoc.Path(dir)
 		} else {
 			codePath, err = svc.CodePath(btn.Name)
 			if err != nil {

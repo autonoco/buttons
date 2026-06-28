@@ -243,7 +243,7 @@ func TestCreate_ButtonFolderStructure(t *testing.T) {
 	btnDir := filepath.Join(env.home, "buttons", "mybutton")
 
 	// Check all expected files exist
-	for _, f := range []string{"button.json", "main.sh", "AGENT.md"} {
+	for _, f := range []string{"button.json", "main.sh", "AGENTS.md"} {
 		if _, err := os.Stat(filepath.Join(btnDir, f)); err != nil {
 			t.Errorf("expected %s to exist: %v", f, err)
 		}

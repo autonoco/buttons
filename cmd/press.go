@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/autonoco/buttons/internal/agentdoc"
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/engine"
@@ -107,7 +107,7 @@ Examples:
 				if err != nil {
 					return handleServiceError(err)
 				}
-				codePath = filepath.Join(btnDir, "AGENT.md")
+				codePath = agentdoc.Path(btnDir)
 			} else {
 				codePath, err = svc.CodePath(btn.Name)
 				if err != nil {
@@ -196,7 +196,7 @@ Examples:
 			<-sinkDone // drain the channel before emitting the final Result
 		}
 
-		// Attach prompt if AGENT.md has custom content (not the default template)
+		// Attach prompt if AGENTS.md has custom content (not the default template)
 		if promptMD := readPrompt(btn.Name); promptMD != "" {
 			result.Prompt = promptMD
 		}
@@ -305,7 +305,7 @@ func readPrompt(buttonName string) string {
 	}
 	// #nosec G304 -- btnDir comes from config.ButtonDir() which rejects any
 	// path escaping ButtonsDir; caller passes an already-slugified btn.Name.
-	data, err := os.ReadFile(filepath.Join(btnDir, "AGENT.md"))
+	data, err := os.ReadFile(agentdoc.Path(btnDir))
 	if err != nil {
 		return ""
 	}

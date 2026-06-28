@@ -180,7 +180,7 @@ func writeSkill(b *strings.Builder, root *cobra.Command) {
 	b.WriteString("~/.buttons/buttons/<name>/\n")
 	b.WriteString("  button.json     # spec (args, runtime, timeout)\n")
 	b.WriteString("  main.sh         # code file (.sh, .py, .js)\n")
-	b.WriteString("  AGENT.md        # prompt instruction\n")
+	b.WriteString("  AGENTS.md        # prompt instruction\n")
 	b.WriteString("  pressed/        # run history as JSON files\n")
 	b.WriteString("```\n")
 }

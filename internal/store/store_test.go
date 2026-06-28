@@ -170,7 +170,7 @@ func TestSafeJoin(t *testing.T) {
 			t.Errorf("safeJoin(%q) should be rejected", r)
 		}
 	}
-	for _, r := range []string{"button.json", "main.sh", "AGENT.md", "sub/file.txt"} {
+	for _, r := range []string{"button.json", "main.sh", "AGENTS.md", "sub/file.txt"} {
 		dst, err := safeJoin(dir, r)
 		if err != nil {
 			t.Errorf("safeJoin(%q) should be allowed: %v", r, err)

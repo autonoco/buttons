@@ -37,7 +37,7 @@ A .gitignore is created inside .buttons/ to exclude run history
 (pressed/) from version control while keeping button specs, code
 files, and agent instructions committed.
 
-A reference guide is written to .buttons/AGENT.md so any coding
+A reference guide is written to .buttons/AGENTS.md so any coding
 agent that opens the folder can learn what Buttons is and how to
 use it.
 
@@ -69,7 +69,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// The AGENT.md reference is always (re)written — it's Buttons' own
+	// The AGENTS.md reference is always (re)written — it's Buttons' own
 	// docs, not something the user should hand-edit in-place.
 	agentMDPath, err := agentskill.WriteAgentMD(cwd)
 	if err != nil {

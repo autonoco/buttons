@@ -80,7 +80,7 @@ type CreateOpts struct {
 	Method               string
 	Headers              map[string]string
 	Body                 string
-	Prompt               string // Prompt/instruction written to AGENT.md
+	Prompt               string // Prompt/instruction written to AGENTS.md
 	Description          string
 	TimeoutSeconds       int
 	MaxResponseBytes     int64 // URL buttons only; zero → DefaultMaxResponseBytes
@@ -282,10 +282,10 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 		}
 	}
 
-	// Write AGENT.md
+	// Write AGENTS.md
 	var promptMD string
 	if hasPrompt {
-		// Prompt button: the instruction IS the AGENT.md
+		// Prompt button: the instruction IS the AGENTS.md
 		promptMD = opts.Prompt + "\n"
 	} else {
 		promptMD = fmt.Sprintf("# %s\n\n", name)
@@ -294,12 +294,12 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 		}
 		promptMD += "## Notes\n\n_Add context about this button here: why it exists, gotchas, expected output format._\n"
 	}
-	if err := os.WriteFile(filepath.Join(btnDir, "AGENT.md"), []byte(promptMD), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(btnDir, "AGENTS.md"), []byte(promptMD), 0600); err != nil {
 		// Best-effort cleanup of the partially created button directory.
 		// Error is intentionally ignored: we are already returning a failure
 		// and there is no useful recovery path if the cleanup itself fails.
 		_ = os.RemoveAll(btnDir)
-		return nil, fmt.Errorf("failed to write AGENT.md: %w", err)
+		return nil, fmt.Errorf("failed to write AGENTS.md: %w", err)
 	}
 
 	return btn, nil
