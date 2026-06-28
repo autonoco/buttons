@@ -10,7 +10,7 @@ Publish a local button to a source so others can install it
 ### Synopsis
 
 Publish a button — the inverse of 'buttons install'. The button folder
-(button.json + code + AGENT.md, never its run history) is content-hashed and
+(button.json + code + AGENTS.md, never its run history) is content-hashed and
 written to a source, where 'buttons install <name> --source <dir>' can fetch it.
 
 The registry source (buttons.co, #275/#276) is not built yet; for now publish
