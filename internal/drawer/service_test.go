@@ -3,6 +3,7 @@ package drawer
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -48,6 +49,27 @@ func TestService_CreateListGet(t *testing.T) {
 	}
 	if got.Description != "my flow" {
 		t.Errorf("description round-trip: got %q", got.Description)
+	}
+}
+
+func TestService_Create_ScaffoldsAgentMD(t *testing.T) {
+	home := newTestHome(t)
+	svc := NewService()
+
+	if _, err := svc.Create("scaffold-doc", "groups the slides verbs", nil); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	path := filepath.Join(home, "drawers", "scaffold-doc", "AGENT.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("expected AGENT.md scaffolded at %s: %v", path, err)
+	}
+	got := string(data)
+	for _, want := range []string{"# scaffold-doc", "groups the slides verbs", "## Notes"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("AGENT.md missing %q; got:\n%s", want, got)
+		}
 	}
 }
 
