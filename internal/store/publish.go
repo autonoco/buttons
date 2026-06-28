@@ -26,7 +26,7 @@ type PublishResult struct {
 }
 
 // Publish reads an installed/local button and hands it to dst. It's the inverse
-// of InstallSpec: gather the button folder (button.json + main.* + AGENT.md,
+// of InstallSpec: gather the button folder (button.json + main.* + AGENTS.md,
 // never pressed/ history), content-hash it, and publish.
 func Publish(dst Publisher, name string) (*PublishResult, error) {
 	dir, err := config.ButtonDir(button.Slugify(name))

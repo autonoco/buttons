@@ -17,7 +17,7 @@ func TestWriteAgentMD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path != filepath.Join(dir, ".buttons", "AGENT.md") {
+	if path != filepath.Join(dir, ".buttons", "AGENTS.md") {
 		t.Errorf("unexpected path: %s", path)
 	}
 
@@ -26,7 +26,7 @@ func TestWriteAgentMD(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), "This folder is managed by") {
-		t.Error("AGENT.md missing expected heading content")
+		t.Error("AGENTS.md missing expected heading content")
 	}
 }
 

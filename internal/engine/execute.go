@@ -42,7 +42,7 @@ func Execute(ctx context.Context, btn *button.Button, args, batteries map[string
 		return executeHTTP(ctx, btn, args, result)
 	}
 
-	// Prompt buttons return the instruction from AGENT.md
+	// Prompt buttons return the instruction from AGENTS.md
 	if btn.Runtime == "prompt" {
 		return executePrompt(ctx, codePath, result)
 	}
@@ -207,7 +207,7 @@ func interpreterForRuntime(runtime string) (string, error) {
 	}
 }
 
-// executePrompt reads the AGENT.md instruction and returns it as output.
+// executePrompt reads the AGENTS.md instruction and returns it as output.
 func executePrompt(ctx context.Context, promptPath string, result *Result) *Result {
 	start := result.StartedAt
 
@@ -222,13 +222,14 @@ func executePrompt(ctx context.Context, promptPath string, result *Result) *Resu
 	}
 
 	// #nosec G304 -- promptPath is constructed by callers from config.ButtonDir()
-	// (which rejects paths escaping ButtonsDir) + the literal "AGENT.md" suffix.
+	// (which rejects paths escaping ButtonsDir) + the agent-doc filename
+	// resolved by agentdoc.Path.
 	data, err := os.ReadFile(promptPath)
 	if err != nil {
 		result.Status = "error"
 		result.ExitCode = -1
 		result.ErrorType = "PROMPT_ERROR"
-		result.Stderr = fmt.Sprintf("failed to read AGENT.md: %v", err)
+		result.Stderr = fmt.Sprintf("failed to read AGENTS.md: %v", err)
 		result.DurationMs = time.Since(start).Milliseconds()
 		return result
 	}

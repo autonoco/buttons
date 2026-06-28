@@ -55,6 +55,21 @@ func (s *Service) Create(name string, description string, inputs []InputDef) (*D
 		return nil, fmt.Errorf("failed to create drawer directory: %w", err)
 	}
 
+	// Scaffold AGENTS.md — a drawer groups related buttons, so this is
+	// where an agent documents what the group is for and when to reach
+	// for each member. Mirrors the per-button AGENTS.md scaffold.
+	agentMD := fmt.Sprintf("# %s\n\n", slug)
+	if description != "" {
+		agentMD += description + "\n\n"
+	}
+	agentMD += "## Notes\n\n_Add context about this drawer here: what these buttons are for, when to use which, and how they chain._\n"
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(agentMD), 0600); err != nil {
+		// Best-effort cleanup of the partially created drawer directory,
+		// mirroring the save-failure path below.
+		_ = os.RemoveAll(dir)
+		return nil, fmt.Errorf("failed to write AGENTS.md: %w", err)
+	}
+
 	now := time.Now().UTC()
 	d := &Drawer{
 		SchemaVersion: SchemaVersion,

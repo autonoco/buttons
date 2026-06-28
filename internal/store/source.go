@@ -30,7 +30,7 @@ type Bundle struct {
 	Name    string
 	Version string
 	SHA256  string            // content hash of Files (provenance pin)
-	Files   map[string][]byte // relative filename -> bytes (button.json, main.*, AGENT.md)
+	Files   map[string][]byte // relative filename -> bytes (button.json, main.*, AGENTS.md)
 }
 
 // Source is where buttons are installed/updated from. HTTPSource (the registry,
@@ -85,7 +85,7 @@ func safeJoin(dir, rel string) (string, error) {
 }
 
 // LocalSource installs from a directory laid out like a buttons dir:
-// <Root>/<name>/{button.json, main.*, AGENT.md}. For dev/testing without a
+// <Root>/<name>/{button.json, main.*, AGENTS.md}. For dev/testing without a
 // registry server, and the reference for what an HTTPSource must reproduce.
 type LocalSource struct {
 	Root string

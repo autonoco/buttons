@@ -187,7 +187,7 @@ Examples:
 		if codePath != "" {
 			fmt.Fprintf(os.Stderr, "  Edit:  %s\n", codePath)
 		} else if btn.Runtime == "prompt" {
-			fmt.Fprintf(os.Stderr, "  Edit:  %s\n", filepath.Join(btnDir, "AGENT.md"))
+			fmt.Fprintf(os.Stderr, "  Edit:  %s\n", filepath.Join(btnDir, "AGENTS.md"))
 		}
 		// Build a press hint that's actually runnable — if the button
 		// has required args, stub them so the user can fill in values.
@@ -233,7 +233,7 @@ func init() {
 	createCmd.Flags().StringVar(&createMethod, "method", "", "HTTP method for --url (default: GET)")
 	createCmd.Flags().StringArrayVar(&createHeaders, "header", nil, "HTTP header as 'Key: Value' (repeatable)")
 	createCmd.Flags().StringVar(&createBody, "body", "", "HTTP request body (supports {{arg}} templates)")
-	createCmd.Flags().StringVar(&createPrompt, "prompt", "", "prompt/instruction for the consuming agent (written to AGENT.md)")
+	createCmd.Flags().StringVar(&createPrompt, "prompt", "", "prompt/instruction for the consuming agent (written to AGENTS.md)")
 	createCmd.Flags().StringVarP(&createDescription, "description", "d", "", "button description")
 	// 300s default: the old 60s cap bit real agent workloads — ETL jobs,
 	// long curls waiting on third-party APIs, DB migrations. Safety still

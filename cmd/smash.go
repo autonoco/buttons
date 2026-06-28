@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
+	"github.com/autonoco/buttons/internal/agentdoc"
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/engine"
@@ -187,7 +187,7 @@ func smashPress(ctx context.Context, name string, batteries map[string]string, t
 			if derr != nil {
 				return nil, derr
 			}
-			codePath = filepath.Join(dir, "AGENT.md")
+			codePath = agentdoc.Path(dir)
 		} else if codePath, err = svc.CodePath(btn.Name); err != nil {
 			return nil, err
 		}

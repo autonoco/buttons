@@ -80,10 +80,10 @@ func TestService_Create(t *testing.T) {
 		t.Fatalf("code file not found: %v", err)
 	}
 
-	// Verify AGENT.md was created
-	agentPath := filepath.Join(home, "buttons", "test", "AGENT.md")
+	// Verify AGENTS.md was created
+	agentPath := filepath.Join(home, "buttons", "test", "AGENTS.md")
 	if _, err := os.Stat(agentPath); err != nil {
-		t.Fatalf("AGENT.md not found: %v", err)
+		t.Fatalf("AGENTS.md not found: %v", err)
 	}
 
 	// Verify pressed/ directory was created

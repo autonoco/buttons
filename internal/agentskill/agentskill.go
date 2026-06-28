@@ -15,7 +15,7 @@
 //     BUTTONS:START / BUTTONS:END HTML comments so a subsequent
 //     `buttons init` can find + replace in-place.
 //
-// The `.buttons/AGENT.md` file is intentionally different: it's the
+// The `.buttons/AGENTS.md` file is intentionally different: it's the
 // folder's own onboarding doc, not an agent-discovery file. It's always
 // created and always overwritten on `init` — it belongs to Buttons, not
 // to the user's editor conventions.
@@ -136,7 +136,7 @@ const (
 
 // Body is the shared "what Buttons is" content appended to markdown
 // files. Kept short on purpose — pointers to `buttons --help` and the
-// `.buttons/AGENT.md` reference carry the detailed docs.
+// `.buttons/AGENTS.md` reference carry the detailed docs.
 const Body = `## Buttons
 
 This project uses [Buttons](https://buttons.sh) — a CLI workflow engine. Buttons are reusable, named actions with typed args and structured output.
@@ -171,9 +171,9 @@ In a triggered drawer, the POST is available as ` + "`${inputs.webhook.body}`" +
 
 Dry-run a webhook drawer without the listener: ` + "`buttons drawer <name> press --webhook-body '{...}'`" + ` or ` + "`--webhook-body @fixture.json`" + `.
 
-See ` + "`.buttons/AGENT.md`" + ` for more detail.`
+See ` + "`.buttons/AGENTS.md`" + ` for more detail.`
 
-// AgentMDBody is the always-installed `.buttons/AGENT.md` content.
+// AgentMDBody is the always-installed `.buttons/AGENTS.md` content.
 // Different audience than Body: this one teaches the concept to an
 // agent that happens to open the file, whereas Body is structured to
 // live alongside a user's existing agent instructions.
@@ -270,7 +270,7 @@ type InstallOpts struct {
 	ProjectRoot string
 
 	// TargetIDs is the set of target IDs to install. An empty slice
-	// means "install no agent skill files" — `.buttons/AGENT.md` is
+	// means "install no agent skill files" — `.buttons/AGENTS.md` is
 	// always written regardless.
 	TargetIDs []string
 }
@@ -283,11 +283,11 @@ type WriteResult struct {
 	Action   string `json:"action"` // "created" | "updated" | "appended"
 }
 
-// WriteAgentMD writes .buttons/AGENT.md. The `.buttons/` directory is
+// WriteAgentMD writes .buttons/AGENTS.md. The `.buttons/` directory is
 // assumed to exist already (buttons init creates it first). Always
 // overwrites — this file belongs to Buttons, not to the user.
 func WriteAgentMD(projectRoot string) (string, error) {
-	path := filepath.Join(projectRoot, ".buttons", "AGENT.md")
+	path := filepath.Join(projectRoot, ".buttons", "AGENTS.md")
 	if err := os.WriteFile(path, []byte(AgentMDBody), 0600); err != nil {
 		return "", fmt.Errorf("write %s: %w", path, err)
 	}
