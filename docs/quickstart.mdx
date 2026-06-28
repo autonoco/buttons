@@ -1,6 +1,6 @@
 ---
 title: "Quick start"
-description: "Create and press your first button in 30 seconds."
+description: "Initialize a project, create a button, and press it."
 icon: "rocket"
 ---
 
@@ -13,6 +13,20 @@ curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh | 
 ```
 
 Or see [installation](/installation) for Docker, Go, and other options.
+
+</Step>
+
+<Step title="Initialize a project">
+
+Create a project-local `.buttons/` directory so the button belongs to this workspace instead of your global `~/.buttons/` folder:
+
+```bash
+mkdir buttons-demo
+cd buttons-demo
+buttons init --agent agents-md
+```
+
+`buttons init` also writes `.buttons/AGENT.md` and adds a Buttons section to `AGENTS.md` so coding agents know to discover and press existing buttons before writing one-off commands.
 
 </Step>
 
@@ -80,6 +94,9 @@ Every press is recorded as a JSON file in the button's `pressed/` folder.
   </Card>
   <Card title="Prompt buttons" icon="robot" href="/buttons/prompt">
     Attach instructions for the consuming agent.
+  </Card>
+  <Card title="Workflows" icon="workflow" href="/buttons/workflows">
+    Chain buttons into drawers.
   </Card>
   <Card title="Arguments" icon="list-check" href="/concepts/arguments">
     Typed args with validation.

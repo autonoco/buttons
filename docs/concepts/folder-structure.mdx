@@ -1,14 +1,19 @@
 ---
-title: "Button folder structure"
-description: "How buttons are stored on disk under ~/.buttons/."
+title: "Folder structure"
+description: "How Buttons stores buttons, drawers, history, secrets, and runtime state."
 ---
 
-Buttons stores all its data under `~/.buttons/`. Each button gets its own subdirectory with a spec file, an optional code file, optional agent context, and a run history folder.
+Buttons stores data under `~/.buttons/` by default. In a project initialized with `buttons init`, the active data directory is the closest `.buttons/` folder in the current directory tree.
+
+Each button gets its own subdirectory with a spec file, optional code file, agent context, and run history. Drawers get the same pattern for workflow specs and workflow history.
 
 ## Directory layout
 
 ```
-~/.buttons/
+~/.buttons/ or .buttons/
+├── buttons.json              # project manifest; desired buttons and version policy
+├── buttons-lock.json         # resolved exact versions, hashes, and sources
+├── history.json              # local create/edit/install/update history; gitignored
 ├── buttons/
 │   ├── deploy/
 │   │   ├── button.json       # button spec
@@ -26,17 +31,21 @@ Buttons stores all its data under `~/.buttons/`. Each button gets its own subdir
 │       └── pressed/
 ├── drawers/
 │   └── release-flow/
-│       └── drawer.json
-└── state.db                  # SQLite run history (WAL mode)
+│       ├── drawer.json
+│       └── pressed/
+├── batteries.json            # secret/env values; gitignored for project-local dirs
+├── webhook.json              # Cloudflare tunnel config; gitignored for project-local dirs
+├── idempotency/              # cached successful press results
+└── queues/                   # file-lock semaphore state
 ```
 
 ## button.json
 
-The spec file for a button. It describes the button type, arguments, runtime, and all other configuration. Every spec includes `"schema_version": 1`.
+The spec file for a button. It describes the button type, arguments, runtime, and all other configuration. Newly created specs use `"schema_version": 2`.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "name": "deploy",
   "description": "Deploy a tagged release to an environment",
   "runtime": "shell",
@@ -47,6 +56,39 @@ The spec file for a button. It describes the button type, arguments, runtime, an
   "created_at": "2026-04-10T11:00:00Z"
 }
 ```
+
+See [button.json](/concepts/button-json) for every field, including HTTP host locks, queues, output schemas, package metadata, and required batteries.
+
+## drawer.json
+
+The workflow spec for a drawer. It stores inputs, steps, refs, triggers, return values, and error handling.
+
+```json
+{
+  "schema_version": 1,
+  "name": "release-flow",
+  "steps": [
+    { "id": "build", "kind": "button", "button": "build" },
+    { "id": "publish", "kind": "button", "button": "publish" }
+  ]
+}
+```
+
+See [drawer.json](/concepts/drawer-json) for the full workflow schema.
+
+## buttons.json and buttons-lock.json
+
+`buttons.json` at the root of `.buttons/` declares the desired project buttons and version policy.
+
+`buttons-lock.json` records the exact resolved versions, sources, and content hashes. Commit it with `buttons.json` so teammates can recreate the same installed buttons.
+
+## history.json
+
+`history.json` records local create, edit, install, update, delete, rollback, and failed resolution events. Commands write explicit events; file hooks can record manual edits to tracked button and drawer files.
+
+In a team repo, commit `buttons.json`, `buttons-lock.json`, and authored button/drawer files. Do not commit `history.json`; it is a local runtime artifact.
+
+When installed buttons are generated entirely from a registry, the repo can recreate them from the manifest and lock file. When a button is authored directly in the project, commit its folder under `buttons/`.
 
 ## main.\*
 
@@ -72,9 +114,23 @@ One JSON file per run, named by timestamp. Each file records the input arguments
 }
 ```
 
-## state.db
+## batteries.json
 
-A SQLite database (WAL mode, `busy_timeout=5000`) that mirrors the run history for indexed queries. `buttons history` reads from this file. The JSON files in `pressed/` are the authoritative record; `state.db` is the query index.
+Batteries are key/value pairs injected into button presses as `BUTTONS_BAT_<KEY>`.
+
+Project-local batteries live at `.buttons/batteries.json`. Global batteries live at `~/.buttons/batteries.json`. Local values override global values on key collision.
+
+## webhook.json
+
+Named webhook setup stores Cloudflare tunnel configuration in `webhook.json`. It is machine-specific and should not be committed.
+
+## idempotency/
+
+Successful presses with `--idempotency-key` are cached here until their TTL expires.
+
+## queues/
+
+Buttons with a `queue` declaration use file locks here to enforce concurrency limits.
 
 ## Overriding the home directory
 
@@ -92,6 +148,8 @@ The `~/.buttons/` directory and all files inside it are created with mode `0700`
 
 ## Related
 
-- [Button folder structure](/concepts/folder-structure) — this page
+- [button.json](/concepts/button-json) — button spec fields
+- [drawer.json](/concepts/drawer-json) — workflow spec fields
+- [History](/concepts/history) — local audit history
 - [JSON output](/concepts/json-output) — the shape of history records
-- [File buttons](/buttons/file) — how `main.*` is populated from an imported script
+- [Code buttons](/buttons/code) — how `main.*` is populated from scaffolded or imported scripts

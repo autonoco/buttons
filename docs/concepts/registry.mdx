@@ -1,0 +1,141 @@
+---
+title: "Registry"
+description: "How Buttons resolves, installs, locks, and updates shared buttons."
+---
+
+A registry is a catalog of installable buttons. It answers: "What buttons are available, what versions exist, what tags do they belong to, and what content hash should I install?"
+
+The registry does not contain runnable local buttons. Runnable buttons live in `.buttons/buttons/`. Desired dependencies live in `.buttons/buttons.json`; exact resolved versions live in `.buttons/buttons-lock.json`.
+
+```text
+.buttons/
+  buttons.json
+  buttons-lock.json
+  history.json
+  buttons/
+    slack-sync/
+      button.json
+      main.sh
+      AGENT.md
+```
+
+## buttons.json
+
+`buttons.json` is the project manifest. It lives at the root of `.buttons/` and is committed with the repo.
+
+It declares trusted registries and desired buttons:
+
+```json
+{
+  "schema_version": 1,
+  "default_registry": "autono",
+  "registries": {
+    "autono": {
+      "type": "git",
+      "url": "https://github.com/autonoco/autono-buttons",
+      "ref": "main"
+    }
+  },
+  "dependencies": {
+    "imessage-sync": "latest",
+    "slack-sync": {
+      "version": "^1.2.0",
+      "auto_update": true
+    },
+    "plaid-sync": {
+      "version": "1.4.2",
+      "auto_update": false
+    }
+  }
+}
+```
+
+The simple string form is enough for most buttons. The object form keeps room for per-button options like `auto_update`, channels, constraints, or rollout policy.
+
+## buttons-lock.json
+
+`buttons-lock.json` is the resolved lock file. It lives next to `buttons.json` and should be committed with the repo.
+
+```json
+{
+  "schema_version": 1,
+  "buttons": {
+    "slack-sync": {
+      "registry": "autono",
+      "source": "git+https://github.com/autonoco/autono-buttons@main",
+      "requested": "^1.2.0",
+      "version": "1.2.4",
+      "content_hash": "sha256:4f8c...",
+      "resolved_at": "2026-06-28T18:42:10Z"
+    }
+  }
+}
+```
+
+`buttons.json` is the desired state. `buttons-lock.json` is the exact resolved state.
+
+```text
+buttons.json          semver ranges, latest, registry config, auto_update policy
+buttons-lock.json     exact versions, hashes, resolved sources
+```
+
+This follows the same shape as package manifests and lock files: ranges are human-authored, exact versions are machine-resolved and committed for repeatability.
+
+## history.json
+
+`history.json` is local and should not be committed. It records what happened on one machine over time: creates, edits, installs, updates, rollbacks, deletes, and failed registry fetches.
+
+See [History](/concepts/history) for the event model.
+
+## Install Flow
+
+When registry-backed install runs, Buttons should:
+
+1. Read `.buttons/buttons.json` for registries, desired buttons, and version policy.
+2. Resolve the requested button, version, or tag from the configured registry.
+3. Fetch the button bundle, including `button.json`, `main.*`, `AGENT.md`, and support files.
+4. Install the runnable copy into `.buttons/buttons/<name>/`.
+5. Install required peer buttons from `requires`.
+6. Stamp `source`, `version`, and `content_hash` into the installed `button.json`.
+7. Update `.buttons/buttons-lock.json` with exact resolved versions and hashes.
+8. Append an event to `.buttons/history.json`.
+
+## Resolution
+
+Install requests can target a button, a pinned version, or a tag:
+
+```bash
+buttons install slack-sync
+buttons install slack-sync@1.2.0
+buttons install tag:autono-cal
+```
+
+The intended source resolution order is:
+
+1. `--source`, for explicit one-off local installs.
+2. `BUTTONS_SOURCE`, for a local default source.
+3. `.buttons/buttons.json`, for the project team contract.
+
+## Source Layout
+
+A local registry source is a directory of button folders:
+
+```text
+button-source/
+  slack-sync/
+    button.json
+    main.sh
+    AGENT.md
+  calendar-sync/
+    button.json
+    main.sh
+    AGENT.md
+```
+
+Each button folder must include `button.json`. Support files are copied into the installed button.
+
+## Related
+
+- [History](/concepts/history)
+- [button.json](/concepts/button-json)
+- [buttons install](/cli/buttons_install)

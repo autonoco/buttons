@@ -1,0 +1,41 @@
+---
+title: "Drawers"
+description: "Typed workflows that chain buttons together."
+---
+
+A drawer is a workflow made of buttons and workflow steps. Use a drawer when an action has multiple steps, needs output from an earlier step, or should be triggered as a unit.
+
+```bash
+buttons drawer create release-flow
+buttons drawer release-flow add build publish notify
+buttons drawer release-flow connect build to publish
+buttons drawer release-flow press env=prod
+```
+
+## Mental model
+
+| Concept | Meaning |
+| --- | --- |
+| Drawer | A reusable workflow. |
+| Step | A button, sub-drawer, loop, switch, aggregate, or wait. |
+| Input | A value supplied when the drawer is pressed. |
+| Output | JSON produced by a step and made available to later steps. |
+| Ref | A `${...}` expression that reads inputs, step outputs, env, or webhook URLs. |
+
+Drawers live under `.buttons/drawers/<name>/` and record their own run history under `pressed/`.
+
+## How drawers relate to buttons
+
+Buttons are the units of work. Drawers compose them.
+
+```text
+button -> one action
+drawer -> many actions wired together
+```
+
+## Related
+
+- [Workflow guide](/buttons/workflows)
+- [drawer.json](/concepts/drawer-json)
+- [Buttons](/concepts/buttons)
+- [Triggers](/concepts/triggers)

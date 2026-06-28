@@ -1,39 +1,62 @@
 ---
-title: "Webhook buttons"
+title: "Webhook triggers"
 sidebarTitle: "Webhook"
-description: "Expose a button as a webhook endpoint that external services can POST to."
-tag: "Coming soon"
+description: "Run a button or drawer when an external service sends an HTTP POST."
+tag: "Partially available"
 ---
 
-Webhook buttons will turn a button into a **receiver**: an HTTP endpoint you can register with GitHub, Stripe, Linear, or any other service that fires webhooks. When the endpoint receives a POST, the button is pressed with the request body and headers available as arguments.
+A webhook trigger turns a button or drawer into a receiver: an HTTP endpoint you can register with GitHub, Stripe, Linear, Apify, or any other service that sends webhooks.
 
-This is the inverse of an [HTTP API button](/buttons/http-api). HTTP API buttons *send* requests; webhook buttons *receive* them.
-
-```bash
-# Planned shape
-buttons create github-pr-opened \
-  --webhook \
-  --secret $GITHUB_WEBHOOK_SECRET \
-  --code './scripts/on-pr-opened.sh'
-```
-
-Start the receiver:
+This is the inverse of an [HTTP API button](/buttons/http-api). HTTP API buttons send requests; webhook triggers receive them.
 
 ```bash
-buttons serve --port 8080
-# → POST http://localhost:8080/webhooks/github-pr-opened
+buttons drawer create github-pr-opened
+buttons drawer github-pr-opened add handle-github-pr
+buttons drawer github-pr-opened trigger webhook /github/pr-opened
+buttons webhook listen
 ```
 
-Point GitHub at that URL and every PR event fires the button.
+Webhook triggers currently attach to drawers. If you want to trigger one button, put it in a one-step drawer.
 
-## Blocked on
+## Flags
 
-`buttons serve` — a long-running server mode. Not just a flag: it needs an HTTP listener, a router, signature verification, retry/ack semantics, and a way to run in the background (launchd, systemd, Docker).
+```bash
+buttons drawer <name> trigger webhook [/path]
+  --auth none
+  --auth basic --auth-user <user> --auth-pass <password>
+  --auth header --auth-header-name <name> --auth-header-value <value>
+  --auth jwt --jwt-secret <secret> [--jwt-algorithm HS256|HS384|HS512]
+             [--jwt-issuer <issuer>] [--jwt-audience <audience>]
+```
 
-## What's changing when serve lands
+Default path: `/<drawer-name>`.
 
-- `--webhook` flag on `buttons create`
-- `--secret` flag for HMAC signature verification (required for production)
-- Request body injected as `BUTTONS_ARG_BODY`, headers as `BUTTONS_ARG_HEADER_<NAME>`
-- `buttons serve` sub-command that exposes all webhook buttons on one port
-- Per-button path routing: `/webhooks/<button-name>`
+Any secret-bearing value accepts `$ENV{VAR_NAME}` so committed `drawer.json` does not carry raw secrets.
+
+## Auth example
+
+```bash
+buttons drawer stripe-receipts trigger webhook /stripe \
+  --auth header \
+  --auth-header-name X-Stripe-Token \
+  --auth-header-value '$ENV{STRIPE_WEBHOOK_TOKEN}'
+```
+
+## Local testing
+
+Dry-run a webhook drawer without the listener:
+
+```bash
+buttons drawer github-pr-opened press --webhook-body '{"action":"opened"}'
+buttons drawer github-pr-opened press --webhook-body @fixture.json
+```
+
+## Planned unified surface
+
+The unified `buttons trigger webhook ...` surface should compile down to the same drawer trigger model.
+
+```bash
+buttons trigger webhook github-pr-opened /github/pr-opened
+```
+
+If the target is a button, Buttons should create a hidden one-step drawer wrapper internally. If the target is a drawer, the trigger attaches directly to the drawer.

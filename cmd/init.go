@@ -43,8 +43,8 @@ use it.
 
 Interactively (on a TTY), init also offers to install a Buttons
 skill file for your coding agent (Cursor, Claude Code, Cline,
-GitHub Copilot, or a generic AGENTS.md). None is installed without
-explicit selection.
+GitHub Copilot, AGENTS.md, OpenClaw, or Hermes). None is installed
+without explicit selection.
 
 Examples:
   cd my-project
@@ -140,15 +140,24 @@ func ensureButtonsDir(buttonsDir string) error {
 // and must never be committed.
 //
 // batteries.json — holds plaintext API keys. 0600 on disk, but that
-//                  doesn't stop an accidental `git add -A`.
+//
+//	doesn't stop an accidental `git add -A`.
+//
 // webhook.json   — Cloudflare tunnel config (hostname + tunnel id).
-//                  Not secret per se, but machine-specific.
+//
+//	Not secret per se, but machine-specific.
+//
 // buttons/*/pressed/ — run history including stdin args; can leak
-//                      sensitive values passed at press time.
+//
+//	sensitive values passed at press time.
+//
 // drawers/*/pressed/ — same, for drawer runs.
 // idempotency/   — cached successful results keyed on args. Can
-//                  contain secret-derived data.
+//
+//	contain secret-derived data.
+//
 // queues/        — file-lock semaphore state; machine-local.
+// history.json — local create/edit/install/update activity log.
 func defaultButtonsGitignore() string {
 	return `# Files that hold secrets — never commit.
 batteries.json
@@ -160,17 +169,20 @@ drawers/*/pressed/
 # Local execution state.
 idempotency/
 queues/
+# Local audit history. Commit buttons.json and buttons-lock.json instead.
+history.json
 `
 }
 
 // secretPatterns is the set of .gitignore lines we consider
-// load-bearing for secret hygiene. ensureSecretPatterns appends any
-// missing ones to an existing .buttons/.gitignore so an older project
-// upgrading past the init that introduced the pattern gets the
+// load-bearing for secret/runtime hygiene. ensureSecretPatterns appends
+// any missing ones to an existing .buttons/.gitignore so an older
+// project upgrading past the init that introduced the pattern gets the
 // coverage retroactively.
 var secretPatterns = []string{
 	"batteries.json",
 	"webhook.json",
+	"history.json",
 }
 
 func ensureSecretPatterns(path string) error {
@@ -334,6 +346,6 @@ func init() {
 		&initAgents,
 		"agent",
 		nil,
-		"agent integrations to install (cursor,claude,cline,copilot,agents-md); 'none' skips",
+		"agent integrations to install (cursor,claude,cline,copilot,agents-md,openclaw,hermes); 'none' skips",
 	)
 }

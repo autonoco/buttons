@@ -12,9 +12,12 @@ Install a button (or every button with a tag) from a source
 Install buttons from a source into your buttons directory.
 
 The argument is one of:
+
+```text
   <name>            a single button (latest version)
   <name>@<version>  a pinned version
   tag:<tag>         every button in the source carrying <tag>
+```
 
 Each installed button's dependencies (its button.json "requires") are
 installed too. Source + version + content hash are recorded in each
@@ -26,9 +29,9 @@ local source directory with --source (or $BUTTONS_SOURCE).
 **Examples:**
 
 ```bash
-buttons install deploy --source ./pack
-buttons install tag:autono-cal --source ./pack
-buttons install deploy@1.2.0 --source ./pack
+buttons install deploy --source ../button-source
+buttons install tag:autono-cal --source ../button-source
+buttons install deploy@1.2.0 --source ../button-source
 ```
 
 ```

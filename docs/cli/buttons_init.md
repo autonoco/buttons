@@ -30,8 +30,8 @@ use it.
 
 Interactively (on a TTY), init also offers to install a Buttons
 skill file for your coding agent (Cursor, Claude Code, Cline,
-GitHub Copilot, or a generic AGENTS.md). None is installed without
-explicit selection.
+GitHub Copilot, AGENTS.md, OpenClaw, or Hermes). None is installed
+without explicit selection.
 
 **Examples:**
 
@@ -50,7 +50,7 @@ buttons init [flags]
 ### Options
 
 ```
-      --agent strings   agent integrations to install (cursor,claude,cline,copilot,agents-md); 'none' skips
+      --agent strings   agent integrations to install (cursor,claude,cline,copilot,agents-md,openclaw,hermes); 'none' skips
   -h, --help            help for init
 ```
 

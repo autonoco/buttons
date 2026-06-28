@@ -11,7 +11,7 @@ Create a new button
 
 Create a new button.
 
-By default, 'buttons create <name>' scaffolds a shell button with a
+By default, 'buttons create `<name>`' scaffolds a shell button with a
 placeholder main.sh the agent can edit, then press. Use --runtime to
 scaffold a Python or Node button instead.
 
@@ -26,12 +26,17 @@ Enum args accept a 4th pipe-separated segment listing the allowed
 values — the TUI press form renders them as a horizontal choice row,
 and the CLI validates the supplied value is in the set:
 
+
+```text
   --arg env:enum:required:staging|prod|canary
+```
 
 Args are injected as env vars for scripts or substituted into URL
 templates for API buttons.
 
 Common flags:
+
+```text
   -f, --file PATH       copy an existing script file as this button's code
       --code STRING     inline script body (shortcut for one-liners)
       --url URL         turn this into an HTTP button
@@ -40,6 +45,7 @@ Common flags:
       --timeout SECS    execution timeout (default: 300)
   -d, --description S   human-readable description for 'buttons list'
       --runtime NAME    shell | python | node  (default: shell)
+```
 
 **Examples:**
 

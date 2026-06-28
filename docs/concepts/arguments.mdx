@@ -70,7 +70,7 @@ buttons press send-alert --arg channel=ops
 
 ## How arguments reach code buttons
 
-For [code buttons](/buttons/code) and [file buttons](/buttons/file), each argument is injected as an environment variable named `BUTTONS_ARG_<NAME>` where `<NAME>` is the argument name uppercased:
+For [code buttons](/buttons/code), including buttons created from imported files with `--file`, each argument is injected as an environment variable named `BUTTONS_ARG_<NAME>` where `<NAME>` is the argument name uppercased:
 
 ```bash
 # Declared as:  --arg region:string:required

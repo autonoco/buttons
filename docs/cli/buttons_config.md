@@ -17,10 +17,13 @@ project repos via .buttons/. Project-level knobs live on each button
 specifically).
 
 Known keys:
+
+```text
   default-timeout   seconds used when 'buttons create' is run without
                     an explicit --timeout flag (fallback: 300)
   theme             board TUI theme: default | paper | phosphor | amber
                     (fallback: default — adapts to terminal background)
+```
 
 Running `buttons config` with no subcommand prints the current values.
 

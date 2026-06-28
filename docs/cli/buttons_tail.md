@@ -12,14 +12,20 @@ Follow the progress JSONL of a press
 Tail a press's structured progress stream.
 
 Argument can be either:
+
+```text
   • a button name — tails the LATEST press's progress file
   • an absolute path to a .progress.jsonl file
+```
 
 Scripts write to $BUTTONS_PROGRESS_PATH (set automatically by the
 engine). Typical event shape:
 
+
+```text
     {"ts":"...","event":"progress","pct":0.25,"msg":"downloaded 5/20"}
     {"ts":"...","event":"log","level":"info","msg":"..."}
+```
 
 **Examples:**
 

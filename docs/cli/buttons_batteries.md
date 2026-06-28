@@ -10,14 +10,17 @@ Manage environment variables and secrets
 ### Synopsis
 
 Batteries are key/value pairs injected into every button press
-as BUTTONS_BAT_`<KEY>`=<value>. Use them to store API tokens and other
+as BUTTONS_BAT_`<KEY>`=`<value>`. Use them to store API tokens and other
 secrets outside your button scripts.
 
 Scopes:
+
+```text
   global   ~/.buttons/batteries.json  — available from every project
   local    .buttons/batteries.json    — only when pressing inside the
                                         project; overrides global on
                                         key collision
+```
 
 List / get read from both scopes (local overrides on collision). Set /
 rm target local when inside a project, global otherwise; pass --global

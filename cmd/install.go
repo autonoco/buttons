@@ -30,9 +30,9 @@ The registry source (buttons.co, #275) is not built yet; for now pass a
 local source directory with --source (or $BUTTONS_SOURCE).
 
 Examples:
-  buttons install deploy --source ./pack
-  buttons install tag:autono-cal --source ./pack
-  buttons install deploy@1.2.0 --source ./pack`,
+  buttons install deploy --source ../button-source
+  buttons install tag:autono-cal --source ../button-source
+  buttons install deploy@1.2.0 --source ../button-source`,
 	Args: exactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		srcDir := installSource

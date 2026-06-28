@@ -1,0 +1,91 @@
+---
+title: "REST API server"
+description: "Expose local buttons over HTTP with buttons serve."
+---
+
+`buttons serve` runs a local HTTP API that exposes the same press path as the CLI.
+
+```bash
+buttons serve
+```
+
+By default it binds to `127.0.0.1:8080`.
+
+## Endpoints
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/health` | No | Liveness check. |
+| `GET` | `/api/buttons` | Yes | List buttons. |
+| `GET` | `/api/buttons/{name}` | Yes | Read a button spec. |
+| `POST` | `/api/buttons/{name}/press` | Yes | Press a button. |
+| `GET` | `/api/buttons/{name}/runs` | Yes | Recent run history. |
+
+## Press a button
+
+```bash
+curl -sS http://127.0.0.1:8080/api/buttons/weather/press \
+  -H "Content-Type: application/json" \
+  -d '{"args":{"city":"Miami"},"timeout":30}'
+```
+
+The response uses the same envelope as CLI JSON output:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "button": "weather",
+    "status": "ok"
+  }
+}
+```
+
+## Auth
+
+Every endpoint except `/api/health` requires a bearer token when an API key is configured.
+
+The key comes from the first available source:
+
+1. `--api-key`
+2. `API_KEY` battery
+3. `BUTTONS_API_KEY` environment variable
+
+```bash
+export BUTTONS_API_KEY="$(openssl rand -hex 16)"
+buttons batteries set API_KEY "$BUTTONS_API_KEY" --global
+buttons serve
+```
+
+Call with:
+
+```bash
+curl -H "Authorization: Bearer $BUTTONS_API_KEY" \
+  http://127.0.0.1:8080/api/buttons
+```
+
+## Binding rules
+
+Without an API key, `buttons serve` only allows loopback binding. Binding `0.0.0.0` without auth is refused.
+
+```bash
+buttons serve --host 0.0.0.0 --api-key "$(openssl rand -hex 16)"
+```
+
+## HTTP buttons are gated
+
+Pressing HTTP buttons through the REST API is disabled by default because an exposed API can otherwise trigger outbound requests.
+
+Enable it explicitly:
+
+```bash
+buttons serve --allow-http-buttons
+```
+
+Code and prompt buttons are pressable without this flag.
+
+## Related
+
+- [buttons serve](/cli/buttons_serve)
+- [JSON output](/concepts/json-output)
+- [Batteries](/cli/buttons_batteries)

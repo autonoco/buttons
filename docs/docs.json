@@ -23,7 +23,18 @@
             ]
           },
           {
-            "group": "Button types",
+            "group": "Core Concepts",
+            "public": true,
+            "pages": [
+              "concepts/buttons",
+              "concepts/drawers",
+              "concepts/registry",
+              "concepts/triggers",
+              "concepts/history"
+            ]
+          },
+          {
+            "group": "Button Guides",
             "public": true,
             "pages": [
               "buttons/code",
@@ -31,19 +42,36 @@
               "buttons/prompt",
               "buttons/cli",
               "buttons/sql",
-              "buttons/webhook",
-              "buttons/cron",
               "buttons/mcp"
             ]
           },
           {
-            "group": "Concepts",
+            "group": "Workflow Guides",
+            "public": true,
+            "pages": [
+              "buttons/workflows"
+            ]
+          },
+          {
+            "group": "Trigger Guides",
+            "public": true,
+            "pages": [
+              "buttons/triggers",
+              "buttons/webhook",
+              "buttons/cron",
+              "buttons/hook"
+            ]
+          },
+          {
+            "group": "Reference",
             "public": true,
             "pages": [
               "concepts/arguments",
               "concepts/json-output",
               "concepts/templates",
-              "concepts/folder-structure"
+              "concepts/folder-structure",
+              "concepts/button-json",
+              "concepts/drawer-json"
             ]
           },
           {
@@ -51,7 +79,8 @@
             "public": true,
             "pages": [
               "deployment/docker",
-              "deployment/install-script"
+              "deployment/install-script",
+              "deployment/rest-api"
             ]
           },
           {
@@ -103,13 +132,24 @@
               "cli/buttons_create",
               "cli/buttons_press",
               "cli/buttons_list",
+              "cli/buttons_logs",
               "cli/buttons_history",
-              "cli/buttons_delete",
-              "cli/buttons_update",
-              "cli/buttons_version",
               "cli/buttons_summary",
               "cli/buttons_tail",
-              "cli/buttons_ignore"
+              "cli/buttons_delete",
+              "cli/buttons_update",
+              "cli/buttons_version"
+            ]
+          },
+          {
+            "group": "Project commands",
+            "public": true,
+            "expanded": false,
+            "pages": [
+              "cli/buttons_init",
+              "cli/buttons_install",
+              "cli/buttons_ignore",
+              "cli/buttons_unignore"
             ]
           },
           {
@@ -169,8 +209,12 @@
             "public": true,
             "expanded": false,
             "pages": [
+              "cli/buttons_config",
+              "cli/buttons_config_set",
+              "cli/buttons_config_unset",
               "cli/buttons_batteries",
               "cli/buttons_batteries_set",
+              "cli/buttons_batteries_get",
               "cli/buttons_batteries_list",
               "cli/buttons_batteries_rm"
             ]

@@ -1,0 +1,159 @@
+---
+title: "drawer.json"
+description: "The workflow spec for drawers."
+---
+
+A drawer is a workflow made of steps. Its source of truth is `drawer.json`.
+
+```text
+~/.buttons/drawers/<name>/
+  drawer.json
+  pressed/
+```
+
+Project-local drawers use the same shape under `.buttons/drawers/<name>/`.
+
+## Example
+
+```json
+{
+  "schema_version": 1,
+  "name": "release-flow",
+  "inputs": [
+    { "name": "env", "type": "enum", "required": true, "values": ["staging", "prod"] }
+  ],
+  "steps": [
+    { "id": "build", "kind": "button", "button": "build-artifact" },
+    {
+      "id": "publish",
+      "kind": "button",
+      "button": "publish-artifact",
+      "args": {
+        "env": "${inputs.env}",
+        "version": "${build.output.version}"
+      }
+    }
+  ],
+  "return": {
+    "version": "${build.output.version}",
+    "url": "${publish.output.url}"
+  }
+}
+```
+
+## Top-level fields
+
+| Field | Meaning |
+| --- | --- |
+| `schema_version` | Drawer spec version. Current version is `1`. |
+| `name` | Drawer name. |
+| `description` | Human-readable one-liner. |
+| `inputs` | Values supplied at drawer press time. |
+| `steps` | Ordered workflow steps. |
+| `output_schema` | Optional JSON Schema for values exposed when called as a sub-drawer. |
+| `return` | Map of output fields to `${...}` expressions. |
+| `triggers` | Automatic invocation sources. Webhook triggers are live today. |
+| `on_error` | Optional drawer to call after failure. |
+
+## Step kinds
+
+| Kind | Status | Purpose |
+| --- | --- | --- |
+| `button` | Live | Press a button. |
+| `drawer` | Live | Call another drawer as a sub-workflow. |
+| `for_each` | Live | Iterate nested steps over an array. |
+| `switch` | Live | Run the first matching branch. |
+| `aggregate` | Live | Pluck values out of an array, often after `for_each`. |
+| `wait` | Live | Pause for a duration or until an RFC3339 time. |
+| `split`, `merge`, `transform`, `batch` | Reserved | Schema-reserved for future runtimes. |
+
+## References
+
+Step args and drawer fields can use `${...}` expressions. The expression body is CEL.
+
+```text
+${inputs.env}
+${build.output.version}
+${env.GITHUB_TOKEN}
+${webhooks.on-scrape-done}
+${inputs.count * 2}
+${has(build.output.url) ? build.output.url : "missing"}
+```
+
+Hyphenated step IDs are supported in refs; Buttons rewrites them internally so CEL can parse them.
+
+## Inputs
+
+Drawer inputs mirror button args and add `secret` redaction:
+
+```json
+{
+  "inputs": [
+    { "name": "api_key", "type": "string", "required": true, "secret": true }
+  ]
+}
+```
+
+Secret inputs can still flow into a step's resolved args, but they are redacted from drawer history.
+
+## Failure handling
+
+Step-level `on_failure` controls one step:
+
+```json
+{
+  "on_failure": {
+    "action": "retry",
+    "max_attempts": 3,
+    "backoff": {
+      "strategy": "exponential",
+      "initial_ms": 500,
+      "factor": 2,
+      "max_ms": 10000,
+      "jitter": true
+    }
+  }
+}
+```
+
+Supported actions are `stop`, `continue`, and `retry`.
+
+Drawer-level `on_error` calls another drawer after a failed run. The handler receives `drawer`, `run_id`, `failed_step`, `error`, and redacted `inputs`.
+
+## Webhook triggers
+
+Webhook triggers are stored in `triggers`.
+
+```json
+{
+  "triggers": [
+    {
+      "kind": "webhook",
+      "path": "/apify-done",
+      "auth": {
+        "type": "header",
+        "header_name": "X-Buttons-Token",
+        "header_value": "$ENV{APIFY_WEBHOOK_TOKEN}"
+      }
+    }
+  ]
+}
+```
+
+Inside the drawer, the request appears as `${inputs.webhook.body}`, plus headers, query, method, path, and `received_at`.
+
+## Schema
+
+Print the embedded JSON Schema:
+
+```bash
+buttons drawer schema
+```
+
+The published copy lives at `docs/schemas/drawer.schema.json`.
+
+## Related
+
+- [Workflows](/buttons/workflows)
+- [Webhook triggers](/buttons/webhook)
+- [JSON output](/concepts/json-output)

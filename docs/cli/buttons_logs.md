@@ -12,12 +12,15 @@ View past runs for a button or tail the live progress stream
 Structured run history. CLI only — for the full-screen
 interactive viewer, use 'buttons board'.
 
+
+```text
   buttons BUTTONNAME logs            — past runs for this button
   buttons BUTTONNAME logs --follow   — tail live progress JSONL as it writes
   buttons BUTTONNAME logs --failed   — just failures
   buttons BUTTONNAME logs --limit 10 — how many (default 20)
   buttons drawer DRAWERNAME logs     — past runs for this drawer
   buttons logs                       — recent failures across the workspace
+```
 
 --follow streams the latest press's progress events to stdout as
 plain text (JSONL: one event per line). No TUI. Pipe it, parse it,
