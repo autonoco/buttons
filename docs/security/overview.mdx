@@ -18,7 +18,7 @@ The security controls in Buttons are aimed at preventing unintended execution or
 | Path traversal via argument values | `PathEscape` applied to URL path segments — see [template encoding](/security/template-encoding) |
 | Command injection via argument values | Args injected as env vars (`BUTTONS_ARG_<NAME>`), never interpolated into the shell body |
 | SSRF via HTTP buttons targeting internal services | Private network blocking by default — see [SSRF protection](/security/ssrf-protection) |
-| Credential leakage via run history | `pressed/*.json` and `state.db` created with mode `0600` |
+| Credential leakage via run history | `pressed/*.json` created with mode `0600`; project-local secret-bearing files are gitignored |
 | Unauthorized reads of button specs | `~/.buttons/` created with mode `0700` |
 | Query/JSON injection via argument values | Context-aware encoding in URL and body templates |
 

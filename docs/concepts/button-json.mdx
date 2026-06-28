@@ -1,0 +1,155 @@
+---
+title: "button.json"
+description: "The on-disk spec for a button."
+---
+
+Every button has a `button.json` spec in its button folder. It is the source of truth for runtime, arguments, HTTP settings, metadata, concurrency, and packaging fields.
+
+```text
+~/.buttons/buttons/<name>/
+  button.json
+  main.sh | main.py | main.js
+  AGENT.md
+  pressed/
+```
+
+Project-local buttons use the same shape under `.buttons/buttons/<name>/`.
+
+## Example
+
+```json
+{
+  "schema_version": 2,
+  "name": "deploy",
+  "description": "Deploy a tagged release",
+  "runtime": "shell",
+  "args": [
+    { "name": "env", "type": "enum", "required": true, "values": ["staging", "prod"] },
+    { "name": "version", "type": "string", "required": true }
+  ],
+  "timeout_seconds": 300,
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "url": { "type": "string" }
+    }
+  },
+  "queue": {
+    "name": "deploys",
+    "concurrency": 1
+  }
+}
+```
+
+## Core fields
+
+| Field | Meaning |
+| --- | --- |
+| `schema_version` | Button spec version. Newly created buttons use version `2`. |
+| `name` | Kebab-case button name. |
+| `description` | One-line description surfaced by `buttons list`, `summary`, and the board. |
+| `runtime` | `shell`, `python`, `node`, `http`, or `prompt`. |
+| `args` | Typed press-time arguments. |
+| `timeout_seconds` | Default timeout for this button. |
+| `created_at`, `updated_at` | UTC timestamps. |
+
+## Code buttons
+
+Code buttons use `runtime: shell`, `python`, or `node`. The script lives next to `button.json` as `main.sh`, `main.py`, or `main.js`.
+
+Arguments arrive as environment variables:
+
+```text
+BUTTONS_ARG_<NAME>
+```
+
+## HTTP buttons
+
+HTTP buttons use `runtime: http`.
+
+| Field | Meaning |
+| --- | --- |
+| `url` | URL template created with `--url`. |
+| `method` | HTTP method. Defaults to `GET`. |
+| `headers` | Header templates. |
+| `body` | Request body template. |
+| `max_response_bytes` | Response body cap. Defaults to 10 MB for HTTP buttons. |
+| `allow_private_networks` | Allows loopback/RFC1918/link-local targets when true. |
+| `allowed_host` | Scheme/host lock derived at create time. Template args cannot redirect to a new host. |
+
+## Prompt buttons
+
+Prompt-only buttons use `runtime: prompt` and do not have a `main.*` file. Their instruction lives in `AGENT.md` and is returned in the `prompt` field when pressed.
+
+Code and HTTP buttons can also carry `AGENT.md` instructions; in that case the command runs first and the prompt is attached to the result.
+
+## Arguments
+
+Args are declared at create time:
+
+```bash
+buttons create deploy \
+  --arg env:enum:required:staging|prod \
+  --arg version:string:required
+```
+
+Supported arg types are `string`, `int`, `bool`, and `enum`.
+
+## Output schema
+
+`output_schema` is optional JSON Schema for the button's JSON stdout. Drawers use it to type-check refs and auto-connect compatible fields.
+
+```json
+{
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "summary": { "type": "string" }
+    }
+  }
+}
+```
+
+When a button prints valid JSON to stdout, a drawer exposes it as `${step_id.output.<field>}`.
+
+## Queues
+
+`queue` limits concurrent presses.
+
+```json
+{
+  "queue": {
+    "name": "openai",
+    "concurrency": 3,
+    "key": "${inputs.user_id}"
+  }
+}
+```
+
+Buttons sharing a queue name share the same slot pool. A `key` scopes that pool per press, so one queue can enforce a per-user or per-account limit.
+
+## Packaging fields
+
+Installed buttons can include package metadata:
+
+| Field | Meaning |
+| --- | --- |
+| `tags` | Groups used by `buttons install tag:<tag>`. |
+| `version` | Button content version. |
+| `requires` | Other buttons to install with this one. |
+| `requires_batteries` | Battery keys the button needs. Values are never shipped. |
+| `source` | Install source reference. |
+| `content_hash` | Hash recorded at install time for drift/update checks. |
+
+## Board metadata
+
+`pinned: true` surfaces a button as a large card at the top of `buttons board`.
+
+## Related
+
+- [Code buttons](/buttons/code)
+- [API buttons](/buttons/http-api)
+- [Arguments](/concepts/arguments)
+- [Registry](/concepts/registry)
+- [History](/concepts/history)
+- [Workflows](/buttons/workflows)

@@ -18,7 +18,24 @@ Each button wraps a single action: a shell script, an HTTP API call, a Python/No
   </Card>
 </Columns>
 
-## Button types
+## Core Concepts
+
+<Columns cols={2}>
+  <Card title="Buttons" icon="square" href="/concepts/buttons">
+    The core unit of reusable work.
+  </Card>
+  <Card title="Drawers" icon="workflow" href="/concepts/drawers">
+    Typed workflows that compose buttons.
+  </Card>
+  <Card title="Registry" icon="boxes" href="/concepts/registry">
+    Resolve, install, lock, and update shared buttons.
+  </Card>
+  <Card title="History" icon="history" href="/concepts/history">
+    Local audit history for creates, edits, installs, and updates.
+  </Card>
+</Columns>
+
+## Button guides
 
 <Columns cols={2}>
   <Card title="Code" icon="code" href="/buttons/code">
@@ -27,11 +44,43 @@ Each button wraps a single action: a shell script, an HTTP API call, a Python/No
   <Card title="HTTP API" icon="globe" href="/buttons/http-api">
     GET/POST with URL templates and typed args.
   </Card>
-  <Card title="File" icon="file" href="/buttons/file">
+  <Card title="File import" icon="file" href="/buttons/code">
     Import an existing script file.
   </Card>
-  <Card title="Agent" icon="robot" href="/buttons/agent">
+  <Card title="Prompt" icon="robot" href="/buttons/prompt">
     Attach an instruction for the consuming agent.
+  </Card>
+</Columns>
+
+## Workflows
+
+Drawers chain buttons into typed workflows with refs, loops, sub-drawers, waits, and run history.
+
+<Card title="Workflows" icon="workflow" href="/buttons/workflows" horizontal>
+  Build multi-step automations from reusable buttons.
+</Card>
+
+## Triggers
+
+Triggers are the planned unified surface for running buttons and drawers from external or local events.
+
+<Columns cols={2}>
+  <Card title="Trigger concept" icon="zap" href="/concepts/triggers">
+    Automatic ways to run buttons and drawers.
+  </Card>
+  <Card title="Trigger guide" icon="list-checks" href="/buttons/triggers">
+    Commands and management model.
+  </Card>
+  <Card title="Hook" icon="git-branch" href="/buttons/hook">
+    Local file, Git, and Buttons-runtime events.
+  </Card>
+</Columns>
+
+## Operations
+
+<Columns cols={2}>
+  <Card title="REST API server" icon="server" href="/deployment/rest-api">
+    Expose local buttons over HTTP with the same press contract.
   </Card>
 </Columns>
 

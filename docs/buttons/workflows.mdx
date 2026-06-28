@@ -1,0 +1,295 @@
+---
+title: "Workflows"
+sidebarTitle: "Drawers"
+description: "Chain buttons into typed workflows with refs, loops, sub-drawers, waits, and history."
+---
+
+Workflows are called **drawers** in Buttons. A drawer chains one or more buttons into a repeatable run with typed inputs, step outputs, validation, and history.
+
+Use a button for one action. Use a drawer when the action has more than one step, needs data from an earlier step, or should be triggered as a unit.
+
+```bash
+buttons drawer create standup-digest
+buttons drawer standup-digest add github-activity granola-query slack-post
+buttons drawer standup-digest connect github-activity to slack-post
+buttons drawer standup-digest set slack-post.args.channel='#standup'
+buttons drawer standup-digest press
+```
+
+## Mental model
+
+| Concept | Meaning |
+| --- | --- |
+| Button | One reusable action. |
+| Drawer | A workflow made of steps. |
+| Step | A button, sub-drawer, loop, switch, aggregate, or wait position in the drawer. |
+| Input | A value supplied when the drawer is pressed. |
+| Output | A step's parsed JSON stdout, available to later steps. |
+| Ref | A `${...}` expression that reads from inputs, step outputs, env, or webhook URLs. |
+
+Each drawer lives on disk as `drawer.json` under the Buttons drawers directory and records its own run history under `pressed/`.
+
+## Create a drawer
+
+```bash
+buttons drawer create deploy-flow
+buttons drawer deploy-flow add build publish
+buttons drawer deploy-flow connect build to publish
+buttons drawer deploy-flow press env=prod
+```
+
+`add` accepts button names. It also accepts `drawer/<name>` for sub-drawers, `for_each:<button>` for loops, and `wait:<duration>` for time pauses.
+
+```bash
+buttons drawer nightly add gitcrawl-sync brain-audit
+buttons drawer parent-flow add drawer/child-flow
+buttons drawer notify-all add list-users for_each:send-message
+buttons drawer cooloff add wait:30s retry-fetch
+```
+
+## Wire data between steps
+
+When a button prints valid JSON to stdout, the drawer parses it and exposes it as the step output.
+
+```bash
+buttons create current-version \
+  --code 'echo "{\"version\":\"1.2.3\"}"'
+
+buttons create publish-version \
+  --arg version:string:required \
+  --code 'echo "{\"published\":\"$BUTTONS_ARG_VERSION\"}"'
+
+buttons drawer create release-flow
+buttons drawer release-flow add current-version publish-version
+buttons drawer release-flow set publish-version.args.version='${current-version.output.version}'
+buttons drawer release-flow press
+```
+
+If stdout is not JSON, the raw stdout string is still recorded in history, but structured refs like `${step.output.field}` only work against JSON output.
+
+## Auto-connect by schema
+
+If a button declares `output_schema`, `buttons drawer <name> connect A to B` can match compatible output fields to downstream args.
+
+```bash
+buttons drawer standup-digest connect github-activity to slack-post
+```
+
+Use explicit wiring when the field names do not line up:
+
+```bash
+buttons drawer standup-digest connect github-activity.output.summary to slack-post.args.text
+```
+
+## Drawer inputs
+
+Any unfilled required button arg can be supplied at drawer press time by name.
+
+```bash
+buttons drawer deploy-flow press env=prod
+```
+
+Explicit step args win. If a step arg is not set and a drawer input with the same name exists, Buttons fills it for that step.
+
+## Step kinds
+
+| Kind | Status | Purpose |
+| --- | --- | --- |
+| `button` | Live | Press a button. |
+| `drawer` | Live | Call another drawer. |
+| `for_each` | Live | Iterate nested steps over an array. |
+| `switch` | Live | Run the first matching branch. |
+| `aggregate` | Live | Collect values from an array. |
+| `wait` | Live | Pause by duration or until a timestamp. |
+| `split`, `merge`, `transform`, `batch` | Reserved | Present in schema for future executors. |
+
+## Sub-drawers
+
+A drawer can call another drawer with `drawer/<name>`.
+
+```bash
+buttons drawer create child-build
+buttons drawer child-build add build-artifact
+
+buttons drawer create parent-release
+buttons drawer parent-release add drawer/child-build publish
+```
+
+Sub-drawers are useful when a workflow has a reusable middle section. The child drawer can define a `return` block in `drawer.json` so the parent can reference selected values as `${child-build.output.<field>}`.
+
+```json
+{
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "version": { "type": "string" }
+    }
+  },
+  "return": {
+    "version": "${build-artifact.output.version}"
+  }
+}
+```
+
+## Loops
+
+Use `for_each:<button>` for per-item work.
+
+```bash
+buttons drawer create notify-users
+buttons drawer notify-users add list-users for_each:send-message
+buttons drawer notify-users set for_each-send-message.over='${list-users.output.users}'
+buttons drawer notify-users set for_each-send-message.as=user
+buttons drawer notify-users set for_each-send-message.steps.0.args.email='${user.email}'
+buttons drawer notify-users set for_each-send-message.parallelism=4
+buttons drawer notify-users press
+```
+
+Useful loop fields:
+
+| Field | Purpose |
+| --- | --- |
+| `over` | CEL expression that resolves to an array. |
+| `as` | Loop variable name, default `item`. |
+| `parallelism` | Max concurrent iterations. `0` or `1` means serial. |
+| `on_item_failure` | `stop` or `continue`. |
+
+The loop output includes `results` in input order, so downstream refs stay deterministic even when iterations run concurrently.
+
+## Switches
+
+Switch steps run the first case whose `when` expression is truthy. Author them in `drawer.json`.
+
+```json
+{
+  "id": "route",
+  "kind": "switch",
+  "cases": [
+    {
+      "id": "prod",
+      "when": "inputs.env == 'prod'",
+      "steps": [
+        { "id": "notify-prod", "kind": "button", "button": "notify-prod" }
+      ]
+    }
+  ],
+  "steps": [
+    { "id": "notify-dev", "kind": "button", "button": "notify-dev" }
+  ]
+}
+```
+
+The top-level `steps` on a switch act as the default branch.
+
+## Aggregates
+
+Aggregate steps collect values from an array, often after a `for_each`.
+
+```json
+{
+  "id": "summaries",
+  "kind": "aggregate",
+  "from": "${for_each-send-message.output.results}",
+  "pluck": "item.output.message_id"
+}
+```
+
+The output is `{ "values": [...], "count": N }`, with `values` in the same order as the input.
+
+## Waits
+
+Use waits to pause between steps.
+
+```bash
+buttons drawer retry-flow add fetch-api wait:30s fetch-api-2
+```
+
+You can also set wait fields directly:
+
+```bash
+buttons drawer retry-flow set wait.duration=2m
+buttons drawer deploy-window set wait.until=2026-06-28T21:00:00Z
+```
+
+Waits honor cancellation, so stopping the drawer does not leave a sleeping process behind.
+
+## Failure handling
+
+By default, a failing step fails the drawer. Step-level `on_failure` can be authored in `drawer.json` for retry or continue behavior:
+
+```json
+{
+  "id": "fetch-api",
+  "button": "fetch-api",
+  "on_failure": {
+    "action": "retry",
+    "max_attempts": 3,
+    "backoff": { "strategy": "exponential", "initial_ms": 500 }
+  }
+}
+```
+
+A drawer can also define `on_error` to call a separate error-handler drawer after failure. The handler receives `drawer`, `run_id`, `failed_step`, `error`, and redacted `inputs`. The failure still remains visible in the original drawer run history.
+
+```json
+{
+  "on_error": {
+    "drawer": "notify-workflow-failure",
+    "with": {
+      "severity": "warning"
+    }
+  }
+}
+```
+
+## Webhook-triggered drawers
+
+Webhook triggers currently attach to drawers:
+
+```bash
+buttons drawer create on-apify-done
+buttons drawer on-apify-done add apify-fetch-dataset
+buttons drawer on-apify-done trigger webhook /apify-done
+buttons webhook listen
+```
+
+The request appears as `${inputs.webhook}` inside the drawer:
+
+```text
+${inputs.webhook.body}
+${inputs.webhook.headers.Content-Type}
+${inputs.webhook.query.token}
+${inputs.webhook.method}
+${inputs.webhook.path}
+${inputs.webhook.received_at}
+```
+
+The planned `buttons trigger webhook <target>` surface should compile down to this same drawer model. If the target is a button, Buttons can create a hidden one-step drawer wrapper.
+
+## Inspect and debug
+
+```bash
+buttons drawer list
+buttons drawer standup-digest
+buttons drawer standup-digest logs
+buttons drawer standup-digest logs --failed
+buttons drawer standup-digest press --summary --json
+buttons drawer schema
+```
+
+`--summary` previews a drawer mutation or press without running it. Use `--json` when an agent or script needs structured output.
+
+`buttons drawer schema` prints the embedded JSON Schema for `drawer.json`. See [drawer.json](/concepts/drawer-json) for the full field reference.
+
+## Storage shape
+
+A drawer folder looks like this:
+
+```text
+~/.buttons/drawers/standup-digest/
+  drawer.json
+  pressed/
+    2026-06-28T09-00-00.json
+```
+
+The history file records drawer inputs, each step's resolved args, stdout, stderr, parsed output, duration, exit code, and structured errors. That is what lets agents recover from workflow failures without re-running blind.

@@ -11,10 +11,13 @@ Create buttons from external sources (skill, code, url)
 
 Import buttons from external sources:
 
+
+```text
   buttons import code <file>     wrap a script as a button (runtime inferred)
   buttons import skill <dir>     a button per script in an AgentSkills skill
   buttons import url <url>       create a button from a fetched HTTP spec
   buttons import mcp <server>    (planned) one button per MCP tool
+```
 
 Every import prints what it will create and asks to confirm. Pass --yes to
 skip the prompt (required when running non-interactively).

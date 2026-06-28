@@ -21,17 +21,22 @@ Press it:
 buttons press top-users --arg limit=50 --json
 ```
 
-## Blocked on
+## Current workaround
 
-Credential storage ([autonoco/autono#264](https://github.com/autonoco/autono/issues/264) — batteries). The SQL preset depends on being able to:
+SQL buttons are not implemented yet. Today, wrap a SQL CLI with a code button and store credentials in batteries:
 
-- Register a database connection once (`buttons store db analytics-prod --url 'postgres://...'`)
-- Reference it by name from any button (`--db analytics-prod`)
-- Share the same credential across multiple SQL buttons without re-specifying
+```bash
+buttons batteries set ANALYTICS_DATABASE_URL 'postgres://...' --global
 
-## What's changing when batteries lands
+buttons create top-users \
+  --code 'psql "$BUTTONS_BAT_ANALYTICS_DATABASE_URL" -f queries/top-users.sql' \
+  --runtime shell \
+  --arg limit:int:optional
+```
+
+## What's changing when SQL buttons land
 
 - `--sql <file>` flag reads the query from disk, copies it into the button folder
-- `--db <name>` resolves to a stored connection string
+- `--db <name>` resolves to a battery-backed connection reference
 - Arguments bind as parameters, not string substitution — no SQL injection surface
 - Supported drivers: Postgres first, then MySQL, then SQLite

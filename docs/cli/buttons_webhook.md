@@ -16,22 +16,31 @@ that URL works without hosting anything yourself.
 
 Two modes:
 
+
+```text
   quick   zero setup. Each webhook step spawns a fresh Quick Tunnel
           (ephemeral *.trycloudflare.com URL). Good when the service
           accepts a per-run webhook URL.
+```
 
+
+```text
   named   stable hostname on your own Cloudflare account. Set up once
           via 'buttons webhook setup'. Required when a service wants a
           fixed URL registered up front (e.g. GitHub webhooks).
+```
 
 Prereq: 'cloudflared' binary on PATH. Install via 'brew install cloudflared'.
 
 Verbs:
+
+```text
   buttons webhook setup    — one-time: Cloudflare login + pick a hostname
   buttons webhook status   — show current mode + hostname
   buttons webhook test     — end-to-end round-trip verify
   buttons webhook listen   — run the dispatcher that presses triggered drawers
   buttons webhook logout   — forget the named-tunnel config (quick mode again)
+```
 
 ```
 buttons webhook [flags]

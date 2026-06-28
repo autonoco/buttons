@@ -14,19 +14,27 @@ drawers with webhook triggers get invoked when third-party services
 POST to their paths.
 
 Prereq:
+
+```text
   1. 'cloudflared' on PATH (brew install cloudflared)
   2. 'buttons webhook setup' run once for a stable named tunnel
      (quick-tunnel mode works too, but the URL changes each run — fine
      for dev, not for services that register a fixed URL up front)
+```
 
 Workflow:
+
+```text
   1. Create a drawer:               buttons drawer create on-apify-done
   2. Add steps that consume the webhook body via \${inputs.webhook.body.*}
   3. Attach a webhook trigger:      buttons drawer on-apify-done trigger webhook /apify
   4. Start the listener:            buttons webhook listen
   5. Configure the third-party service to POST to the printed URL.
+```
 
 When a POST arrives at a registered path:
+
+```text
   - The request body, headers, query, and method are materialized as
     \${inputs.webhook.body}, \${inputs.webhook.headers.*}, etc.
   - The drawer is pressed asynchronously — the HTTP response returns
@@ -34,6 +42,7 @@ When a POST arrives at a registered path:
     full workflow.
   - If the drawer has a shared-token secret set, X-Buttons-Token (or
     ?token= query param) must match or the request is rejected 401.
+```
 
 The listener stays up until Ctrl-C. Run it in tmux, a separate pane,
 or under launchd/systemd for always-on setups.

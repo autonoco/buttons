@@ -13,11 +13,14 @@ Adds the named button/drawer to .buttons/.gitignore so git
 won't track it. Useful for scratch/test buttons an agent spins up
 while iterating.
 
+
+```text
   buttons ignore NAME                — ignore a button
   buttons ignore drawer/NAME         — ignore a drawer
   buttons ignore                     — list currently-ignored entries
   buttons unignore NAME              — re-include in git
   buttons create NAME --ignore       — create + ignore in one step
+```
 
 The .buttons/.gitignore file is a standard gitignore scoped to the
 .buttons/ subtree — git applies it natively, no extra config.

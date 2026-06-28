@@ -13,13 +13,16 @@ Start an HTTP server that exposes your buttons as a REST API, using the
 same structured-output contract and execution path as the CLI.
 
 Endpoints:
+
+```text
   GET  /api/health               liveness (no auth)
   GET  /api/buttons              list all buttons
   GET  /api/buttons/{name}       a button's spec
   POST /api/buttons/{name}/press execute a button (JSON body: {"args":{…},"timeout":N})
   GET  /api/buttons/{name}/runs  recent run history
+```
 
-Auth: every endpoint except /api/health requires 'Authorization: Bearer <key>'.
+Auth: every endpoint except /api/health requires 'Authorization: Bearer `<key>`'.
 The key comes from --api-key, else the 'API_KEY' battery, else $BUTTONS_API_KEY.
 With no key the server runs auth-free and therefore binds to loopback only —
 binding a non-loopback host without a key is refused.

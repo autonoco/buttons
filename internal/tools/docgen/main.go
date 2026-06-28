@@ -88,9 +88,10 @@ func main() {
 	}
 
 	// Post-process markdown files for MDX compatibility. Cobra's doc
-	// generator outputs Examples as indented text (not fenced code blocks)
-	// and uses <WORD> patterns in prose. MDX parses {{ as JSX expressions
-	// and <WORD> as HTML tags, both of which break the build.
+	// generator outputs Examples and literal synopsis blocks as indented
+	// text (not fenced code blocks) and uses <placeholder> patterns in
+	// prose. MDX parses {{ as JSX expressions and <placeholder> as HTML
+	// tags, both of which break the build.
 	if *format == "markdown" {
 		if err := postProcessMDX(*out); err != nil {
 			log.Fatalf("post-process failed: %v", err)
@@ -100,9 +101,9 @@ func main() {
 	fmt.Printf("docs generated in %s (%s format)\n", *out, *format)
 }
 
-// angleBracketPattern matches <ALLCAPS> patterns in prose that MDX would
-// interpret as unclosed HTML tags (e.g. BUTTONS_ARG_<NAME>).
-var angleBracketPattern = regexp.MustCompile(`<([A-Z][A-Z0-9_]*)>`)
+// angleBracketPattern matches <placeholder> patterns in prose that MDX would
+// interpret as unclosed HTML tags (e.g. <name>, <value>, BUTTONS_ARG_<NAME>).
+var angleBracketPattern = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9_-]*)>`)
 
 // postProcessMDX walks every .md file in dir and fixes two MDX-incompatible
 // patterns that Cobra's doc generator produces:
@@ -110,7 +111,9 @@ var angleBracketPattern = regexp.MustCompile(`<([A-Z][A-Z0-9_]*)>`)
 //  1. Examples blocks: indented text containing {{arg}} templates and JSON
 //     with curly braces. These get wrapped in fenced code blocks so MDX
 //     treats them as literal text.
-//  2. <ALLCAPS> patterns in prose (e.g. BUTTONS_ARG_<NAME>): these get
+//  2. Other indented synopsis/literal blocks: these get fenced too so
+//     route templates, JSON examples, and ${...} refs stay literal.
+//  3. <placeholder> patterns in prose (e.g. BUTTONS_ARG_<NAME>): these get
 //     wrapped in backtick inline code so MDX doesn't parse them as tags.
 func postProcessMDX(dir string) error {
 	entries, err := os.ReadDir(dir)
@@ -131,6 +134,7 @@ func postProcessMDX(dir string) error {
 
 		content := string(data)
 		content = fenceExamples(content)
+		content = fenceIndentedBlocks(content)
 		content = escapeAngleBrackets(content)
 
 		// #nosec G306 -- generated docs must be world-readable.
@@ -177,7 +181,53 @@ func fenceExamples(content string) string {
 	return strings.Join(result, "\n")
 }
 
-// escapeAngleBrackets finds <ALLCAPS> patterns in lines that are NOT inside
+// fenceIndentedBlocks wraps non-example literal blocks emitted by Cobra as
+// 2-space-indented text. MDX otherwise tries to parse route placeholders
+// (/api/buttons/{name}), JSON snippets, and ${...} examples as JSX.
+func fenceIndentedBlocks(content string) string {
+	lines := strings.Split(content, "\n")
+	var result []string
+	inFence := false
+	inIndentedBlock := false
+
+	closeBlock := func() {
+		if inIndentedBlock {
+			result = append(result, "```")
+			inIndentedBlock = false
+		}
+	}
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "```") {
+			closeBlock()
+			inFence = !inFence
+			result = append(result, line)
+			continue
+		}
+		if inFence {
+			result = append(result, line)
+			continue
+		}
+
+		indented := strings.HasPrefix(line, "  ") || strings.HasPrefix(line, "\t")
+		if indented {
+			if !inIndentedBlock {
+				result = append(result, "")
+				result = append(result, "```text")
+				inIndentedBlock = true
+			}
+			result = append(result, line)
+			continue
+		}
+
+		closeBlock()
+		result = append(result, line)
+	}
+	closeBlock()
+	return strings.Join(result, "\n")
+}
+
+// escapeAngleBrackets finds <placeholder> patterns in lines that are NOT inside
 // fenced code blocks and wraps the surrounding token in backtick inline code.
 // For example: BUTTONS_ARG_<NAME> → `BUTTONS_ARG_<NAME>`
 func escapeAngleBrackets(content string) string {
@@ -195,15 +245,49 @@ func escapeAngleBrackets(content string) string {
 			result = append(result, line)
 			continue
 		}
-		// Outside a code fence: escape <ALLCAPS> by wrapping the
-		// surrounding word in backticks. Only match if NOT already
-		// inside backticks.
-		if angleBracketPattern.MatchString(line) && !strings.Contains(line, "`") {
-			line = angleBracketPattern.ReplaceAllStringFunc(line, func(match string) string {
-				return "`" + match + "`"
-			})
+		// Outside a code fence: escape <placeholder> by wrapping it in
+		// backticks, but leave placeholders already inside inline code
+		// alone.
+		if angleBracketPattern.MatchString(line) {
+			line = replaceAnglePlaceholdersOutsideInlineCode(line)
 		}
 		result = append(result, line)
 	}
 	return strings.Join(result, "\n")
+}
+
+func replaceAnglePlaceholdersOutsideInlineCode(line string) string {
+	matches := angleBracketPattern.FindAllStringIndex(line, -1)
+	if len(matches) == 0 {
+		return line
+	}
+
+	var b strings.Builder
+	last := 0
+	for _, m := range matches {
+		start, end := m[0], m[1]
+		if insideInlineCode(line, start) {
+			continue
+		}
+		b.WriteString(line[last:start])
+		b.WriteByte('`')
+		b.WriteString(line[start:end])
+		b.WriteByte('`')
+		last = end
+	}
+	if last == 0 {
+		return line
+	}
+	b.WriteString(line[last:])
+	return b.String()
+}
+
+func insideInlineCode(line string, idx int) bool {
+	count := 0
+	for i := 0; i < idx && i < len(line); i++ {
+		if line[i] == '`' {
+			count++
+		}
+	}
+	return count%2 == 1
 }

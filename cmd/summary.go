@@ -78,15 +78,15 @@ func runSummary() error {
 	for _, r := range allButtonRuns {
 		if r.Status != "ok" {
 			failures = append(failures, map[string]any{
-				"run_id":       r.StartedAt.Format("20060102-150405"),
-				"target":       "button/" + r.ButtonName,
-				"failed_step":  "",
+				"run_id":      r.StartedAt.Format("20060102-150405"),
+				"target":      "button/" + r.ButtonName,
+				"failed_step": "",
 				"error": map[string]any{
 					"code":    r.ErrorType,
 					"message": truncateStr(r.Stderr, 200),
 				},
-				"started_at":   r.StartedAt,
-				"started_ago":  prettyDuration(time.Since(r.StartedAt)),
+				"started_at":  r.StartedAt,
+				"started_ago": prettyDuration(time.Since(r.StartedAt)),
 			})
 			if len(failures) >= 5 {
 				break
@@ -118,16 +118,16 @@ func runSummary() error {
 		"data_dir": dataDir,
 		"profile":  profile,
 		"counts": map[string]int{
-			"buttons":        len(buttons),
-			"drawers":        len(drawers),
+			"buttons":         len(buttons),
+			"drawers":         len(drawers),
 			"failures_recent": len(failures),
 		},
-		"buttons":          btnEntries,
-		"drawers":          drawerEntries,
-		"active_runs":      []any{}, // v1 executor is sync; nothing is ever active between commands
-		"recent_failures":  failures,
-		"schedules":        []any{}, // stage 3
-		"webhook":          webhookBlock,
+		"buttons":         btnEntries,
+		"drawers":         drawerEntries,
+		"active_runs":     []any{}, // v1 executor is sync; nothing is ever active between commands
+		"recent_failures": failures,
+		"schedules":       []any{}, // stage 3
+		"webhook":         webhookBlock,
 	}
 
 	if jsonOutput {
@@ -154,7 +154,7 @@ func buttonSummary(b button.Button, recent []history.Run) map[string]any {
 	} else if len(b.OutputSchema) > 0 {
 		entry["output_schema_ref"] = b.Name + ".output"
 	}
-	// Surface pack/discovery metadata when present so an agent can filter
+	// Surface install/discovery metadata when present so an agent can filter
 	// (e.g. all "finance" buttons) and see installed versions.
 	if len(b.Tags) > 0 {
 		entry["tags"] = b.Tags
@@ -209,10 +209,10 @@ func buildWebhookSummaryBlock(drawers []drawer.Drawer) map[string]any {
 	}
 
 	block := map[string]any{
-		"mode":         mode,
-		"routes":       routes,
-		"route_count":  len(routes),
-		"listen_hint":  "buttons webhook listen",
+		"mode":        mode,
+		"routes":      routes,
+		"route_count": len(routes),
+		"listen_hint": "buttons webhook listen",
 	}
 	if hostname != "" {
 		block["hostname"] = hostname

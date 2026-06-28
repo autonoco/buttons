@@ -1,32 +1,40 @@
 ---
-title: "Cron buttons"
+title: "Cron triggers"
 sidebarTitle: "Cron"
-description: "Run a button on a recurring schedule."
-tag: "Coming soon"
+description: "Run a button or drawer on a recurring schedule."
+tag: "Design proposal"
 ---
 
-Cron buttons will press themselves automatically on a cron schedule. No separate scheduler to configure — you define the cadence when you create the button, and a background trigger daemon handles the rest.
+Cron triggers run a button or drawer on a recurring schedule.
 
 ```bash
-# Planned shape
-buttons create daily-snapshot \
-  --code './scripts/snapshot.sh' \
-  --cron '0 3 * * *'    # every day at 3am
+buttons trigger cron daily-snapshot "0 3 * * *"
+buttons trigger cron slack-sync "0 */2 * * *" --timezone America/New_York
 ```
 
-List scheduled buttons:
+If the target is a button, Buttons should create a hidden one-step drawer wrapper internally. If the target is a drawer, the trigger attaches directly to the drawer.
+
+## Flags
 
 ```bash
-buttons list --scheduled
+buttons trigger cron <target> "<cron>"
+  --timezone America/New_York
+  --overlap skip|queue|replace
+  --name <trigger-id>
 ```
 
-## Blocked on
+Default overlap policy: `skip`. If the previous run is still active when the next tick fires, Buttons should skip the new tick instead of creating accidental parallel work.
 
-The trigger system ([autonoco/autono#272](https://github.com/autonoco/autono/issues/272)). A cron schedule stored on a button is inert without a daemon watching the schedule and firing the button when the time arrives.
+## Management
 
-## What's changing when triggers land
+```bash
+buttons trigger list
+buttons trigger show <id>
+buttons trigger pause <id>
+buttons trigger resume <id>
+buttons trigger remove <id>
+```
 
-- `--cron '<schedule>'` flag accepts standard cron expressions (minute hour day month weekday)
-- Each scheduled press is recorded in the button's run history just like a manual press
-- Trigger daemon surface: `buttons serve --with-cron` or a standalone `buttons cron` process
-- Overlap protection: if a previous run is still executing when the next trigger fires, the new run is either skipped or queued (configurable per button)
+## Implementation note
+
+A cron schedule is inert without a daemon watching schedules and pressing the target. The daemon should record each scheduled press in normal button/drawer history, with trigger id and scheduled time attached to the run metadata.

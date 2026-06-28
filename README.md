@@ -94,7 +94,7 @@ buttons history weather
 
 ## Creating Buttons
 
-Three button types. Use `--prompt` as a modifier on any of them to attach an instruction for the consuming agent.
+Buttons can wrap code, HTTP APIs, imported files, or prompt-only instructions. Use `--prompt` as a modifier on any runnable button to attach instructions for the consuming agent.
 
 ### Code
 
@@ -209,6 +209,78 @@ buttons create deploy --code '...' --arg env:enum:required:staging|prod|canary
 
 Code buttons get args as `BUTTONS_ARG_<NAME>` env vars. API buttons use `{{arg}}` template substitution.
 
+## Workflows
+
+Drawers chain buttons into repeatable workflows. Use them when one action needs multiple steps, data from an earlier step, loops, waits, or a triggerable wrapper.
+
+```bash
+buttons drawer create standup-digest
+buttons drawer standup-digest add github-activity granola-query slack-post
+buttons drawer standup-digest connect github-activity to slack-post
+buttons drawer standup-digest set slack-post.args.channel='#standup'
+buttons drawer standup-digest press
+```
+
+Step outputs are available to later steps through `${step_id.output.field}` refs when the upstream button prints JSON.
+
+```bash
+buttons drawer release-flow set publish.args.version='${build.output.version}'
+```
+
+Drawers also support sub-drawers, loops, switches, aggregates, waits, webhook triggers, validation summaries, error handlers, and their own run history.
+
+## Triggers
+
+Triggers are the planned unified surface for running buttons and drawers automatically:
+
+```bash
+buttons trigger webhook linkedin-sync /linkedin-sync
+buttons trigger cron slack-sync "0 */2 * * *"
+buttons trigger hook docs-sync --enable "file:docs/**/*.md"
+```
+
+Webhook, cron, and hook triggers all target a button or drawer. Button targets can compile down to hidden one-step drawer wrappers so the runtime keeps one workflow model internally.
+
+Current implementation: webhook-triggered drawers are live today with:
+
+```bash
+buttons drawer linkedin-sync trigger webhook /linkedin-sync
+buttons webhook listen
+```
+
+The unified `buttons trigger ...` command is the planned surface over the same drawer model.
+
+## Registry Install Contract
+
+The intended registry layout keeps runnable buttons in `.buttons/buttons/`, desired dependencies and registries in `.buttons/buttons.json`, exact resolved versions in `.buttons/buttons-lock.json`, and local audit events in `.buttons/history.json`. Commit `buttons.json` and `buttons-lock.json` as the team install contract; keep `history.json` local.
+
+Once registry-backed install lands, a teammate who pulls the repo should be able to materialize the project buttons from the manifest and lock file:
+
+```bash
+buttons install
+```
+
+Today, the install command still reads an explicit external source directory:
+
+```bash
+buttons install deploy --source ../button-source
+buttons install deploy@1.2.0 --source ../button-source
+buttons install tag:autono-cal --source ../button-source
+```
+
+Set `BUTTONS_SOURCE` to avoid repeating `--source`. Installed buttons record source, version, and content hash in `button.json`; required peer buttons from `requires` are installed too.
+
+## REST API Server
+
+Expose local buttons over HTTP with the same press contract as the CLI:
+
+```bash
+buttons serve
+buttons serve --host 0.0.0.0 --api-key "$(openssl rand -hex 16)"
+```
+
+Endpoints include `GET /api/buttons`, `GET /api/buttons/{name}`, `POST /api/buttons/{name}/press`, and `GET /api/buttons/{name}/runs`. HTTP buttons are gated behind `--allow-http-buttons`.
+
 ## Discovering Buttons
 
 ```bash
@@ -216,6 +288,7 @@ buttons                    # interactive card-grid board in a TTY, plain table w
 buttons <name>             # full-screen detail page (args, last run, script); press `e` to edit
 buttons logs <name>        # live log viewer — follow mode with `f`, jump with `g`/`G`, `Esc` to exit
 buttons list --json        # machine-readable list
+buttons summary --json     # workspace snapshot for agents
 ```
 
 On the board, pressing a button with required arguments opens an inline form instead of erroring out. Fill it in, hit Enter, the press fires.

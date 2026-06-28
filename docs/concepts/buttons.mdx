@@ -1,0 +1,44 @@
+---
+title: "Buttons"
+description: "The core unit of reusable work in Buttons."
+---
+
+A button is one reusable action with typed inputs, a runtime, structured output, and run history.
+
+Use a button when an agent or human should be able to repeat the same action without rebuilding the command from scratch.
+
+```bash
+buttons create deploy --arg env:string:required --code './deploy "$BUTTONS_ARG_ENV"'
+buttons press deploy --arg env=staging
+```
+
+## Mental model
+
+Each button owns:
+
+| Part | Purpose |
+| --- | --- |
+| `button.json` | Name, args, runtime, timeout, metadata, and install fields. |
+| `main.*` | Optional executable code for shell, Python, or Node buttons. |
+| `AGENT.md` | Agent instructions and context for when to use the button. |
+| `pressed/` | Per-machine run history. |
+
+Buttons live under `.buttons/buttons/<name>/` for a project or `~/.buttons/buttons/<name>/` globally.
+
+## When to create a button
+
+Create a button when the action is:
+
+- repeated more than once
+- risky to type by hand
+- useful to an agent
+- part of a larger workflow
+- worth giving typed arguments and JSON output
+
+## Related
+
+- [Code buttons](/buttons/code)
+- [HTTP API buttons](/buttons/http-api)
+- [Prompt buttons](/buttons/prompt)
+- [button.json](/concepts/button-json)
+- [Drawers](/concepts/drawers)

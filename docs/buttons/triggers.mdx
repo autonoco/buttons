@@ -1,0 +1,62 @@
+---
+title: "Triggers"
+sidebarTitle: "Overview"
+description: "Run a button or drawer from a webhook, cron schedule, or local hook."
+tag: "Design proposal"
+---
+
+Triggers define when a button or drawer runs automatically.
+
+```bash
+buttons trigger webhook <target> [/path]
+buttons trigger cron <target> "<cron>"
+buttons trigger hook <target> --enable "<source>"
+```
+
+`<target>` can be a button or a drawer. If the target is a button, Buttons can create a hidden one-step drawer wrapper internally. If the target is already a drawer, the trigger attaches directly to that drawer.
+
+## Trigger kinds
+
+| Kind | Cause | Example |
+| --- | --- | --- |
+| `webhook` | A remote service sends an HTTP POST. | GitHub, Stripe, Apify, Linear |
+| `cron` | A schedule fires. | nightly sync, hourly digest |
+| `hook` | A local event fires. | file changed, Git commit, button completed |
+
+## Commands
+
+```bash
+buttons trigger webhook linkedin-sync /linkedin-sync
+buttons trigger cron slack-sync "0 */2 * * *"
+buttons trigger hook docs-sync --enable "file:docs/**/*.md"
+```
+
+Management commands should work across every trigger kind:
+
+```bash
+buttons trigger list
+buttons trigger show <id>
+buttons trigger remove <id>
+buttons trigger pause <id>
+buttons trigger resume <id>
+```
+
+## Target resolution
+
+If a button and drawer share a name, use an explicit target prefix:
+
+```bash
+buttons trigger webhook button/linkedin-sync /linkedin-sync
+buttons trigger webhook drawer/linkedin-sync-flow /linkedin-sync
+```
+
+## Current implementation
+
+The current CLI already supports webhook-triggered drawers:
+
+```bash
+buttons drawer <name> trigger webhook [/path]
+buttons webhook listen
+```
+
+The `buttons trigger ...` command is the intended unified surface. It should compile down to the drawer trigger model so existing drawer workflows keep working.

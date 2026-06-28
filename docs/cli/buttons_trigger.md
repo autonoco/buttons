@@ -12,9 +12,12 @@ Manage button triggers (cron, watch, webhook)
 Attach event triggers to a button so it presses automatically.
 
 Triggers run under 'buttons serve':
+
+```text
   - cron    fires on a schedule (5-field cron, in-process scheduler)
   - watch   fires when a file changes (polled, 500ms debounce)
   - webhook fires on an HTTP POST to a path on the serve listener
+```
 
 **Examples:**
 

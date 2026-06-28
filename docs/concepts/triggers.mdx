@@ -1,0 +1,42 @@
+---
+title: "Triggers"
+description: "Automatic ways to run buttons and drawers."
+---
+
+A trigger runs a button or drawer when something happens.
+
+Triggers let Buttons move from manual commands to durable automation: webhooks for remote events, cron for schedules, and hooks for local events.
+
+```bash
+buttons trigger webhook linkedin-sync /linkedin-sync
+buttons trigger cron slack-sync "0 */2 * * *"
+buttons trigger hook docs-sync --enable "file:docs/**/*.md"
+```
+
+## Trigger kinds
+
+| Kind | Cause | Example |
+| --- | --- | --- |
+| Webhook | A remote service sends an HTTP request. | GitHub, Stripe, Linear |
+| Cron | A schedule fires. | nightly sync, hourly digest |
+| Hook | A local event fires. | file changed, Git commit, button completed |
+
+## Target model
+
+A trigger targets a button or drawer. If it targets a button, Buttons can wrap it as a one-step drawer internally so the workflow runtime stays consistent.
+
+```text
+event -> trigger -> drawer -> button steps
+```
+
+## Current status
+
+Webhook-triggered drawers are implemented today. The unified `buttons trigger ...` command is the intended surface for webhook, cron, and hook triggers.
+
+## Related
+
+- [Trigger guide](/buttons/triggers)
+- [Webhook](/buttons/webhook)
+- [Cron](/buttons/cron)
+- [Hook](/buttons/hook)
+- [Drawers](/concepts/drawers)

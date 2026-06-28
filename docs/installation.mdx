@@ -1,6 +1,6 @@
 ---
 title: "Installation"
-description: "Install Buttons via curl, Docker, Go, or Homebrew."
+description: "Install Buttons via curl, Docker, Go, Homebrew, or npm."
 icon: "download"
 ---
 
@@ -75,6 +75,19 @@ brew install autonoco/tap/buttons
 
 The tap auto-publishes on every release, so `brew upgrade buttons` always gets you the newest version. Supports macOS and Linux on both Intel and Apple Silicon.
 
+## npm / pnpm / bun
+
+```bash
+npm install -g @autono/buttons
+```
+
+The npm package is a thin JavaScript shim that resolves the right prebuilt binary for your platform through optional dependencies.
+
+```bash
+pnpm add -g @autono/buttons
+bun add -g @autono/buttons
+```
+
 ## Verify
 
 ```bash
@@ -102,6 +115,7 @@ You can also update through your original install channel:
 | Docker | `docker pull ghcr.io/autonoco/buttons:latest` |
 | Go | `go install github.com/autonoco/buttons@latest` |
 | Homebrew | `brew upgrade buttons` |
+| npm | `npm update -g @autono/buttons` |
 
 <Note>
 If you installed via Homebrew, `buttons update` detects this and asks you to use `brew upgrade` instead.

@@ -17,15 +17,21 @@ Uses a thin meta-tool surface — buttons_list, buttons_press, buttons_inspect
 large button sets don't degrade the MCP client.
 
 Security:
+
+```text
   - Only buttons with "mcp_enabled": true are listed, pressable, or inspectable.
-  - Args are validated against the button's spec and passed as BUTTONS_ARG_`<NAME>`
+  - Args are validated against the button's spec and passed as BUTTONS_ARG_<NAME>
     env vars — never substituted into shell text.
   - Per button: max 10 calls/min, 1 concurrent press, hard 120s timeout cap.
   - buttons_create is OFF unless --allow-create is passed.
+```
 
 stdout carries only protocol messages; logs go to stderr. Register with an
 agent, e.g. Claude Code:
+
+```text
   claude mcp add buttons -- buttons mcp
+```
 
 ```
 buttons mcp [flags]

@@ -16,10 +16,13 @@ variables (BUTTONS_ARG_`<NAME>`) for code buttons, or as template substitutions
 for API buttons. Returns structured output in --json mode.
 
 Common flags:
+
+```text
       --arg KEY=VALUE   pass an argument (repeatable; validated against the spec)
       --timeout SECS    override the button's configured timeout for this press
       --dry-run         print what would run without executing
       --json            emit machine-readable output (default when stdout is piped)
+```
 
 **Examples:**
 

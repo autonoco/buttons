@@ -13,6 +13,8 @@ Manage drawers — typed workflows that chain buttons with
 ${ref} references between steps.
 
 Usage:
+
+```text
   buttons drawer create NAME
   buttons drawer list
   buttons drawer NAME add BUTTON [BUTTON ...]         append button step(s)
@@ -33,13 +35,17 @@ Usage:
   buttons drawer NAME remove                          delete the drawer
   buttons drawer NAME                                 summary (topology + validation + recent runs)
   buttons drawer schema                               print JSON Schema for drawer.json
+```
 
 Typical authoring flow:
+
+```text
   buttons drawer create deploy-flow
   buttons drawer deploy-flow add build publish
   buttons drawer deploy-flow connect build to publish
   buttons drawer deploy-flow set publish.args.env=prod
   buttons drawer deploy-flow press
+```
 
 ```
 buttons drawer [flags]

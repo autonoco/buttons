@@ -9,12 +9,12 @@ type Button struct {
 	SchemaVersion int    `json:"schema_version"`
 	Name          string `json:"name"`
 	Description   string `json:"description,omitempty"`
-	// Tags group/categorize a button for discovery and pack filtering
+	// Tags group/categorize a button for discovery and install-source filtering
 	// (e.g. "finance", "sync"). Omitted when empty so existing buttons
 	// don't grow a noisy field.
 	Tags []string `json:"tags,omitempty"`
 	// Version is the button's content release (semver), distinct from
-	// SchemaVersion (the on-disk format counter). Set by pack/store
+	// SchemaVersion (the on-disk format counter). Set by install tooling
 	// tooling so an installed copy can be pinned and diffed for updates.
 	// Empty for hand-authored local buttons (treated as "unversioned").
 	Version              string            `json:"version,omitempty"`
@@ -67,11 +67,11 @@ type Button struct {
 	// than by cwd. Omitted when empty.
 	Requires []string `json:"requires,omitempty"`
 	// RequiresBatteries names the secret keys this button needs (e.g.
-	// "PIPEDREAM_CLIENT_ID"). A pack ships requirement NAMES, never
+	// "PIPEDREAM_CLIENT_ID"). An install source ships requirement NAMES, never
 	// values; `store install` prompts for them via `buttons batteries`.
 	RequiresBatteries []string `json:"requires_batteries,omitempty"`
 	// Source records where an installed button came from (the store
-	// source ref, e.g. "git+https://github.com/autonoco/autono-packs@v1").
+	// source ref, e.g. "git+https://github.com/autonoco/autono-desk@v1").
 	// Empty for locally-created buttons.
 	Source string `json:"source,omitempty"`
 	// ContentHash is the SHA256 of the button's content at install time —

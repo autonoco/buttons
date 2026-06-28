@@ -54,9 +54,9 @@ Buttons ships with four ways to create a button and two new command groups for o
 
 - **HTTP API buttons** — wrap any HTTP endpoint as a pressable button with `--url`, `--method`, `--header`, and `--body`. Placeholders like `{{arg}}` are automatically encoded based on context (path segment, query string, JSON body, or form body) so values are always safe. See [HTTP API buttons](/buttons/http-api).
 
-- **File buttons** — import an existing script file with `--file`. The script is copied into the button folder at create time so the button is self-contained. No size limit applies, unlike inline code buttons. See [file buttons](/buttons/file).
+- **File buttons** — import an existing script file with `--file`. The script is copied into the button folder at create time so the button is self-contained. No size limit applies, unlike inline code buttons. See [code buttons](/buttons/code).
 
-- **Agent buttons** — attach an LLM prompt to a button with `--agent`. Use it standalone to encode a task for an AI agent, or combine it with a code or HTTP button so the agent receives both the execution result and instructions in one response. See [agent buttons](/buttons/agent).
+- **Agent buttons** — attach an LLM prompt to a button with `--agent`. Use it standalone to encode a task for an AI agent, or combine it with a code or HTTP button so the agent receives both the execution result and instructions in one response. This was later renamed to prompt buttons; see [prompt buttons](/buttons/prompt).
 
 - **Drawers** — group related buttons into named collections with `buttons drawer create` and `buttons drawer add`. Use drawers to organize buttons by project, team, or workflow. See the [CLI reference](/cli/buttons_drawer).
 

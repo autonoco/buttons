@@ -1,0 +1,111 @@
+---
+title: "Hook triggers"
+sidebarTitle: "Hook"
+description: "Run a button or drawer when a local event happens."
+tag: "Design proposal"
+---
+
+A hook trigger runs when a local event happens. It is not time-based and it is not an inbound HTTP request.
+
+- `cron` means time caused the run.
+- `webhook` means a remote service posted to Buttons.
+- `hook` means the local machine, repo, app, or Buttons runtime emitted an event.
+
+## Command shape
+
+```bash
+buttons trigger hook <target> --enable "<source>"
+```
+
+`--enable` names the event source that should cause the target to run.
+
+## File hooks
+
+```bash
+buttons trigger hook docs-sync --enable "file:docs/**/*.md"
+buttons trigger hook downloads-ingest --enable "file:~/Downloads/**/*.pdf" --event created
+```
+
+Useful file options:
+
+```bash
+--event created|modified|deleted|renamed|any
+--ignore "node_modules/**"
+--debounce 10s
+--batch 30s
+--include-existing false
+```
+
+## History hooks
+
+Buttons can use the same file-hook machinery internally to maintain `.buttons/history.json`.
+
+The internal watcher should track creates, edits, deletes, and renames for button and drawer files:
+
+```text
+.buttons/buttons.json
+.buttons/buttons-lock.json
+.buttons/buttons/*/button.json
+.buttons/buttons/*/main.*
+.buttons/buttons/*/AGENT.md
+.buttons/drawers/*/drawer.json
+```
+
+Explicit commands like `buttons create`, `buttons install`, and `buttons update` should write history events directly. File hooks catch manual edits and agent edits that happen outside a Buttons command.
+
+See [History](/concepts/history) for the event shape.
+
+## Git hooks
+
+```bash
+buttons trigger hook repo-index --enable "git:post-commit"
+buttons trigger hook preflight --enable "git:pre-push"
+```
+
+Planned Git events:
+
+```text
+git:pre-commit
+git:post-commit
+git:pre-push
+git:post-checkout
+git:post-merge
+```
+
+## Buttons runtime hooks
+
+```bash
+buttons trigger hook brain-audit --enable "button:*-sync.completed"
+buttons trigger hook notify-failure --enable "button:*.failed"
+buttons trigger hook qa-after-linkedin --enable "button:linkedin-sync.completed"
+```
+
+Planned runtime events:
+
+```text
+button:<name>.started
+button:<name>.completed
+button:<name>.failed
+drawer:<name>.started
+drawer:<name>.completed
+drawer:<name>.failed
+```
+
+## Common options
+
+```bash
+--name <trigger-id>
+--arg key=value
+--filter '<CEL expression>'
+--overlap skip|queue|replace
+```
+
+For lifecycle control, use trigger management commands instead of overloading `--enable`:
+
+```bash
+buttons trigger pause <id>
+buttons trigger resume <id>
+buttons trigger remove <id>
+```
+
+Recommended first implementation: ship `file:` and `button:` hooks, then add `git:` after the filesystem watcher and runtime event bus are stable.
