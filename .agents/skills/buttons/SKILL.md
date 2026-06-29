@@ -176,7 +176,7 @@ buttons create [flags]
 | `--ignore` | bool | add this button to .buttons/.gitignore so git won't track it (good for scratch/test buttons) |
 | `--max-response-size` | string | max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M |
 | `--method` | string | HTTP method for --url (default: GET) |
-| `--prompt` | string | prompt/instruction for the consuming agent (written to AGENT.md) |
+| `--prompt` | string | prompt/instruction for the consuming agent (written to AGENTS.md) |
 | `--runtime` | string | code runtime: shell, python, node (default: shell) |
 | `--timeout` | int | execution timeout in seconds |
 | `--url` | string | HTTP API endpoint URL (supports {{arg}} templates) |
@@ -276,7 +276,7 @@ buttons init [flags]
 
 | Flag | Type | Description |
 |------|------|-------------|
-| `--agent` | stringSlice | agent integrations to install (cursor,claude,cline,copilot,agents-md); 'none' skips |
+| `--agent` | stringSlice | agent integrations to install (cursor,claude,cline,copilot,agents-md,openclaw,hermes); 'none' skips |
 
 ### `buttons install`
 
@@ -288,7 +288,7 @@ buttons install [flags]
 
 | Flag | Type | Description |
 |------|------|-------------|
-| `--source` | string | source directory to install from (until the registry lands, #275) |
+| `--source` | string | local source directory to install from (else $BUTTONS_REGISTRY_URL) |
 
 ### `buttons list`
 
@@ -622,6 +622,6 @@ All data lives under `~/.buttons/` (override with `BUTTONS_HOME`):
 ~/.buttons/buttons/<name>/
   button.json     # spec (args, runtime, timeout)
   main.sh         # code file (.sh, .py, .js)
-  AGENT.md        # prompt instruction
+  AGENTS.md        # prompt instruction
   pressed/        # run history as JSON files
 ```
