@@ -33,6 +33,8 @@ var createMaxResponseSize string
 var createAllowPrivateNetworks bool
 var createArgs []string
 var createIgnore bool
+var createApp bool
+var createFrom string
 
 var createCmd = &cobra.Command{
 	Use:   "create [name]",
@@ -81,6 +83,30 @@ Examples:
   buttons create check-logs --prompt "Use the Northflank CLI to read production logs and summarize errors"`,
 	Args: exactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// --app: scaffold an app-kind button under apps/ (served, not pressed).
+		// apps/ is created lazily here, so it never appears unless asked for.
+		if createApp {
+			btn, err := button.NewService().CreateApp(button.AppOpts{
+				Name:        args[0],
+				From:        createFrom,
+				Description: createDescription,
+			})
+			if err != nil {
+				return handleServiceError(err)
+			}
+			appDir, _ := config.AppDir(btn.Name)
+			if jsonOutput {
+				return config.WriteJSON(struct {
+					*button.Button
+					AppDir string `json:"app_dir"`
+				}{Button: btn, AppDir: appDir})
+			}
+			fmt.Fprintf(os.Stderr, "Created app: %s\n", btn.Name)
+			fmt.Fprintf(os.Stderr, "  %s\n", appDir)
+			printNextHint("buttons serve %s", btn.Name)
+			return nil
+		}
+
 		code := createCode
 
 		argDefs, err := button.ParseArgDefs(createArgs)
@@ -244,6 +270,8 @@ func init() {
 	createCmd.Flags().BoolVar(&createAllowPrivateNetworks, "allow-private-networks", false, "allow --url buttons to reach private network addresses (localhost, 10/8, 172.16/12, 192.168/16, 169.254/16, IPv6 private ranges). Required for local dev targets.")
 	createCmd.Flags().StringArrayVar(&createArgs, "arg", nil, "argument definition (name:type:required|optional)")
 	createCmd.Flags().BoolVar(&createIgnore, "ignore", false, "add this button to .buttons/.gitignore so git won't track it (good for scratch/test buttons)")
+	createCmd.Flags().BoolVar(&createApp, "app", false, "create an app-kind button (served, not pressed) under apps/")
+	createCmd.Flags().StringVar(&createFrom, "from", "", "with --app: git URL to clone (or local path to copy) into apps/<name>/")
 	rootCmd.AddCommand(createCmd)
 }
 

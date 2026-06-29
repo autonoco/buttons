@@ -69,17 +69,19 @@ buttons create [name] [flags]
 
 ```
       --allow-private-networks     allow --url buttons to reach private network addresses (localhost, 10/8, 172.16/12, 192.168/16, 169.254/16, IPv6 private ranges). Required for local dev targets.
+      --app                        create an app-kind button (served, not pressed) under apps/
       --arg stringArray            argument definition (name:type:required|optional)
       --body string                HTTP request body (supports {{arg}} templates)
       --code string                inline script code (shortcut for one-liners)
   -d, --description string         button description
   -f, --file string                copy an existing script file into the button folder
+      --from string                with --app: git URL to clone (or local path to copy) into apps/<name>/
       --header stringArray         HTTP header as 'Key: Value' (repeatable)
   -h, --help                       help for create
       --ignore                     add this button to .buttons/.gitignore so git won't track it (good for scratch/test buttons)
       --max-response-size string   max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M
       --method string              HTTP method for --url (default: GET)
-      --prompt string              prompt/instruction for the consuming agent (written to AGENT.md)
+      --prompt string              prompt/instruction for the consuming agent (written to AGENTS.md)
       --runtime string             code runtime: shell, python, node (default: shell)
       --timeout int                execution timeout in seconds (default 300)
       --url string                 HTTP API endpoint URL (supports {{arg}} templates)
