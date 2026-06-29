@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
@@ -27,15 +28,53 @@ type PublishResult struct {
 
 // Publish reads an installed/local button and hands it to dst. It's the inverse
 // of InstallSpec: gather the button folder (button.json + main.* + AGENTS.md,
-// never pressed/ history), content-hash it, and publish.
+// never pressed/ history), content-hash it, and publish under the button's own
+// name (the LocalSource path).
 func Publish(dst Publisher, name string) (*PublishResult, error) {
-	dir, err := config.ButtonDir(button.Slugify(name))
+	bundle, err := loadLocalBundle(name, "")
+	if err != nil {
+		return nil, err
+	}
+	if err := dst.Publish(bundle); err != nil {
+		return nil, err
+	}
+	return &PublishResult{Name: bundle.Name, Version: bundle.Version, SHA256: bundle.SHA256, Files: len(bundle.Files)}, nil
+}
+
+// PublishToRegistry publishes a local button to the hosted registry under a
+// scoped identity (@desk/name). The on-disk button is found by its bare name;
+// the @desk scope is registry identity, assigned here (not stored on disk). A
+// version is required — the registry pins immutable versions.
+func PublishToRegistry(dst Publisher, ref string) (*PublishResult, error) {
+	_, localName, err := splitScoped(ref)
+	if err != nil {
+		return nil, err
+	}
+	bundle, err := loadLocalBundle(localName, ref)
+	if err != nil {
+		return nil, err
+	}
+	if bundle.Version == "" {
+		return nil, fmt.Errorf("registry publish requires a version: set \"version\" in %q's button.json", localName)
+	}
+	if err := dst.Publish(bundle); err != nil {
+		return nil, err
+	}
+	return &PublishResult{Name: bundle.Name, Version: bundle.Version, SHA256: bundle.SHA256, Files: len(bundle.Files)}, nil
+}
+
+// loadLocalBundle reads a local button folder into a Bundle. localName locates
+// the on-disk folder (slugified); identity, when non-empty, overrides the
+// stamped Bundle.Name with the registry id (@desk/name) — for a LocalSource it
+// stays empty so the button keeps its own name.
+func loadLocalBundle(localName, identity string) (*Bundle, error) {
+	dir, err := config.ButtonDir(button.Slugify(localName))
 	if err != nil {
 		return nil, err
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("button %q not found: %w", name, err)
+		return nil, fmt.Errorf("button %q not found: %w", localName, err)
 	}
 
 	files := map[string][]byte{}
@@ -52,18 +91,36 @@ func Publish(dst Publisher, name string) (*PublishResult, error) {
 	}
 	specData, ok := files["button.json"]
 	if !ok {
-		return nil, fmt.Errorf("button %q has no button.json", name)
+		return nil, fmt.Errorf("button %q has no button.json", localName)
 	}
 	var spec button.Button
 	if err := json.Unmarshal(specData, &spec); err != nil {
-		return nil, fmt.Errorf("button %q: invalid button.json: %w", name, err)
+		return nil, fmt.Errorf("button %q: invalid button.json: %w", localName, err)
 	}
 
-	bundle := &Bundle{Name: spec.Name, Version: spec.Version, SHA256: hashFiles(files), Files: files}
-	if err := dst.Publish(bundle); err != nil {
-		return nil, err
+	name := spec.Name
+	if identity != "" {
+		name = identity
 	}
-	return &PublishResult{Name: bundle.Name, Version: bundle.Version, SHA256: bundle.SHA256, Files: len(files)}, nil
+	return &Bundle{Name: name, Version: spec.Version, SHA256: hashFiles(files), Files: files}, nil
+}
+
+// splitScoped parses a registry identity @desk/name into its parts, rejecting
+// anything that isn't a single-segment name under an @scope.
+func splitScoped(ref string) (desk, name string, err error) {
+	bad := fmt.Errorf("registry name must be scoped like @desk/name, got %q", ref)
+	if !strings.HasPrefix(ref, "@") {
+		return "", "", bad
+	}
+	i := strings.IndexByte(ref, '/')
+	if i < 0 || i == len(ref)-1 || i == 1 { // need chars after @ and after /
+		return "", "", bad
+	}
+	desk, name = ref[:i], ref[i+1:]
+	if strings.ContainsRune(name, '/') {
+		return "", "", bad
+	}
+	return desk, name, nil
 }
 
 // Publish writes a bundle into the LocalSource directory as <Root>/<name>/…,

@@ -17,11 +17,11 @@ import (
 )
 
 // HTTPSource installs from the hosted registry (#275) — a Cloudflare Worker that
-// serves the index + content-pinned tarballs over bearer auth (desk.buttons.sh).
-// It satisfies Source, so the install/update path is identical to a LocalSource;
-// the only difference is the bytes come over HTTPS and are hash-verified on the way in.
+// serves the index + content-pinned tarballs over bearer auth. It satisfies
+// Source, so the install/update path is identical to a LocalSource; the only
+// difference is the bytes come over HTTPS and are hash-verified on the way in.
 type HTTPSource struct {
-	BaseURL string       // e.g. https://desk.buttons.sh (trailing / trimmed)
+	BaseURL string       // the registry base URL ($BUTTONS_REGISTRY_URL), trailing / trimmed
 	Key     string       // bearer key (the REGISTRY_KEY battery / BUTTONS_BAT_REGISTRY_KEY)
 	Client  *http.Client // nil → a 30s-timeout default
 }
@@ -132,7 +132,7 @@ func (s *HTTPSource) Fetch(name, version string) (*Bundle, error) {
 		}
 	}
 
-	p := fmt.Sprintf("/v1/buttons/%s/%s/download", url.PathEscape(name), url.PathEscape(version))
+	p := fmt.Sprintf("/v1/buttons/%s/%s/download", scopedPath(name), url.PathEscape(version))
 	resp, err := s.get(p)
 	if err != nil {
 		return nil, err
@@ -175,6 +175,17 @@ func (s *HTTPSource) Fetch(name, version string) (*Bundle, error) {
 func sha256hex(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
+}
+
+// scopedPath renders a registry name (@desk/name) as path segments — each
+// component percent-escaped, the scope slash preserved — so the URL is
+// /v1/buttons/@desk/name (two real segments), not an opaque @desk%2Fname.
+func scopedPath(name string) string {
+	parts := strings.Split(name, "/")
+	for i := range parts {
+		parts[i] = url.PathEscape(parts[i])
+	}
+	return strings.Join(parts, "/")
 }
 
 // untarGz extracts a gzip'd tar into a flat map keyed by path relative to the

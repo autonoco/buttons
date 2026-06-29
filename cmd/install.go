@@ -31,7 +31,7 @@ else $BUTTONS_REGISTRY_URL (the hosted registry, bearer-authed with the
 REGISTRY_KEY battery or $BUTTONS_BAT_REGISTRY_KEY).
 
 Examples:
-  BUTTONS_REGISTRY_URL=https://desk.buttons.sh buttons install @autono/hello
+  BUTTONS_REGISTRY_URL=https://registry.example buttons install @your-desk/hello
   buttons install deploy --source ../button-source
   buttons install deploy@1.2.0 --source ../button-source`,
 	Args: exactArgs(1),
