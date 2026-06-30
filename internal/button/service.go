@@ -6,6 +6,7 @@ import (
 	"io"
 	neturl "net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -92,6 +93,113 @@ type Service struct{}
 
 func NewService() *Service {
 	return &Service{}
+}
+
+// AppOpts configures CreateApp. From is a git URL (cloned) or a local path
+// (copied); empty scaffolds an empty app folder.
+type AppOpts struct {
+	Name        string
+	From        string
+	Description string
+}
+
+// gitClone is overridable in tests. Shallow clone, then drop .git so the app is
+// a clean vendored snapshot, not a nested repo.
+var gitClone = func(url, dest string) error {
+	out, err := exec.Command("git", "clone", "--depth", "1", url, dest).CombinedOutput() // #nosec G204 -- url is a source the user chose to clone
+	if err != nil {
+		return fmt.Errorf("git clone: %v: %s", err, strings.TrimSpace(string(out)))
+	}
+	return os.RemoveAll(filepath.Join(dest, ".git"))
+}
+
+// CreateApp scaffolds an app-kind button under apps/<name>/. apps/ is created
+// lazily (only here), so it never appears unless an app is created. From clones
+// a git URL or copies a local dir into the folder; button.json carries kind=app
+// plus a serve placeholder for the agent to fill in. No main.* — apps are served
+// (`buttons serve`), not pressed.
+func (s *Service) CreateApp(opts AppOpts) (*Button, error) {
+	if err := ValidateName(opts.Name); err != nil {
+		return nil, err
+	}
+	name := Slugify(opts.Name)
+	if name == "" {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "app name is empty after slugification"}
+	}
+	dir, err := config.AppDir(name)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(dir); err == nil {
+		return nil, &ServiceError{Code: "ALREADY_EXISTS", Message: fmt.Sprintf("app %q already exists", name)}
+	}
+	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil { // lazily create apps/
+		return nil, err
+	}
+
+	// Roll back a half-created app dir on any failure below — a failed clone/copy
+	// or metadata write must not leave a partial dir that blocks a retry with
+	// ALREADY_EXISTS.
+	success := false
+	defer func() {
+		if !success {
+			_ = os.RemoveAll(dir)
+		}
+	}()
+
+	switch {
+	case opts.From == "":
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, err
+		}
+	case isGitURL(opts.From):
+		if err := gitClone(opts.From, dir); err != nil {
+			return nil, &ServiceError{Code: "CLONE_FAILED", Message: err.Error()}
+		}
+	default:
+		if err := os.CopyFS(dir, os.DirFS(opts.From)); err != nil {
+			return nil, &ServiceError{Code: "COPY_FAILED", Message: fmt.Sprintf("copy %s: %v", opts.From, err)}
+		}
+	}
+
+	now := time.Now().UTC()
+	btn := &Button{
+		SchemaVersion: 1,
+		Name:          name,
+		Kind:          "app",
+		Description:   opts.Description,
+		Serve:         &ServeSpec{Type: "static", Output: "dist"},
+		Env:           map[string]string{},
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	data, err := json.MarshalIndent(btn, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "button.json"), data, 0o600); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(appAgentsMD(name)), 0o600); err != nil {
+		return nil, err
+	}
+	success = true
+	return btn, nil
+}
+
+func isGitURL(s string) bool {
+	return strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "http://") ||
+		strings.HasPrefix(s, "git@") || strings.HasSuffix(s, ".git")
+}
+
+func appAgentsMD(name string) string {
+	return "# " + name + " (app button)\n\n" +
+		"Served at a URL by `buttons serve`, not pressed. Fill in the `serve` block in button.json:\n\n" +
+		"- `type`: `static` (build → serve `output`) or `dynamic` (run a server on `$PORT`).\n" +
+		"- `build`: build command, e.g. `pnpm install && pnpm build`.\n" +
+		"- `run`: dynamic only — the long-running server, e.g. `pnpm start`.\n" +
+		"- `output`: static only — the built dir to serve (e.g. `dist`).\n" +
+		"- `port`: dynamic only — the local port the server listens on.\n"
 }
 
 func (s *Service) Create(opts CreateOpts) (*Button, error) {

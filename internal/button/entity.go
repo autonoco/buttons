@@ -9,6 +9,12 @@ type Button struct {
 	SchemaVersion int    `json:"schema_version"`
 	Name          string `json:"name"`
 	Description   string `json:"description,omitempty"`
+	// Kind distinguishes a regular button ("" or "button") from an app ("app").
+	// App buttons live under apps/ and are served (`buttons serve`), not pressed.
+	Kind string `json:"kind,omitempty"`
+	// Serve declares how an app-kind button builds and runs when exposed at a URL.
+	// Omitted for regular buttons.
+	Serve *ServeSpec `json:"serve,omitempty"`
 	// Tags group/categorize a button for discovery and install-source filtering
 	// (e.g. "finance", "sync"). Omitted when empty so existing buttons
 	// don't grow a noisy field.
@@ -114,6 +120,17 @@ type QueueConfig struct {
 	// appended to the queue name so distinct keys get distinct
 	// slot pools.
 	Key string `json:"key,omitempty"`
+}
+
+// ServeSpec is how an app-kind button is built and run when `buttons serve`
+// exposes it at a URL behind the tunnel. Static = build then serve the output
+// dir; dynamic = run a long-lived server on Port, proxied via the listener.
+type ServeSpec struct {
+	Type   string `json:"type"`             // "static" | "dynamic"
+	Build  string `json:"build,omitempty"`  // e.g. "pnpm install && pnpm build"
+	Run    string `json:"run,omitempty"`    // dynamic: long-running server on $PORT
+	Output string `json:"output,omitempty"` // static: built dir to serve
+	Port   int    `json:"port,omitempty"`   // dynamic: local port
 }
 
 type ArgDef struct {

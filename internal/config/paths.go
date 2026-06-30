@@ -114,6 +114,31 @@ func DrawerDir(name string) (string, error) {
 	return p, nil
 }
 
+// AppsDir is where app-kind buttons live: <data>/apps. NOT created by
+// EnsureDataDir — it's scaffolded lazily by CreateApp, so apps/ never appears
+// unless the user actually creates an app.
+func AppsDir() (string, error) {
+	base, err := DataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "apps"), nil
+}
+
+// AppDir returns a specific app's folder, with the same path-escape rejection
+// ButtonDir/DrawerDir apply.
+func AppDir(name string) (string, error) {
+	dir, err := AppsDir()
+	if err != nil {
+		return "", err
+	}
+	p := filepath.Join(dir, name)
+	if !strings.HasPrefix(p, dir+string(filepath.Separator)) {
+		return "", fmt.Errorf("app name resolves outside data directory: %q", name)
+	}
+	return p, nil
+}
+
 // IdempotencyDir is where cross-run idempotency cache entries live.
 // One JSON file per key hash with TTL embedded.
 func IdempotencyDir() (string, error) {

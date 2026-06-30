@@ -69,6 +69,7 @@ buttons create [name] [flags]
 
 ```
       --allow-private-networks     allow --url buttons to reach private network addresses (localhost, 10/8, 172.16/12, 192.168/16, 169.254/16, IPv6 private ranges). Required for local dev targets.
+      --app string                 create an app-kind button under apps/ from a git URL (cloned) or local path (copied)
       --arg stringArray            argument definition (name:type:required|optional)
       --body string                HTTP request body (supports {{arg}} templates)
       --code string                inline script code (shortcut for one-liners)
