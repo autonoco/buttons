@@ -84,6 +84,22 @@ buttons serve --allow-http-buttons
 
 Code and prompt buttons are pressable without this flag.
 
+## Trigger engine
+
+`buttons serve` also runs the in-process button trigger engine and mounts webhook trigger routes alongside the API. Button triggers (`buttons trigger add`) fire here:
+
+- `cron` triggers run on their schedule.
+- `watch` triggers poll their watched file (mtime/size, 500ms).
+- `webhook` triggers mount a `POST <path>` route on the same listener, gated by the optional shared `--token` (`X-Buttons-Token` header or `?token=`).
+
+Disable the engine to run the API alone:
+
+```bash
+buttons serve --no-triggers
+```
+
+This is the button-trigger layer (single shared token, no tunnel). Drawer webhook triggers — n8n-style auth behind a Cloudflare tunnel — are a separate layer served by [`buttons webhook listen`](/cli/buttons_webhook).
+
 ## Related
 
 - [buttons serve](/cli/buttons_serve)

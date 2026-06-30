@@ -2,61 +2,91 @@
 title: "Triggers"
 sidebarTitle: "Overview"
 description: "Run a button or drawer from a webhook, cron schedule, or local hook."
-tag: "Design proposal"
+tag: "Available"
 ---
 
-Triggers define when a button or drawer runs automatically.
+Triggers fire a button or drawer automatically instead of you pressing it. There are **two
+independent trigger layers** — they live on different objects, run under different commands, and
+have different webhook semantics. Pick by what you want to fire:
+
+| Layer | Fires a… | Lives on | Kinds shipped | Runner | Webhook reach |
+| --- | --- | --- | --- | --- | --- |
+| **Button triggers** | button press | the button (`buttons trigger …`) | `cron`, `watch`, `webhook` | `buttons serve` | the local serve listener |
+| **Drawer triggers** | drawer press | the drawer (`buttons drawer … trigger …`) | `webhook` only | `buttons webhook listen` | a Cloudflare tunnel |
+
+There is no unified `buttons trigger <kind> <target>` surface and no `button/` vs `drawer/` target
+prefix — those are a [proposal](#proposed-unified-surface), not shipped. Use the command for the layer
+you want.
+
+## Button triggers — `buttons trigger`
+
+Attach a trigger to a **button**. Triggers fire under `buttons serve`'s in-process trigger engine, so
+nothing happens until a `buttons serve` is running (start it without the engine via
+`buttons serve --no-triggers`).
 
 ```bash
-buttons trigger webhook <target> [/path]
-buttons trigger cron <target> "<cron>"
-buttons trigger hook <target> --enable "<source>"
+# cron — 5-field schedule, in-process scheduler
+buttons trigger add slack-sync --cron --schedule "0 */2 * * *"
+
+# watch — fire when a file changes (polled, 500ms)
+buttons trigger add docs-sync --watch --path ./docs/changelog.md
+
+# webhook — mount a path on the serve listener
+buttons trigger add deploy --webhook --webhook-path /hooks/deploy --token "$DEPLOY_SECRET"
 ```
 
-`<target>` can be a button or a drawer. If the target is a button, Buttons can create a hidden one-step drawer wrapper internally. If the target is already a drawer, the trigger attaches directly to that drawer.
+Exactly one of `--cron` / `--watch` / `--webhook` is required per `add`. Pass `--arg key=value`
+(repeatable) to fix the args used every time the trigger fires.
 
-## Trigger kinds
-
-| Kind | Cause | Example |
+| Kind | Required flags | How it fires |
 | --- | --- | --- |
-| `webhook` | A remote service sends an HTTP POST. | GitHub, Stripe, Apify, Linear |
-| `cron` | A schedule fires. | nightly sync, hourly digest |
-| `hook` | A local event fires. | file changed, Git commit, button completed |
+| `cron` | `--schedule "<5-field cron>"` | In-process scheduler ticks the press. |
+| `watch` | `--path <file>` | Polls the file's mtime+size every 500 ms; fires on change. |
+| `webhook` | `--webhook-path </path>` | `POST <path>` on the serve listener; optional `--token`. |
 
-## Commands
+The webhook kind authenticates with a **single shared token** (`--token`), supplied as an
+`X-Buttons-Token` header **or** `?token=` query param and compared in constant time. This layer
+**does not map the request body into args** — the body is drained (capped at 1 MiB) and discarded; the
+press uses the trigger's configured `--arg` values. The endpoint returns `202 Accepted` immediately and
+fires the press in the background. There is no tunnel — the path is reachable over whatever interface
+`buttons serve` binds (loopback by default).
+
+### Manage button triggers
 
 ```bash
-buttons trigger webhook linkedin-sync /linkedin-sync
-buttons trigger cron slack-sync "0 */2 * * *"
-buttons trigger hook docs-sync --enable "file:docs/**/*.md"
+buttons trigger list            # every trigger across all buttons
+buttons trigger list slack-sync # just this button's triggers
+buttons trigger rm slack-sync <trigger-id>
 ```
 
-Management commands should work across every trigger kind:
+Only `add`, `list`, and `rm` exist — there is no `show`, `pause`, or `resume`. To disable a trigger,
+remove it. `rm` takes the button name **and** the trigger id (shown by `list`).
+
+## Drawer triggers — `buttons drawer … trigger webhook`
+
+Attach a **webhook** trigger to a **drawer**. This is the layer the project's CLAUDE.md documents: it
+runs under `buttons webhook listen`, which fronts the dispatcher with a Cloudflare tunnel so third-party
+services (GitHub, Stripe, Linear, Apify, …) can reach it.
 
 ```bash
-buttons trigger list
-buttons trigger show <id>
-buttons trigger remove <id>
-buttons trigger pause <id>
-buttons trigger resume <id>
-```
-
-## Target resolution
-
-If a button and drawer share a name, use an explicit target prefix:
-
-```bash
-buttons trigger webhook button/linkedin-sync /linkedin-sync
-buttons trigger webhook drawer/linkedin-sync-flow /linkedin-sync
-```
-
-## Current implementation
-
-The current CLI already supports webhook-triggered drawers:
-
-```bash
-buttons drawer <name> trigger webhook [/path]
+buttons drawer create github-pr-opened
+buttons drawer github-pr-opened add handle-github-pr
+buttons drawer github-pr-opened trigger webhook /github/pr-opened
 buttons webhook listen
 ```
 
-The `buttons trigger ...` command is the intended unified surface. It should compile down to the drawer trigger model so existing drawer workflows keep working.
+Only the `webhook` kind is implemented; `buttons drawer <name> trigger <other-kind>` errors with "not
+implemented". The default path is `/<drawer-name>`. Unlike the button layer, the drawer webhook
+**materializes the POST into the press** as `${inputs.webhook.body}` (plus `.headers`, `.query`,
+`.method`, `.path`, `.received_at`), and supports n8n-style auth (`none`/`basic`/`header`/`jwt`) with
+`$ENV{VAR}` secret references so `drawer.json` stays commit-safe. See [Webhook triggers](/buttons/webhook)
+for the auth flags and local dry-run with `--webhook-body`.
+
+To trigger a single button this way, wrap it in a one-step drawer.
+
+## Proposed unified surface
+
+A single `buttons trigger <kind> <target>` front-end — that would take a button *or* drawer, add a
+generic `hook` kind (file / git / runtime events), and add `show` / `pause` / `resume` management — is a
+**design proposal, not built**. Today, use `buttons trigger add` for button triggers and
+`buttons drawer … trigger webhook` for drawer triggers as above.

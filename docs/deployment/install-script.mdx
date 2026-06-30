@@ -3,13 +3,25 @@ title: "Install script"
 description: "How the install.sh script works and its configuration options."
 ---
 
-`install.sh` is a POSIX-compatible shell script that fetches the correct Buttons binary for your platform, verifies its integrity, and installs it. It works on macOS, Linux, Alpine, and BusyBox-based environments — anywhere `/bin/sh` is available.
+`install.sh` is a POSIX `sh` script that fetches the correct Buttons binary for your platform, verifies its integrity against the release `checksums.txt`, and installs it. It works on macOS and Linux — anywhere `/bin/sh` is available, including Alpine, Debian slim, and other BusyBox-based container images.
 
 ## Basic usage
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh | sh
 ```
+
+<Note>
+While the `autonoco/buttons` repository is private, the script downloads release
+assets through the authenticated GitHub API, so you must export a `GITHUB_TOKEN`
+with `contents:read` scope first. Once the repository is public this token
+becomes optional (it only raises the API rate limit).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh \
+  | GITHUB_TOKEN=$GH_TOKEN sh
+```
+</Note>
 
 ## Configuration via environment variables
 
@@ -22,32 +34,32 @@ curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh \
 
 | Variable | Default | Description |
 |---|---|---|
-| `BUTTONS_VERSION` | Latest release | Pin to a specific version tag (e.g. `v0.1.0`) |
-| `BUTTONS_INSTALL_DIR` | `/usr/local/bin` | Directory to install the `buttons` binary |
-| `GITHUB_TOKEN` | _(none)_ | GitHub personal access token for private repos or to avoid rate limits |
+| `BUTTONS_VERSION` | `latest` | Pin to a specific release tag (e.g. `v0.1.0`). `latest` resolves the newest release via the GitHub API. |
+| `BUTTONS_INSTALL_DIR` | `/usr/local/bin` | Directory to install the `buttons` binary. |
+| `GITHUB_TOKEN` | _(none)_ | GitHub token sent as `Authorization: Bearer`. Required while the repo is private (`contents:read` scope); optional afterward to avoid API rate limits. |
 
 ## What the script does
 
 <Steps>
 
 <Step title="Detect platform">
-The script identifies your OS (`darwin`, `linux`) and architecture (`amd64`, `arm64`) using `uname`. It exits with an error if the combination is unsupported.
+The script identifies your OS and architecture with `uname`. OS maps to `darwin` or `linux` (Windows is unsupported and errors out). Architecture maps to `x86_64` (accepting the `amd64` alias) or `arm64` (accepting `aarch64`). The supported targets are `darwin/arm64`, `darwin/x86_64`, `linux/arm64`, and `linux/x86_64`; any other combination exits with an error.
 </Step>
 
 <Step title="Resolve version">
-If `BUTTONS_VERSION` is not set, the script calls the GitHub Releases API to find the latest release tag. It passes `GITHUB_TOKEN` in the `Authorization` header if set.
+If `BUTTONS_VERSION` is `latest` (the default), the script calls the GitHub Releases API to find the newest release tag. Otherwise it uses your pinned tag as-is. Requests send `GITHUB_TOKEN` in the `Authorization` header when set.
 </Step>
 
 <Step title="Download archive">
-Downloads the matching `.tar.gz` archive and its `.sha256` checksum file from the GitHub Release assets.
+The script looks up the asset IDs for `buttons_<version>_<os>_<arch>.tar.gz` (the leading `v` is stripped to match the goreleaser numeric naming, e.g. `buttons_0.1.0_darwin_arm64.tar.gz`) and the release-wide `checksums.txt`, then downloads both by ID through `/releases/assets/<id>` with `Accept: application/octet-stream`. Going through the API (rather than a direct asset URL) is what lets the download work against a private repo.
 </Step>
 
 <Step title="Verify SHA256">
-Computes the SHA256 of the downloaded archive and compares it to the published checksum. The script exits immediately if they do not match — no binary is installed.
+The script reads the expected hash for the archive out of `checksums.txt`, computes the actual SHA256 with `sha256sum` (or `shasum -a 256` as a fallback), and compares them. On any mismatch — or a missing checksum entry — it exits immediately and installs nothing.
 </Step>
 
 <Step title="Extract and install">
-Extracts the `buttons` binary and copies it to `BUTTONS_INSTALL_DIR`. Uses `sudo` only if the target directory exists but is not writable by the current user.
+Extracts only the `buttons` binary from the archive and installs it with `install -m 0755` into `BUTTONS_INSTALL_DIR`. If that directory is not writable it retries with `sudo`; if `sudo` is unavailable it errors and tells you to point `BUTTONS_INSTALL_DIR` at a writable path. Afterward it runs the installed binary's `--version` as a sanity check and warns if the install directory is not on your `$PATH`.
 </Step>
 
 </Steps>
@@ -72,27 +84,28 @@ curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh \
   | BUTTONS_INSTALL_DIR=$HOME/.local/bin sh
 ```
 
-Make sure that directory is on your `$PATH`:
+The script warns if that directory is not on your `$PATH`. Add it so the `buttons` command resolves:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-## GitHub rate limits
+## GitHub authentication and rate limits
 
-The unauthenticated GitHub API allows 60 requests per hour per IP. In CI environments where many jobs run on shared egress IPs, you may hit this limit. Pass a token to raise the rate limit:
+All release metadata and asset downloads go through the GitHub API. While the repository is private, unauthenticated requests return 404, so `GITHUB_TOKEN` (with `contents:read`) is required. Once the repository is public, the token is optional but still useful: the unauthenticated API allows only 60 requests per hour per IP, which CI runners on shared egress IPs can exhaust. Pass a token to raise the limit:
 
 ```bash
-| GITHUB_TOKEN=$GH_TOKEN sh
+curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh \
+  | GITHUB_TOKEN=$GH_TOKEN sh
 ```
 
 <Tip>
-In GitHub Actions, `GITHUB_TOKEN` is automatically available as a secret. Pass it directly: `GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}`.
+In GitHub Actions, `GITHUB_TOKEN` is provided automatically. Pass it directly — just make sure the workflow has `contents: read` permission for this repository: `GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}`.
 </Tip>
 
 ## Alpine and BusyBox compatibility
 
-The script uses only POSIX `sh` builtins and a small set of standard utilities (`uname`, `curl` or `wget`, `sha256sum` or `shasum`, `tar`). It runs in Alpine and BusyBox environments without modification.
+The script is plain POSIX `sh` and depends only on a small set of standard utilities: `curl`, `tar`, `uname`, `mktemp`, and one of `sha256sum` or `shasum`. It runs in Alpine, Debian slim, and BusyBox container images without modification.
 
 ## Related
 

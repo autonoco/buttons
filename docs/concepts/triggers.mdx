@@ -5,37 +5,51 @@ description: "Automatic ways to run buttons and drawers."
 
 A trigger runs a button or drawer when something happens.
 
-Triggers let Buttons move from manual commands to durable automation: webhooks for remote events, cron for schedules, and hooks for local events.
+Triggers let Buttons move from manual commands to durable automation: webhooks for remote events, cron for schedules, and file watches for local changes.
 
-```bash
-buttons trigger webhook linkedin-sync /linkedin-sync
-buttons trigger cron slack-sync "0 */2 * * *"
-buttons trigger hook docs-sync --enable "file:docs/**/*.md"
-```
+There are **two trigger layers**, because a trigger fires either a single **button** or a whole **drawer**, and each runs under its own long-running command.
 
 ## Trigger kinds
 
-| Kind | Cause | Example |
-| --- | --- | --- |
-| Webhook | A remote service sends an HTTP request. | GitHub, Stripe, Linear |
-| Cron | A schedule fires. | nightly sync, hourly digest |
-| Hook | A local event fires. | file changed, Git commit, button completed |
+| Kind | Fires | Cause | Runner |
+| --- | --- | --- | --- |
+| Cron | button | A 5-field schedule fires (`0 */6 * * *`). | `buttons serve` |
+| Watch | button | A watched file changes (polled every 500 ms). | `buttons serve` |
+| Webhook | button | A remote service POSTs to a path on the serve listener. | `buttons serve` |
+| Webhook | drawer | A remote service POSTs to a path on the webhook listener. | `buttons webhook listen` |
 
-## Target model
+## Button triggers
 
-A trigger targets a button or drawer. If it targets a button, Buttons can wrap it as a one-step drawer internally so the workflow runtime stays consistent.
+`buttons trigger add <button>` attaches a trigger to one button. Exactly one of `--cron`, `--watch`, or `--webhook` is required. These fire while `buttons serve` (the local REST API server) is running — its in-process engine runs the cron and file-watch triggers and mounts webhook trigger routes on the same listener. Skip the engine with `buttons serve --no-triggers`.
 
-```text
-event -> trigger -> drawer -> button steps
+```bash
+buttons trigger add slack-sync --cron --schedule "0 */2 * * *"
+buttons trigger add docs-sync --watch --path docs/notes.md
+buttons trigger add linkedin-sync --webhook --webhook-path /hooks/linkedin --token "$SECRET"
+buttons trigger list slack-sync
+buttons trigger rm slack-sync <trigger-id>
 ```
 
-## Current status
+Pass `--arg KEY=VALUE` (repeatable) to set the args the press receives when the trigger fires. Webhook auth at this layer is a single shared token: when `--token` is set, the request must carry it as the `X-Buttons-Token` header or a `?token=` query param. The POST **body is not mapped into args** — v1 uses the trigger's configured `--arg` values. The endpoint presses asynchronously and returns `202 Accepted`.
 
-Webhook-triggered drawers are implemented today. The unified `buttons trigger ...` command is the intended surface for webhook, cron, and hook triggers.
+## Drawer triggers
+
+`buttons drawer <name> trigger webhook [PATH]` attaches a webhook trigger to a drawer (default path `/<drawer-name>`). These fire under `buttons webhook listen`, a foreground dispatcher that — unless you pass `--no-tunnel` — runs behind a Cloudflare tunnel so third-party services can reach it. `webhook` is the only drawer trigger kind implemented today.
+
+```bash
+buttons drawer linkedin-sync trigger webhook /linkedin-sync
+buttons webhook listen
+```
+
+Drawer webhook auth mirrors n8n's four modes — `--auth none|basic|header|jwt` (with `--auth-user/--auth-pass`, `--auth-header-name/--auth-header-value`, or `--jwt-secret` and friends). Secret values accept `$ENV{VAR}` so `drawer.json` stays commit-safe. Unlike button triggers, the incoming POST **is** materialized into the drawer as `${inputs.webhook.body}` (plus `headers`, `query`, `method`, `path`, `received_at`).
+
+## Status
+
+Button cron, watch, and webhook triggers are shipped and run under `buttons serve`. Drawer webhook triggers are shipped and run under `buttons webhook listen`. Drawer `cron`/`file`/`mcp` trigger kinds are reserved in the schema but not yet implemented.
 
 ## Related
 
-- [Trigger guide](/buttons/triggers)
+- [Trigger commands](/buttons/triggers)
 - [Webhook](/buttons/webhook)
 - [Cron](/buttons/cron)
 - [Hook](/buttons/hook)

@@ -48,7 +48,7 @@ Every response is a JSON object with an `ok` boolean at the top level.
 }
 ```
 
-The shape of `data` varies by command, but `ok`, `error.code`, and `error.message` are always present and stable.
+The shape of `data` varies by command, but `ok` is always present, and on a failure `error.code` and `error.message` are always present and stable. Some errors also carry two optional fields: `error.hint` (a recovery suggestion, e.g. the exact command to run) and `error.spec` (structured context). Both are omitted when empty.
 
 ## Error codes
 
@@ -60,8 +60,11 @@ The shape of `data` varies by command, but `ok`, `error.code`, and `error.messag
 | `TIMEOUT` | The button execution exceeded its timeout |
 | `SCRIPT_ERROR` | The subprocess exited with a non-zero exit code |
 | `RUNTIME_MISSING` | The required interpreter (`python3`, `node`, etc.) is not on `$PATH` |
+| `QUEUE_TIMEOUT` | The press waited too long for a free slot in the button's concurrency queue |
 | `INTERNAL_ERROR` | An unexpected error inside the Buttons runtime |
-| `NOT_IMPLEMENTED` | The command or feature is not yet available in this version |
+| `KIND_NOT_IMPLEMENTED` | A drawer step used a step kind not yet implemented in the v1 executor |
+
+This is the common subset. Individual commands surface their own codes — for example `AMBIGUOUS` (`drawer connect`), `IMPORT_ERROR` (`import`), `INSTALL_ERROR` / `PUBLISH_ERROR` (registry), `DNS_CONFLICT` / `ZONE_MISMATCH` (`webhook setup`), and `NOT_APPLICABLE` (`board --json`).
 
 ## Checking exit codes
 

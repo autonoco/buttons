@@ -14,12 +14,12 @@ A standalone prompt button has no code to execute. It just carries an instructio
 
 ```bash
 buttons create summarize-pr \
-  --prompt 'You are a code reviewer. Read the diff provided in BUTTONS_ARG_DIFF and write a summary of what changed, why it matters, and any risks. Return JSON with keys: summary, risks, verdict.' \
+  --prompt 'You are a code reviewer. Read the diff passed in the `diff` argument and write a summary of what changed, why it matters, and any risks. Return JSON with keys: summary, risks, verdict.' \
   --arg diff:string:required \
   -d "Summarize a pull request diff"
 ```
 
-Pressing it returns the prompt with the argument values substituted, so the caller can pass it straight to an LLM:
+A standalone prompt button runs no code. Pressing it validates the declared args, then returns the instruction **verbatim** — the prompt is **not** templated, so `${arg}`/`BUTTONS_ARG_*` substitution does not happen here. The instruction text lands in both the `prompt` and `stdout` fields, and the args you passed are echoed back under `args`, so the caller can hand the whole thing straight to an LLM:
 
 ```bash
 buttons press summarize-pr --arg diff="$(git diff main)" --json
@@ -30,7 +30,11 @@ buttons press summarize-pr --arg diff="$(git diff main)" --json
   "ok": true,
   "data": {
     "button": "summarize-pr",
-    "prompt": "You are a code reviewer. Read the diff provided in BUTTONS_ARG_DIFF and write a summary..."
+    "status": "ok",
+    "exit_code": 0,
+    "stdout": "You are a code reviewer. Read the diff passed in the `diff` argument...",
+    "prompt": "You are a code reviewer. Read the diff passed in the `diff` argument...",
+    "args": { "diff": "diff --git a/... b/..." }
   }
 }
 ```
@@ -71,7 +75,7 @@ The agent receives both the raw output and the instruction in a single structure
 
 ## Updating prompt instructions
 
-The prompt lives at `~/.buttons/buttons/<name>/AGENT.md` — agents look for that filename by convention. Edit it directly, or recreate the button:
+The prompt lives at `~/.buttons/buttons/<name>/AGENTS.md` — the `AGENTS.md` convention agents look for (a legacy singular `AGENT.md` is still read if present, but every write goes to `AGENTS.md`). Edit it directly, or recreate the button:
 
 ```bash
 buttons delete summarize-pr
@@ -92,5 +96,5 @@ buttons create analyze-logs \
 ## Related
 
 - [Code buttons](/buttons/code) — add code execution alongside a prompt
-- [Arguments](/concepts/arguments) — typed args available in the prompt
+- [Arguments](/concepts/arguments) — typed args validated at press time and echoed in the result (and, on code/HTTP buttons, available as `BUTTONS_ARG_*`)
 - [JSON output](/concepts/json-output) — reading `prompt` programmatically

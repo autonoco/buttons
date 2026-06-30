@@ -3,49 +3,57 @@ title: "Folder structure"
 description: "How Buttons stores buttons, drawers, history, secrets, and runtime state."
 ---
 
-Buttons stores data under `~/.buttons/` by default. In a project initialized with `buttons init`, the active data directory is the closest `.buttons/` folder in the current directory tree.
+Buttons stores data under `~/.buttons/` by default. In a project initialized with `buttons init`, the active data directory is the closest `.buttons/` folder in the current directory tree. `BUTTONS_HOME` overrides both.
 
 Each button gets its own subdirectory with a spec file, optional code file, agent context, and run history. Drawers get the same pattern for workflow specs and workflow history.
 
 ## Directory layout
 
+`buttons init` creates `buttons/` and `drawers/` (mode `0700`). `apps/`, `idempotency/`, and `queues/` are created lazily the first time they are needed.
+
 ```
 ~/.buttons/ or .buttons/
-├── buttons.json              # project manifest; desired buttons and version policy
-├── buttons-lock.json         # resolved exact versions, hashes, and sources
-├── history.json              # local create/edit/install/update history; gitignored
+├── history.json              # local create/edit/install/update activity log; gitignored
+├── .gitignore                # written by `buttons init`
 ├── buttons/
 │   ├── deploy/
 │   │   ├── button.json       # button spec
 │   │   ├── main.sh           # script (code and file buttons)
-│   │   ├── AGENT.md          # agent instructions (agent buttons)
-│   │   └── pressed/
+│   │   ├── AGENTS.md         # agent instructions / prompt text
+│   │   └── pressed/          # one JSON per run; capped at 100, oldest pruned; gitignored
 │   │       ├── 2026-04-10T12-00-00Z.json
 │   │       └── 2026-04-10T14-32-11Z.json
 │   ├── get-user/
 │   │   ├── button.json
+│   │   ├── AGENTS.md
 │   │   └── pressed/
 │   └── summarize-pr/
 │       ├── button.json
-│       ├── AGENT.md
+│       ├── AGENTS.md
 │       └── pressed/
 ├── drawers/
 │   └── release-flow/
 │       ├── drawer.json
+│       ├── AGENTS.md
 │       └── pressed/
-├── batteries.json            # secret/env values; gitignored for project-local dirs
-├── webhook.json              # Cloudflare tunnel config; gitignored for project-local dirs
-├── idempotency/              # cached successful press results
-└── queues/                   # file-lock semaphore state
+├── apps/                     # lazy; app-kind buttons from `buttons create --app`
+│   └── site/
+│       ├── button.json       # kind=app + serve block
+│       ├── AGENTS.md
+│       └── ...               # cloned/copied app source (no main.*)
+├── batteries.json            # secret/env values; gitignored
+├── webhook.json              # Cloudflare tunnel config; gitignored
+├── idempotency/              # lazy; cached successful press results; gitignored
+└── queues/                   # lazy; file-lock semaphore state; gitignored
 ```
 
 ## button.json
 
-The spec file for a button. It describes the button type, arguments, runtime, and all other configuration. Newly created specs use `"schema_version": 2`.
+The spec file for a button. It describes the button type, arguments, runtime, and all other configuration. `schema_version` is the on-disk format counter — currently `1`, and distinct from the package `version` field.
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "name": "deploy",
   "description": "Deploy a tagged release to an environment",
   "runtime": "shell",
@@ -57,7 +65,7 @@ The spec file for a button. It describes the button type, arguments, runtime, an
 }
 ```
 
-See [button.json](/concepts/button-json) for every field, including HTTP host locks, queues, output schemas, package metadata, and required batteries.
+See [button.json](/concepts/button-json) for every field, including HTTP host locks, queues, output schemas, the installed-package pin (`source` / `version` / `content_hash`), and required batteries.
 
 ## drawer.json
 
@@ -76,31 +84,31 @@ The workflow spec for a drawer. It stores inputs, steps, refs, triggers, return 
 
 See [drawer.json](/concepts/drawer-json) for the full workflow schema.
 
-## buttons.json and buttons-lock.json
+## Installed buttons and pinning
 
-`buttons.json` at the root of `.buttons/` declares the desired project buttons and version policy.
+There is no project-level manifest or lockfile. When you install a button with `buttons install <name>` (from `$BUTTONS_REGISTRY_URL`, or from a local directory via `--source`), the pin is written **into that button's own `button.json`**: `source` (where it came from), `version`, and `content_hash` (a SHA256 over the installed files). Each installed button carries its own provenance — that per-button stamp *is* the lock. Dependencies declared in `requires` are installed transitively from the same source.
 
-`buttons-lock.json` records the exact resolved versions, sources, and content hashes. Commit it with `buttons.json` so teammates can recreate the same installed buttons.
+To share buttons with a team, commit their folders under `buttons/` (and `drawers/`). Anyone who clones the repo gets the same specs, code, `AGENTS.md`, and pins. To push a button to a registry or a local source, use `buttons publish @desk/<name>` — registry publish needs a scoped `@desk/name` and a `version` in `button.json`, and pins immutable versions.
 
 ## history.json
 
-`history.json` records local create, edit, install, update, delete, rollback, and failed resolution events. Commands write explicit events; file hooks can record manual edits to tracked button and drawer files.
+`history.json` records local create, edit, install, update, delete, and rollback events. It is a per-machine audit log and is gitignored.
 
-In a team repo, commit `buttons.json`, `buttons-lock.json`, and authored button/drawer files. Do not commit `history.json`; it is a local runtime artifact.
-
-When installed buttons are generated entirely from a registry, the repo can recreate them from the manifest and lock file. When a button is authored directly in the project, commit its folder under `buttons/`.
+Commit the authored button and drawer folders — their `button.json` / `drawer.json` specs, code files, and `AGENTS.md`. Do **not** commit `history.json`, `batteries.json`, `webhook.json`, or the `pressed/` run traces; the `.gitignore` written by `buttons init` already excludes them.
 
 ## main.\*
 
-The script file for [code buttons](/buttons/code). The extension matches the runtime: `main.sh` for shell, `main.py` for Python, `main.js` for Node. HTTP and prompt-only buttons do not have a `main.*` file.
+The script file for [code buttons](/buttons/code). The extension matches the runtime: `main.sh` for shell, `main.py` for Python, `main.js` for Node. HTTP, prompt-only, and app buttons do not have a `main.*` file.
 
-## AGENT.md
+## AGENTS.md
 
-Present on every button. For [prompt buttons](/buttons/prompt), contains the raw instruction text stored at create time via `--prompt`; when pressed, the contents are returned in the `prompt` field of the JSON output. For other button types, AGENT.md holds notes and context an agent can read to understand when and how to press the button.
+Present on every button (and drawer). For [prompt buttons](/buttons/prompt), it contains the raw instruction text stored at create time via `--prompt`; when pressed, the contents are returned in the `prompt` field of the JSON output. For other button types, `AGENTS.md` holds notes and context an agent can read to understand when and how to press the button.
+
+Units created before the rename may have a singular `AGENT.md`; it is still read as a legacy fallback, but every write uses `AGENTS.md`.
 
 ## pressed/
 
-One JSON file per run, named by timestamp. Each file records the input arguments, exit code, stdout, stderr, duration, and whether the run succeeded.
+One JSON file per run, named by UTC timestamp. Each file records the input arguments, exit code, stdout, stderr (each truncated to 1 MB), duration, and status. The directory is capped at 100 runs — the oldest are pruned — and is gitignored because run traces may contain press-time argument values.
 
 ```json
 {
@@ -114,9 +122,13 @@ One JSON file per run, named by timestamp. Each file records the input arguments
 }
 ```
 
+## apps/
+
+Lazily created the first time you run `buttons create --app <git-url|path>`. The app source is cloned (shallow, `.git` dropped) or copied here alongside a `button.json` with `kind: "app"` and a `serve` block. App buttons have no `main.*` file.
+
 ## batteries.json
 
-Batteries are key/value pairs injected into button presses as `BUTTONS_BAT_<KEY>`.
+Batteries are key/value pairs injected into button presses as `BUTTONS_BAT_<KEY>`. Keys must match `[A-Z][A-Z0-9_]*`.
 
 Project-local batteries live at `.buttons/batteries.json`. Global batteries live at `~/.buttons/batteries.json`. Local values override global values on key collision.
 
@@ -126,11 +138,11 @@ Named webhook setup stores Cloudflare tunnel configuration in `webhook.json`. It
 
 ## idempotency/
 
-Successful presses with `--idempotency-key` are cached here until their TTL expires.
+Successful presses with `--idempotency-key` are cached here until their TTL expires. Created lazily.
 
 ## queues/
 
-Buttons with a `queue` declaration use file locks here to enforce concurrency limits.
+Buttons with a `queue` declaration use file locks here to enforce concurrency limits. Created lazily.
 
 ## Overriding the home directory
 
@@ -143,7 +155,7 @@ BUTTONS_HOME=/tmp/test-buttons buttons create test-btn --code 'echo ok' --runtim
 This is useful in CI, tests, or container environments where you want an isolated state directory.
 
 <Note>
-The `~/.buttons/` directory and all files inside it are created with mode `0700` / `0600`. Other users on the same system cannot read button specs or run history.
+The `~/.buttons/` directory and the files inside it are created with restrictive permissions (`0700` for directories, `0600` for secret files). Other users on the same system cannot read button specs or run history.
 </Note>
 
 ## Related

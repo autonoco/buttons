@@ -13,7 +13,7 @@ Pass `--arg` once per argument during `buttons create`:
 buttons create send-alert \
   --url 'https://hooks.example.com/alert' \
   --method POST \
-  --body '{"channel": "{{channel}}", "message": "{{message}}", "urgent": {{urgent}}' \
+  --body '{"channel": "{{channel}}", "message": "{{message}}", "urgent": {{urgent}}}' \
   --arg channel:string:required \
   --arg message:string:required \
   --arg urgent:bool:optional \
@@ -22,6 +22,13 @@ buttons create send-alert \
 
 The format is `name:type:required` or `name:type:optional`.
 
+For an `enum` argument, append the allowed values as a final pipe-separated list:
+
+```bash
+buttons create deploy \
+  --arg env:enum:required:staging|prod
+```
+
 ## Supported types
 
 | Type | Accepted values |
@@ -29,8 +36,9 @@ The format is `name:type:required` or `name:type:optional`.
 | `string` | Any text |
 | `int` | Integer (e.g. `42`, `-7`) |
 | `bool` | `true` or `false` |
+| `enum` | One of a declared set, e.g. `--arg env:enum:required:staging\|prod` |
 
-Buttons validates types at press time and returns a `VALIDATION_ERROR` if the value does not match.
+Buttons validates types at press time and returns a `VALIDATION_ERROR` if the value does not match (including an `enum` value outside the declared set).
 
 ## Passing values at press time
 
