@@ -91,6 +91,14 @@ buttons drawer deploy-flow press env=prod
 
 Explicit step args win. If a step arg is not set and a drawer input with the same name exists, Buttons fills it for that step.
 
+## Run modes
+
+By default a drawer runs its steps sequentially. Pass `--mode parallel` to run steps concurrently while honoring data dependencies — a step waits only for the steps its `${...}` refs actually name. `--concurrency N` caps how many run at once (`0` means `NumCPU`), and `--on-failure stop|continue` controls whether the first failure cancels in-flight siblings.
+
+```bash
+buttons drawer release-flow press --mode parallel --concurrency 4 --on-failure stop
+```
+
 ## Step kinds
 
 | Kind | Status | Purpose |
@@ -208,7 +216,7 @@ You can also set wait fields directly:
 
 ```bash
 buttons drawer retry-flow set wait.duration=2m
-buttons drawer deploy-window set wait.until=2026-06-28T21:00:00Z
+buttons drawer deploy-window set wait.until=2026-07-01T21:00:00Z
 ```
 
 Waits honor cancellation, so stopping the drawer does not leave a sleeping process behind.
@@ -229,7 +237,7 @@ By default, a failing step fails the drawer. Step-level `on_failure` can be auth
 }
 ```
 
-A drawer can also define `on_error` to call a separate error-handler drawer after failure. The handler receives `drawer`, `run_id`, `failed_step`, `error`, and redacted `inputs`. The failure still remains visible in the original drawer run history.
+A drawer can also declare `on_error` to point at a separate error-handler drawer, but this is **reserved**: the v1 executor parses it and does not yet run it. The field exists so a drawer can declare the intent ahead of the executor. When it ships, the handler will receive `drawer`, `run_id`, `failed_step`, `error`, and redacted `inputs`, and the failure will still remain visible in the original drawer run history.
 
 ```json
 {
@@ -264,7 +272,16 @@ ${inputs.webhook.path}
 ${inputs.webhook.received_at}
 ```
 
-The planned `buttons trigger webhook <target>` surface should compile down to this same drawer model. If the target is a button, Buttons can create a hidden one-step drawer wrapper.
+Webhook is the only trigger kind drawers support today; registering any other kind errors. The trigger can require auth — append `--auth basic|header|jwt` (plus the matching `--auth-user`/`--auth-pass`, `--auth-header-name`/`--auth-header-value`, or `--jwt-secret` flags) to `trigger webhook`; the default is `--auth none`. Secret values accept `$ENV{VAR}`, resolved at match time, so `drawer.json` stays commit-safe.
+
+`buttons webhook listen` runs the foreground dispatcher behind a Cloudflare tunnel, so it requires `cloudflared` on your PATH. Run `buttons webhook setup` once for a stable hostname, or let `listen` spin up an ephemeral `*.trycloudflare.com` URL per run.
+
+Test a webhook drawer without standing up the listener by synthesizing the request payload at press time:
+
+```bash
+buttons drawer on-apify-done press --webhook-body '{"datasetId":"abc"}'
+buttons drawer on-apify-done press --webhook-body @fixture.json
+```
 
 ## Inspect and debug
 

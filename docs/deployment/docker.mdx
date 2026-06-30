@@ -12,7 +12,9 @@ ghcr.io/autonoco/buttons:latest
 ghcr.io/autonoco/buttons:v0.1.0   # pinned version
 ```
 
-- **Base:** Alpine Linux
+- **Base:** Alpine Linux 3.20 (with `ca-certificates` + `tzdata`) — ~12 MB
+- **Runs as:** non-root user `buttons` (UID 1000), `WORKDIR /home/buttons`
+- **Entrypoint:** the `buttons` binary, so `docker run … <verb>` runs that command; bare `docker run …` defaults to `--help`
 - **Shell available:** `/bin/sh` — shell buttons work out of the box
 - **Python / Node:** not included — add via `apk add` in your derived image
 - **Architectures:** `linux/amd64`, `linux/arm64`
@@ -51,16 +53,18 @@ State created inside the container is discarded when the container exits.
 
 ## Pattern 3: Volume-mounted state
 
-Persist button state and run history to the host by mounting `~/.buttons`:
+Persist button state and run history to the host by mounting the data dir. The image runs as the non-root user `buttons` (UID 1000), so its `~/.buttons` resolves to `/home/buttons/.buttons` — mount there, not `/root`:
 
 ```bash
 docker run --rm \
-  -v "$HOME/.buttons:/root/.buttons" \
+  -v "$HOME/.buttons:/home/buttons/.buttons" \
   ghcr.io/autonoco/buttons:latest \
-  press deploy --arg env=staging --arg version=v1.4.2
+  press db-backup --arg env=staging --arg retention=7d
 ```
 
 This lets you manage buttons on the host and invoke them from containers, or share state between multiple containers.
+
+The mounted directory must be writable by UID 1000. If your host user has a different UID, either `chown` the directory to `1000` or add `--user "$(id -u)"` to the `docker run` invocation (combine with `-e BUTTONS_HOME=/home/buttons/.buttons` so the data dir is found regardless of that user's home).
 
 ## Adding Python or Node to a derived image
 

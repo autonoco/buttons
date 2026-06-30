@@ -18,6 +18,7 @@ The security controls in Buttons are aimed at preventing unintended execution or
 | Path traversal via argument values | `PathEscape` applied to URL path segments — see [template encoding](/security/template-encoding) |
 | Command injection via argument values | Args injected as env vars (`BUTTONS_ARG_<NAME>`), never interpolated into the shell body |
 | SSRF via HTTP buttons targeting internal services | Private network blocking by default — see [SSRF protection](/security/ssrf-protection) |
+| Exfiltration via webhook-supplied host redirection | HTTP buttons lock scheme+host at create time (`allowed_host`); `{{arg}}` is rejected in the scheme/host and may appear only in path/query/fragment, so a remote arg can't redirect the request to an attacker's host |
 | Credential leakage via run history | `pressed/*.json` created with mode `0600`; project-local secret-bearing files are gitignored |
 | Unauthorized reads of button specs | `~/.buttons/` created with mode `0700` |
 | Query/JSON injection via argument values | Context-aware encoding in URL and body templates |
@@ -27,7 +28,6 @@ The security controls in Buttons are aimed at preventing unintended execution or
 - **Malicious button specs:** Buttons does not validate whether a button's code is safe. If you import or run a button from an untrusted source, you are responsible for reviewing its contents.
 - **Privilege escalation:** Buttons runs as the invoking user. It does not attempt to drop privileges. If your agent runs as root, buttons run as root.
 - **Side-channel attacks:** Timing or memory side-channels are not in scope.
-- **Third-party MCP tools:** When a button wraps an MCP tool call, the security of that tool is the responsibility of the MCP server operator.
 
 ## Assumptions
 

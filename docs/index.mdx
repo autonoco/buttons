@@ -28,7 +28,7 @@ Each button wraps a single action: a shell script, an HTTP API call, a Python/No
     Typed workflows that compose buttons.
   </Card>
   <Card title="Registry" icon="boxes" href="/concepts/registry">
-    Resolve, install, lock, and update shared buttons.
+    Install and publish shared buttons, pinned per-button by version and content hash.
   </Card>
   <Card title="History" icon="history" href="/concepts/history">
     Local audit history for creates, edits, installs, and updates.
@@ -62,17 +62,17 @@ Drawers chain buttons into typed workflows with refs, loops, sub-drawers, waits,
 
 ## Triggers
 
-Triggers are the planned unified surface for running buttons and drawers from external or local events.
+Triggers run buttons and drawers automatically — on a schedule (cron), on local file changes (watch), or from an inbound webhook. Button triggers fire under `buttons serve`; drawer webhook triggers fire under `buttons webhook listen`.
 
 <Columns cols={2}>
   <Card title="Trigger concept" icon="zap" href="/concepts/triggers">
-    Automatic ways to run buttons and drawers.
+    How buttons and drawers fire automatically.
   </Card>
   <Card title="Trigger guide" icon="list-checks" href="/buttons/triggers">
     Commands and management model.
   </Card>
   <Card title="Hook" icon="git-branch" href="/buttons/hook">
-    Local file, Git, and Buttons-runtime events.
+    Run on local events — design proposal.
   </Card>
 </Columns>
 

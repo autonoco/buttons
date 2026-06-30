@@ -1,25 +1,27 @@
 ---
 title: "History"
-description: "Local audit history for button creates, edits, installs, updates, and rollbacks."
+description: "Local audit log for button creates, edits, installs, and updates."
 ---
 
 `history.json` is the local audit log for a Buttons workspace.
 
-It records two kinds of changes:
+It records workspace mutations:
 
-- command-driven changes, like `buttons create`, `buttons install`, `buttons update`, `buttons delete`, and rollback
-- file-hook changes, like editing `button.json`, `main.sh`, `AGENT.md`, `drawer.json`, `buttons.json`, or `buttons-lock.json` directly
+- command-driven changes, like `buttons create`, `buttons install`, `buttons update`, and `buttons delete`
+- manual or agent edits to a button or drawer spec (`button.json`, `main.*`, `AGENTS.md`, `drawer.json`) outside a Buttons command
+
+It is a single top-level file and is **gitignored** — auditability is per-machine.
 
 ```text
 .buttons/
-  buttons.json
-  buttons-lock.json
-  history.json
   buttons/
   drawers/
+  history.json   # local audit log (gitignored)
 ```
 
 ## Event shape
+
+Each event looks roughly like this (an `install`):
 
 ```json
 {
@@ -29,7 +31,7 @@ It records two kinds of changes:
       "at": "2026-06-28T18:42:10Z",
       "action": "install",
       "target": "button:slack-sync",
-      "source": "git+https://github.com/autonoco/autono-buttons@main",
+      "source": "$BUTTONS_REGISTRY_URL",
       "from_version": null,
       "to_version": "1.2.4",
       "from_hash": null,
@@ -42,34 +44,30 @@ It records two kinds of changes:
 
 ## Actions
 
-History should record:
+History records:
 
 | Action | Cause |
 | --- | --- |
 | `create` | A button or drawer is created. |
-| `edit` | A tracked button, drawer, manifest, or lock file changes. |
+| `edit` | A tracked button or drawer spec changes (manual or agent edit). |
 | `delete` | A button or drawer is removed. |
-| `install` | A registry or source installs a button. |
-| `update` | An installed button resolves to a newer version/hash. |
-| `rollback` | A button is restored to an earlier locked version. |
-| `resolve_failed` | Registry/source resolution fails. |
+| `install` | A button is installed from a `--source` directory or the registry. |
+| `update` | An installed button — or the CLI itself (`buttons update`) — resolves to a newer version/hash. |
 
-## File-hook tracking
+## What's tracked
 
-Commands should write explicit history events when they mutate state. File hooks should catch manual edits and agent edits that happen outside a Buttons command.
+Commands write history events when they mutate state. Manual or agent edits to a spec file are captured as a single (debounced) `edit` event with a before/after content hash.
 
-The watcher should track:
+Tracked paths:
 
 ```text
-.buttons/buttons.json
-.buttons/buttons-lock.json
 .buttons/buttons/*/button.json
 .buttons/buttons/*/main.*
-.buttons/buttons/*/AGENT.md
+.buttons/buttons/*/AGENTS.md
 .buttons/drawers/*/drawer.json
 ```
 
-The watcher should ignore runtime and secret-bearing files:
+Ignored (runtime and secret-bearing):
 
 ```text
 .buttons/history.json
@@ -81,26 +79,21 @@ The watcher should ignore runtime and secret-bearing files:
 .buttons/queues/**
 ```
 
-For each file-hook event, Buttons can compute a before/after content hash and append one debounced `edit` event.
-
 ## Commit policy
 
 Commit:
 
-- `.buttons/buttons.json`
-- `.buttons/buttons-lock.json`
-- authored button and drawer files
+- your authored button and drawer specs — `button.json`, `drawer.json`, the code file, and `AGENTS.md`
 
 Do not commit:
 
 - `.buttons/history.json`
-- pressed run history
-- batteries or webhook config
+- pressed run history (`buttons/*/pressed/`, `drawers/*/pressed/`)
+- `batteries.json`, `webhook.json`, `idempotency/`, `queues/`
 
-The lock file gives the team shared reproducibility. `history.json` gives each machine local auditability.
+There is no separate dependency manifest or lockfile. An installed button is pinned **in place**: each installed `button.json` carries `source`, `version`, and `content_hash` (the SHA256 of its content at install time). Committing the button commits its pin, so a teammate gets the same version and content hash on checkout. `history.json` stays local — it is each machine's own audit trail.
 
 ## Related
 
 - [Registry](/concepts/registry)
-- [Hook triggers](/buttons/hook)
 - [Folder structure](/concepts/folder-structure)

@@ -17,19 +17,40 @@ The following ranges are blocked by default:
 | `10.0.0.0/8` | RFC 1918 private |
 | `172.16.0.0/12` | RFC 1918 private |
 | `192.168.0.0/16` | RFC 1918 private |
-| `169.254.0.0/16` | Link-local (includes AWS/GCP metadata: `169.254.169.254`) |
+| `169.254.0.0/16` | RFC 3927 link-local (includes AWS/GCP/Azure metadata: `169.254.169.254`) |
+| `100.64.0.0/10` | RFC 6598 carrier-grade NAT |
+| `0.0.0.0/8` | "This network" (RFC 791) |
+| `224.0.0.0/4` | IPv4 multicast (RFC 5771) |
+| `240.0.0.0/4` | IPv4 reserved (RFC 1112) |
 | `::1/128` | IPv6 loopback |
 | `fc00::/7` | IPv6 unique local |
 | `fe80::/10` | IPv6 link-local |
+| `ff00::/8` | IPv6 multicast |
 
-Attempting to press an HTTP button that resolves to one of these ranges returns a `SCRIPT_ERROR`:
+## Two enforcement points
+
+A blocked target is caught at one of two places, depending on whether the URL's host is a literal IP or a hostname.
+
+**Literal IP, before any request.** If the post-substitution URL's host is a literal IP inside a blocked range, the press is refused before a connection is attempted. This surfaces as a `VALIDATION_ERROR`:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "refusing request: 169.254.169.254 resolves to a blocked private range"
+  }
+}
+```
+
+**Hostname, at dial time.** A hostname is resolved and every A/AAAA record is checked against the blocklist before the connection is dialed (see DNS rebinding below). A blocked address surfaces as a `SCRIPT_ERROR`:
 
 ```json
 {
   "ok": false,
   "error": {
     "code": "SCRIPT_ERROR",
-    "message": "request blocked: target address 169.254.169.254 is in a private network range"
+    "message": "request failed: SSRF blocked: metadata.internal.example resolves to private address 169.254.169.254 (set --allow-private-networks on the button or BUTTONS_ALLOW_PRIVATE_NETWORKS=1 to override)"
   }
 }
 ```
@@ -38,11 +59,13 @@ Attempting to press an HTTP button that resolves to one of these ranges returns 
 
 Validation happens after DNS resolution, not just on the literal URL. This prevents DNS rebinding attacks, where a public hostname resolves to a private IP.
 
-If the hostname `api.attacker.example` resolves to `10.0.0.1` at press time, the request is blocked even though the URL does not look like a private address.
+The safe dialer resolves the hostname once, rejects the request if **any** resolved A/AAAA record lands in a blocked range, and then dials by the resolved IP rather than re-resolving the hostname. Dialing by the already-checked IP closes the rebinding window where an attacker returns a public IP on the first lookup and a private IP on the second.
+
+So if the hostname `api.attacker.example` resolves to `10.0.0.1` at press time, the request is blocked even though the URL does not look like a private address.
 
 ## Escape hatch 1: per-button flag
 
-To allow a specific button to target a private address, pass `--allow-private-networks` at create time:
+To allow a specific button to target a private address, pass `--allow-private-networks` at create time. The flag applies only to HTTP (`--url`) buttons:
 
 ```bash
 buttons create local-health \

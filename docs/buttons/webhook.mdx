@@ -2,12 +2,19 @@
 title: "Webhook triggers"
 sidebarTitle: "Webhook"
 description: "Run a button or drawer when an external service sends an HTTP POST."
-tag: "Partially available"
+tag: "Available"
 ---
 
 A webhook trigger turns a button or drawer into a receiver: an HTTP endpoint you can register with GitHub, Stripe, Linear, Apify, or any other service that sends webhooks.
 
 This is the inverse of an [HTTP API button](/buttons/http-api). HTTP API buttons send requests; webhook triggers receive them.
+
+There are two webhook layers, and they are deliberately different:
+
+- **Drawer webhook triggers** (`buttons drawer ... trigger webhook` + `buttons webhook listen`) — n8n-style auth, the request body delivered into the workflow as `${inputs.webhook.body}`, and an optional public Cloudflare URL. Use this when you need the payload.
+- **Button webhook triggers** (`buttons trigger add ... --webhook` + `buttons serve`) — a single shared token, no tunnel, and a body that is read then discarded (the press uses the trigger's own args). Use this for a simple body-less ping on a port you already serve.
+
+## Drawer webhook trigger
 
 ```bash
 buttons drawer create github-pr-opened
@@ -16,9 +23,11 @@ buttons drawer github-pr-opened trigger webhook /github/pr-opened
 buttons webhook listen
 ```
 
-Webhook triggers currently attach to drawers. If you want to trigger one button, put it in a one-step drawer.
+`buttons webhook listen` runs the foreground dispatcher and (unless you pass `--no-tunnel`) brings up a Cloudflare tunnel so third-party services can reach the path. When a POST arrives the drawer is pressed with the request materialized as `${inputs.webhook.body}` (plus `.headers`, `.query`, `.method`, `.path`, `.received_at`).
 
-## Flags
+Only the `webhook` kind is implemented for drawer triggers; other kinds error out. The tunnel requires `cloudflared` on PATH; run `buttons webhook setup` once to configure a stable named tunnel, or skip it and `buttons webhook listen` uses an ephemeral quick tunnel.
+
+### Flags
 
 ```bash
 buttons drawer <name> trigger webhook [/path]
@@ -29,11 +38,11 @@ buttons drawer <name> trigger webhook [/path]
              [--jwt-issuer <issuer>] [--jwt-audience <audience>]
 ```
 
-Default path: `/<drawer-name>`.
+Default path: `/<drawer-name>`. A path is globally unique across drawers; reusing one another drawer owns is rejected.
 
-Any secret-bearing value accepts `$ENV{VAR_NAME}` so committed `drawer.json` does not carry raw secrets.
+Any secret-bearing value accepts `$ENV{VAR_NAME}`, resolved at match time, so a committed `drawer.json` carries the auth *shape* but not the raw secret.
 
-## Auth example
+### Auth example
 
 ```bash
 buttons drawer stripe-receipts trigger webhook /stripe \
@@ -42,21 +51,32 @@ buttons drawer stripe-receipts trigger webhook /stripe \
   --auth-header-value '$ENV{STRIPE_WEBHOOK_TOKEN}'
 ```
 
-## Local testing
+### Local testing
 
-Dry-run a webhook drawer without the listener:
+Dry-run a webhook drawer without the listener — `--webhook-body` synthesizes `inputs.webhook`:
 
 ```bash
 buttons drawer github-pr-opened press --webhook-body '{"action":"opened"}'
 buttons drawer github-pr-opened press --webhook-body @fixture.json
 ```
 
-## Planned unified surface
+## Button webhook trigger
 
-The unified `buttons trigger webhook ...` surface should compile down to the same drawer trigger model.
+To fire a single button on a POST, attach a webhook trigger to it and run `buttons serve` (the local REST API server, which also runs the trigger engine unless you pass `--no-triggers`):
 
 ```bash
-buttons trigger webhook github-pr-opened /github/pr-opened
+buttons trigger add health-check \
+  --webhook \
+  --webhook-path /hooks/health \
+  --token "$HEALTH_TOKEN" \
+  --arg env=prod
+buttons serve
 ```
 
-If the target is a button, Buttons should create a hidden one-step drawer wrapper internally. If the target is a drawer, the trigger attaches directly to the drawer.
+Differences from the drawer layer:
+
+- **Auth** is the single shared `--token`, checked against the `X-Buttons-Token` header or `?token=` query param (constant-time). Omit `--token` for an open endpoint.
+- **The body is read and discarded** — v1 does not map it into args. The press uses the `--arg` values you configured on the trigger.
+- **No Cloudflare tunnel.** The path is mounted on whatever interface `buttons serve` binds (loopback by default), and the handler returns `202 Accepted` immediately.
+
+Manage triggers with `buttons trigger list [button]` and `buttons trigger rm <button> <trigger-id>`. The same `buttons trigger add` command also supports `--cron --schedule "0 */6 * * *"` and `--watch --path ./file`.

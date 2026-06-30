@@ -1,122 +1,112 @@
 ---
 title: "Registry"
-description: "How Buttons resolves, installs, locks, and updates shared buttons."
+description: "How Buttons resolves, installs, pins, and publishes shared buttons."
 ---
 
 A registry is a catalog of installable buttons. It answers: "What buttons are available, what versions exist, what tags do they belong to, and what content hash should I install?"
 
-The registry does not contain runnable local buttons. Runnable buttons live in `.buttons/buttons/`. Desired dependencies live in `.buttons/buttons.json`; exact resolved versions live in `.buttons/buttons-lock.json`.
+The registry does not contain runnable local buttons. Runnable buttons live in `.buttons/buttons/`. Install copies a button out of a registry into that directory and stamps where it came from. There is **no project-level dependency manifest and no lockfile** — pinning is recorded **per button**, inside each installed `button.json`, as the `source`, `version`, and `content_hash` fields.
 
 ```text
 .buttons/
-  buttons.json
-  buttons-lock.json
-  history.json
+  history.json          # local activity log (gitignored)
   buttons/
     slack-sync/
-      button.json
+      button.json       # carries source / version / content_hash after install
       main.sh
-      AGENT.md
+      AGENTS.md
 ```
 
-## buttons.json
+## Two backends, one interface
 
-`buttons.json` is the project manifest. It lives at the root of `.buttons/` and is committed with the repo.
+The CLI codes against a swappable `Source` (read) / `Publisher` (write) interface, so the same `install` / `publish` path works against either backend:
 
-It declares trusted registries and desired buttons:
+| Backend | When | Read | Write |
+|---|---|---|---|
+| **Hosted registry** (HTTP, a Cloudflare Worker) | `$BUTTONS_REGISTRY_URL` is set | `install` | `publish` |
+| **Local directory** | `--source <dir>` or `$BUTTONS_SOURCE` | `install` | `publish` |
 
-```json
-{
-  "schema_version": 1,
-  "default_registry": "autono",
-  "registries": {
-    "autono": {
-      "type": "git",
-      "url": "https://github.com/autonoco/autono-buttons",
-      "ref": "main"
-    }
-  },
-  "dependencies": {
-    "imessage-sync": "latest",
-    "slack-sync": {
-      "version": "^1.2.0",
-      "auto_update": true
-    },
-    "plaid-sync": {
-      "version": "1.4.2",
-      "auto_update": false
-    }
-  }
-}
+The base URL is taken from `$BUTTONS_REGISTRY_URL` (trailing `/` trimmed). This repo is public, so docs never name a real host — substitute your own registry URL, or use a placeholder like `registry.example`.
+
+## Scoped names: `@desk/name`
+
+Registry identity is a **scoped name** of the form `@scope/name` (commonly `@desk/name`):
+
+- It must start with `@`, have a non-empty scope after `@`, and a single-segment name after `/`. `@/x`, `@desk/`, and `@desk/a/b` are rejected.
+- The scope is **registry identity only** — it is **not stored on disk**. On disk the button is found by its bare local name (e.g. `slack-sync`); `install` stamps the full scoped name back into the installed `button.json`.
+- In URLs the scope slash is preserved, so the path is `/v1/buttons/@desk/name` (two real segments), not an opaque escaped blob.
+
+## Auth: bearer + the battery split
+
+All hosted-registry requests are bearer-authed (`Authorization: Bearer <key>`). Read and write use **two distinct keys** stored as [batteries](/cli/buttons_batteries):
+
+| Operation | Battery | Press-time env override (wins) |
+|---|---|---|
+| `install` (read) | `REGISTRY_KEY` | `$BUTTONS_BAT_REGISTRY_KEY` |
+| `publish` (write) | `REGISTRY_WRITE_KEY` | `$BUTTONS_BAT_REGISTRY_WRITE_KEY` |
+
+```bash
+buttons batteries set REGISTRY_KEY <read-key>
+buttons batteries set REGISTRY_WRITE_KEY <write-key>
 ```
 
-The simple string form is enough for most buttons. The object form keeps room for per-button options like `auto_update`, channels, constraints, or rollout policy.
-
-## buttons-lock.json
-
-`buttons-lock.json` is the resolved lock file. It lives next to `buttons.json` and should be committed with the repo.
-
-```json
-{
-  "schema_version": 1,
-  "buttons": {
-    "slack-sync": {
-      "registry": "autono",
-      "source": "git+https://github.com/autonoco/autono-buttons@main",
-      "requested": "^1.2.0",
-      "version": "1.2.4",
-      "content_hash": "sha256:4f8c...",
-      "resolved_at": "2026-06-28T18:42:10Z"
-    }
-  }
-}
-```
-
-`buttons.json` is the desired state. `buttons-lock.json` is the exact resolved state.
-
-```text
-buttons.json          semver ranges, latest, registry config, auto_update policy
-buttons-lock.json     exact versions, hashes, resolved sources
-```
-
-This follows the same shape as package manifests and lock files: ranges are human-authored, exact versions are machine-resolved and committed for repeatability.
-
-## history.json
-
-`history.json` is local and should not be committed. It records what happened on one machine over time: creates, edits, installs, updates, rollbacks, deletes, and failed registry fetches.
-
-See [History](/concepts/history) for the event model.
+A missing key produces a precise error naming the exact `buttons batteries set …` command to run. Local-directory sources need no key.
 
 ## Install Flow
 
-When registry-backed install runs, Buttons should:
+`buttons install <name | name@version | tag:<x>>`.
 
-1. Read `.buttons/buttons.json` for registries, desired buttons, and version policy.
-2. Resolve the requested button, version, or tag from the configured registry.
-3. Fetch the button bundle, including `button.json`, `main.*`, `AGENT.md`, and support files.
-4. Install the runnable copy into `.buttons/buttons/<name>/`.
-5. Install required peer buttons from `requires`.
-6. Stamp `source`, `version`, and `content_hash` into the installed `button.json`.
-7. Update `.buttons/buttons-lock.json` with exact resolved versions and hashes.
-8. Append an event to `.buttons/history.json`.
+**Source resolution order:**
 
-## Resolution
+1. `--source <dir>` or `$BUTTONS_SOURCE` → local directory (dev wins).
+2. else `$BUTTONS_REGISTRY_URL` (with `REGISTRY_KEY`) → hosted registry.
+3. else error.
 
-Install requests can target a button, a pinned version, or a tag:
+Then install:
+
+1. Resolve the request: bare `name` → latest; `name@version` → that pinned version; `tag:<x>` → every catalog button carrying that tag.
+2. Fetch the button bundle (`button.json`, `main.*`, `AGENTS.md`, support files).
+3. Install the runnable copy into `.buttons/buttons/<name>/`.
+4. Install the dependency closure: each button's `button.json` `requires` is installed transitively from the same source (the version pin applies only to the explicitly-named root).
+5. Stamp `source`, `version`, and `content_hash` into each installed `button.json`. This per-button record **is** the pin.
+6. Append an event to `.buttons/history.json`.
 
 ```bash
-buttons install slack-sync
-buttons install slack-sync@1.2.0
-buttons install tag:autono-cal
+buttons install slack-sync          # latest
+buttons install slack-sync@1.2.0    # pinned version
+buttons install tag:autono-cal      # every button carrying this tag
 ```
 
-The intended source resolution order is:
+### Hardening on the way in
 
-1. `--source`, for explicit one-off local installs.
-2. `BUTTONS_SOURCE`, for a local default source.
-3. `.buttons/buttons.json`, for the project team contract.
+A registry is treated as untrusted. Bundles are size-capped (64 MiB compressed, 256 MiB uncompressed, 4096 files); extraction strips the single top-level wrapper dir, skips `pressed/`, `._*`, and `.DS_Store`, and rejects absolute or `../` paths. Every write path is re-validated against the button dir **before** any directory is created, so a rejected bundle leaves nothing partial.
 
-## Source Layout
+## Publish Flow
+
+`buttons publish <name | @desk/name>` is the inverse of install. Target resolution mirrors install:
+
+1. `--source <dir>` / `$BUTTONS_SOURCE` → local directory (a dev round-trip).
+2. else `$BUTTONS_REGISTRY_URL` (with `REGISTRY_WRITE_KEY`) → hosted registry.
+
+Publishing to the hosted registry:
+
+- Requires a **scoped** `@desk/name` (a bare name errors).
+- Requires a `version` in the button's `button.json` (versions are immutable; re-publishing the same `name@version` is rejected).
+- Bundles only `button.json` + code + `AGENTS.md` — **never** `pressed/` run history.
+- `--kind button|drawer` sets the catalog entry kind (default `button`); a drawer is publishable as a registry entry via this flag.
+
+If neither `--source`/`$BUTTONS_SOURCE` nor `$BUTTONS_REGISTRY_URL` is set, `publish` errors with "no publish target" — there is no default public registry baked in.
+
+## Content-hash pinning
+
+There are **two different hashes**; keep them straight:
+
+1. **Tarball hash** — `sha256` of the gzip bytes. It travels in the `X-Content-Sha256` header and the index `sha256` field, and is **what install verifies** before extracting: the downloaded bytes must equal it, or install hard-errors and writes nothing.
+2. **File-content hash** — computed over the extracted files (sorted, `name\x00len\x00bytes`). This is what gets **stamped into the installed `button.json` as `content_hash`**, the drift/update pin.
+
+Archives are deterministic — `publish` sorts filenames, zeroes mod-times, and fixes file mode — so identical content always yields an identical tarball hash on the round-trip from publish → registry → install.
+
+## Local source layout
 
 A local registry source is a directory of button folders:
 
@@ -125,17 +115,31 @@ button-source/
   slack-sync/
     button.json
     main.sh
-    AGENT.md
+    AGENTS.md
   calendar-sync/
     button.json
     main.sh
-    AGENT.md
+    AGENTS.md
 ```
 
-Each button folder must include `button.json`. Support files are copied into the installed button.
+Each button folder must include `button.json`; support files are copied into the installed button. The same directory is both a read source (`buttons install --source <dir>`) and a write target (`buttons publish --source <dir>`).
+
+## HTTP registry contract
+
+A hosted registry implements three routes (the Worker is the other half of the client). Errors on any route use the envelope `{ "error": { "code": "...", "message": "..." } }`.
+
+- `GET /v1/index` — catalog. Returns a JSON array of entries `{ name, kind, version, tags, sha256 }`, where `sha256` is the tarball hash. **Latest = the last entry for a given name.**
+- `GET /v1/buttons/<@desk/name>/<version>/download` — fetch the gzip tarball (`application/gzip`); should set `X-Content-Sha256` so the client can verify without a prior index round-trip.
+- `POST /v1/buttons/<@desk/name>/<version>` — publish. Body is the gzip tarball; headers `Content-Type: application/gzip`, `X-Content-Sha256: <sum>` (re-verified server-side), `X-Button-Kind: button|drawer`. Versions are immutable. Success is `200` or `201`.
+
+## history.json
+
+`history.json` is local and should not be committed. It records what happened on one machine over time: creates, edits, installs, updates, deletes, and failed registry fetches. See [History](/concepts/history) for the event model.
 
 ## Related
 
 - [History](/concepts/history)
 - [button.json](/concepts/button-json)
+- [Batteries](/cli/buttons_batteries)
 - [buttons install](/cli/buttons_install)
+- [buttons publish](/cli/buttons_publish)

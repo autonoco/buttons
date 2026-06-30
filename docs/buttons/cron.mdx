@@ -1,40 +1,55 @@
 ---
 title: "Cron triggers"
 sidebarTitle: "Cron"
-description: "Run a button or drawer on a recurring schedule."
-tag: "Design proposal"
+description: "Run a button on a recurring schedule."
 ---
 
-Cron triggers run a button or drawer on a recurring schedule.
+A cron trigger fires a **button** press on a recurring schedule. It lives on the
+button's spec and runs under the `buttons serve` trigger engine.
 
 ```bash
-buttons trigger cron daily-snapshot "0 3 * * *"
-buttons trigger cron slack-sync "0 */2 * * *" --timezone America/New_York
+buttons trigger add daily-snapshot --cron --schedule "0 3 * * *"
+buttons trigger add slack-sync --cron --schedule "0 */2 * * *"
 ```
 
-If the target is a button, Buttons should create a hidden one-step drawer wrapper internally. If the target is a drawer, the trigger attaches directly to the drawer.
+Schedules are standard **5-field** cron expressions (parsed with `cron.ParseStandard`).
+Cron attaches to a button only — drawers support webhook triggers, not cron (the
+`cron` drawer kind is reserved but not implemented).
 
-## Flags
+## Passing args
+
+Pass `--arg KEY=VALUE` (repeatable) to set the args the press runs with each tick:
 
 ```bash
-buttons trigger cron <target> "<cron>"
-  --timezone America/New_York
-  --overlap skip|queue|replace
-  --name <trigger-id>
+buttons trigger add report --cron --schedule "0 9 * * 1" --arg window=weekly
 ```
 
-Default overlap policy: `skip`. If the previous run is still active when the next tick fires, Buttons should skip the new tick instead of creating accidental parallel work.
+`buttons trigger add` requires exactly one kind flag: `--cron`, `--watch`, or
+`--webhook`. The trigger id is generated automatically (a short hex id) — there is
+no `--name`, `--timezone`, or `--overlap` flag.
 
 ## Management
 
 ```bash
-buttons trigger list
-buttons trigger show <id>
-buttons trigger pause <id>
-buttons trigger resume <id>
-buttons trigger remove <id>
+buttons trigger list             # every trigger, across all buttons
+buttons trigger list <button>    # just this button's triggers
+buttons trigger rm <button> <trigger-id>
 ```
 
-## Implementation note
+There is no `show`, `pause`, or `resume` — to stop a schedule, remove the trigger
+with `buttons trigger rm` (the id comes from `buttons trigger list`).
 
-A cron schedule is inert without a daemon watching schedules and pressing the target. The daemon should record each scheduled press in normal button/drawer history, with trigger id and scheduled time attached to the run metadata.
+## How it fires
+
+A cron schedule is inert without a process watching it. The engine that fires
+triggers runs **in-process inside `buttons serve`** (the local REST API server),
+not a separate daemon:
+
+- On startup, `buttons serve` collects every button's triggers. The cron scheduler
+  starts only if at least one cron trigger exists.
+- Each scheduled fire presses the target button with the trigger's configured args
+  and **records a normal run in the button's history**.
+- Run `buttons serve --no-triggers` to start the API without the trigger engine.
+
+Cron triggers fire only while `buttons serve` is running — keep it up (or under a
+process supervisor) for schedules to tick.

@@ -69,12 +69,12 @@ buttons create list-repos \
 
 ## Response size limit
 
-Responses are capped at **10 MB** by default. Override with `--max-response-size` (value in bytes):
+Responses are capped at **10 MB** by default. Override with `--max-response-size`, which accepts a size with an optional unit suffix (`B`, `K`/`KB`, `M`/`MB`, `G`/`GB`; a bare number means bytes). The hard ceiling is 2 GB.
 
 ```bash
 buttons create large-export \
   --url 'https://api.example.com/export' \
-  --max-response-size 52428800 \
+  --max-response-size 50M \
   -d "Download up to 50 MB"
 ```
 

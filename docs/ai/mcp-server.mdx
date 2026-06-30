@@ -12,6 +12,10 @@ The MCP server exposes two tools:
 
 Your AI tool decides when to use these tools based on the conversation context. If you ask about creating an HTTP button, it searches the docs and pulls the relevant page automatically.
 
+<Note>
+This is the **docs-search** MCP server — it lets an agent read these documentation pages. It is **not** the same as running Buttons *as* an MCP server. To expose your own buttons to an agent as deterministic, pressable tools, run [`buttons mcp`](/buttons/mcp) (only buttons marked `"mcp_enabled": true` are listed/pressable).
+</Note>
+
 ## Connect to your AI tool
 
 <Tabs>
@@ -94,18 +98,18 @@ Select any text on this docs site and use the contextual menu to:
 - **Connect to Cursor** — one-click install into Cursor
 - **Connect to VS Code** — one-click install into VS Code
 
-## MCP + SKILL.md
+## MCP + skill.md
 
-MCP and the [SKILL.md](https://github.com/autonoco/buttons/blob/main/SKILL.md) file in the Buttons repo serve complementary roles:
+MCP and the [skill.md](/ai/skill-md) capability file serve complementary roles:
 
-| | MCP server | SKILL.md |
+| | MCP server | skill.md |
 |---|---|---|
 | **What it provides** | Real-time search across all docs pages | Full CLI reference in one file |
 | **How the agent uses it** | Searches on demand during conversation | Loaded into context at session start |
-| **Stays current** | Auto-indexed on every docs deployment | Regenerated via `go run ./internal/tools/skillgen` |
+| **Stays current** | Auto-indexed on every docs deployment | Auto-generated from the Cobra command tree (`go run ./internal/tools/skillgen`) |
 | **Best for** | Deep questions, discovering pages, getting full page content | Quick reference, offline use, CI agents without network |
 
-Use both: load `SKILL.md` for baseline context, connect the MCP server for deep dives.
+Use both: load `skill.md` for baseline context, connect the MCP server for deep dives.
 
 <Note>
 The MCP server URL above uses `buttons.mintlify.app`. If you're self-hosting or using a custom domain, replace with your actual docs URL followed by `/mcp`.

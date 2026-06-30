@@ -1,34 +1,50 @@
 ---
 title: "CLI buttons"
 sidebarTitle: "CLI"
-description: "Wrap a shell command as a button without writing a script."
-tag: "Coming soon"
+description: "Wrap a shell command as a button — one line, no separate script file."
 ---
 
-CLI buttons will be sugar for the common case: wrap a command-line invocation as a button in one line, no `--runtime`, no script body.
+A "CLI button" is just a shell-runtime button whose body is the command you want to run. There's no special flag for it: `buttons create` scaffolds a shell button by default, and `--code` lets you pass the command inline so you never open an editor.
 
 ```bash
-# Planned shape
-buttons create tail-logs --cli 'openclaw tail --service api --env production'
-buttons create git-status --cli 'git status --short'
+buttons create tail-logs --code 'openclaw tail --service api --env production'
+buttons create git-status --code 'git status --short'
 ```
 
-Under the hood, a CLI button is a shell code button whose `main.sh` is the command you passed. The preset exists so agents can recognize the pattern — "I just want to run this command" — without thinking about runtimes.
+`--code` writes the command straight into the button's `main.sh` and skips the placeholder scaffold. `--runtime` defaults to `shell`, so you don't pass it for a CLI command (it's there for `python` / `node` bodies). Press it like any other button:
 
-## Today
+```bash
+buttons press git-status
+```
 
-You can already wrap any CLI command with `--code`:
+## Without `--code`
+
+Run `buttons create <name>` with no shortcut flags and it scaffolds a shell button with a placeholder `main.sh` you then edit:
+
+```bash
+buttons create deploy-check
+# edit .buttons/buttons/deploy-check/main.sh
+```
+
+To start from an existing script file instead of inline code, use `-f, --file`:
+
+```bash
+buttons create deploy-check --file ./scripts/deploy-check.sh
+```
+
+## Adding args
+
+Declare typed args with `--arg name:type:required|optional` (repeatable). Each is injected into the press as `$BUTTONS_ARG_<NAME>`:
 
 ```bash
 buttons create tail-logs \
-  --code 'openclaw tail --service api --env production' \
-  --runtime shell
+  --code 'openclaw tail --service "$BUTTONS_ARG_SERVICE" --env "$BUTTONS_ARG_ENV"' \
+  --arg service:string:required \
+  --arg env:enum:required:staging|production
+
+buttons press tail-logs --arg service=api --arg env=production
 ```
 
-See [Code buttons](/buttons/code) for the full flag set.
+Add `-d, --description` for what shows in `buttons list`, and `--timeout <secs>` to override the default press timeout.
 
-## What's changing
-
-- `--cli '<command>'` flag on `buttons create`
-- Runtime value `cli` in `button.json` (still executes via `/bin/sh`)
-- Detail view and `list` surface CLI buttons with a dedicated label
+See [Code buttons](/buttons/code) for the full `buttons create` flag set (runtimes, HTTP buttons, batteries, and more).

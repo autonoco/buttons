@@ -3,7 +3,9 @@ title: "Template encoding"
 description: "How {{arg}} values are encoded to prevent injection attacks."
 ---
 
-When an HTTP button is pressed, every `{{name}}` placeholder is replaced with the corresponding argument value. The encoding applied to that value depends on where in the request the placeholder appears.
+When an HTTP button is pressed, every `{{name}}` placeholder in the **URL** and the **request body** is replaced with the corresponding argument value. The encoding applied to that value depends on where in the request the placeholder appears.
+
+Only the URL (`SubstituteURL`) and body (`SubstituteBody`) are templated. **Header values are not** — see [Header values](#header-values) below.
 
 This page documents the encoding rules and shows what each one prevents.
 
@@ -11,11 +13,24 @@ This page documents the encoding rules and shows what each one prevents.
 
 | Location | Encoding | Go function |
 |---|---|---|
-| URL path segment (before `?`) | Percent-encode all characters not safe in a path | `url.PathEscape` |
-| URL query parameter value (after `?`) | Percent-encode all characters not safe in a query | `url.QueryEscape` |
-| JSON body (`Content-Type: application/json`) | Escape `"`, `\`, and control characters | `json.Marshal` string encoding |
-| Form body (`application/x-www-form-urlencoded`) | Same as query parameter | `url.QueryEscape` |
-| Header value | None — passed raw | — |
+| URL scheme or host | **Not substitutable** — `{{arg}}` here is rejected when the button is created | — |
+| URL path segment (between the host and `?`/`#`) | Percent-encode all characters not safe in a path | `url.PathEscape` |
+| URL query (after `?`) | Percent-encode all characters not safe in a query | `url.QueryEscape` |
+| URL fragment (after `#`) | Percent-encode (same as path) | `url.PathEscape` |
+| JSON body (`application/json`, `text/json`, or no `Content-Type`) | Escape `"`, `\`, and control characters | `json.Marshal` string encoding |
+| Form body (`application/x-www-form-urlencoded`) | Same as query | `url.QueryEscape` |
+| Any other body `Content-Type` | None — substituted raw | — |
+| Header value | Not substituted at all — sent verbatim | — |
+
+The URL is split into a **locked scheme + host prefix** and a substitutable path/query/fragment suffix. The split happens on the first `://`, then the first `?` and `#`. The `Content-Type` lookup for the body is case-insensitive and ignores any `; charset=…` suffix.
+
+## Scheme and host are locked
+
+You cannot put a `{{arg}}` in the scheme or host of an HTTP button's URL. The button service derives an `allowed_host` from the literal scheme + authority **when the button is created**, and rejects a URL whose scheme or host contains a placeholder. Placeholders are only ever expanded in the path, query, and fragment.
+
+This is what stops a `{{arg}}` value sourced from an attacker (for example a value forwarded from a webhook body) from redirecting the request to a different host. If a hand-edited `button.json` somehow smuggles a placeholder into the scheme/host, the substitution step leaves it untouched and dispatch fails with a `VALIDATION_ERROR` rather than making the request.
+
+See [HTTP API buttons](/buttons/http-api) for the host-locking model in full.
 
 ## Attack scenario 1: URL query injection
 
@@ -93,22 +108,20 @@ The injected value breaks out of the string and introduces a duplicate key. Depe
 {"username": "\",\"role\":\"admin", "role": "viewer"}
 ```
 
-The quotes and commas are escaped. The server receives the attack string as a literal username value.
+The quotes and commas are escaped. The server receives the attack string as a literal username value. The body is escaped with `json.Marshal` and the outer quotes stripped, so the template's own quotes stay in place.
 
 ## Header values
 
-Header values are substituted without encoding. This is correct for tokens and API keys where encoding would break the value (e.g. a base64-encoded credential that contains `+` and `=`).
+Header values are **not** templated. `{{arg}}` placeholders inside a header value are not expanded — the header is sent exactly as stored in the button. A credential such as a token or API key is therefore set as a literal, static header value when the button is created, which is correct for values that encoding would break (e.g. a base64 credential containing `+` and `=`).
 
-<Warning>
-If a header value is user-controlled and the header has a structured format (e.g. a custom header that a downstream service parses as key=value pairs), you are responsible for validating the value before it reaches the button.
-</Warning>
+Because header values are static and never carry an argument, there is no per-press injection vector through them — but you are responsible for the value you store. Treat anything you put in a header as a committed part of the button spec.
 
 ## Raw body types
 
-For bodies with a `Content-Type` other than `application/json` or `application/x-www-form-urlencoded`, substitution is raw — no encoding is applied. Use this only when you fully control the body format.
+For bodies with a `Content-Type` other than `application/json` / `text/json` (or no `Content-Type` at all, which is treated as JSON) and `application/x-www-form-urlencoded`, substitution is raw — no encoding is applied. Use this only when you fully control the body format.
 
 ## Related
 
 - [URL and body templates](/concepts/templates) — how templates work at a conceptual level
-- [HTTP API buttons](/buttons/http-api) — full flag reference
+- [HTTP API buttons](/buttons/http-api) — full flag reference and host-locking
 - [Security overview](/security/overview) — threat model and assumptions

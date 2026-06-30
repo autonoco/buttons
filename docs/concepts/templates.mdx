@@ -3,7 +3,11 @@ title: "URL and body templates"
 description: "How {{arg}} placeholders work in HTTP buttons with context-aware encoding."
 ---
 
-HTTP buttons use `{{name}}` placeholders in the URL, headers, and request body. When you press the button, each placeholder is replaced with the corresponding argument value. The substitution is context-aware: the encoding applied depends on where in the request the placeholder appears.
+HTTP buttons use `{{name}}` placeholders in the URL and request body. When you press the button, each placeholder is replaced with the corresponding argument value. The substitution is context-aware: the encoding applied depends on where in the request the placeholder appears.
+
+<Note>
+Placeholders are only allowed in the **path, query, and fragment** of the URL — never in the scheme or host. A host- or scheme-templated URL is rejected when the button is created, because letting an argument choose the target host would defeat host-locking. The scheme+host prefix is therefore never substituted at press time.
+</Note>
 
 ## How substitution works
 
@@ -11,11 +15,14 @@ At press time, Buttons walks the URL and body and replaces every `{{name}}` with
 
 | Location | Encoding |
 |---|---|
-| URL path segment (before `?`) | `url.PathEscape` |
+| URL path segment (after the host, before `?`) | `url.PathEscape` |
 | URL query parameter (after `?`) | `url.QueryEscape` |
-| JSON body (`Content-Type: application/json`) | JSON string escape (`\"`, `\\`, control chars) |
+| URL fragment (after `#`) | `url.PathEscape` |
+| JSON body (`Content-Type: application/json`, `text/json`, or unset) | JSON string escape (`\"`, `\\`, control chars) |
 | Form body (`Content-Type: application/x-www-form-urlencoded`) | `url.QueryEscape` |
-| Other body types | Raw (no encoding) |
+| Any other body `Content-Type` | Raw (no encoding) |
+
+The body's `Content-Type` is matched case-insensitively, and any `; charset=...` suffix is ignored. When no `Content-Type` header is set, the body is treated as JSON.
 
 ## Examples
 
@@ -57,15 +64,15 @@ JSON string escaping turns the quotes and commas into escape sequences, preventi
 
 ## Headers
 
-Header values also support `{{arg}}` substitution but are not encoded — they are passed as-is. This is appropriate for values like bearer tokens and API keys where encoding would break the value.
+Header values are **static** — `{{arg}}` substitution is **not** applied to them. Whatever you set with `--header "Key: Value"` is sent verbatim, so a header containing `{{token}}` would be transmitted with that literal text, not an argument value. Put fixed values like bearer tokens and API keys directly in the header; only the URL and body are templated.
 
 <Note>
-If you need to pass a literal `{{` or `}}` in a URL or body, escape it as `\{{` and `\}}`.
+A `{{name}}` that doesn't match any declared argument is left in the output unchanged — there is no separate escape syntax for literal double braces. If you need a literal `{{` in a URL or body, just don't declare an argument by that name.
 </Note>
 
 ## Raw body types
 
-For bodies with a `Content-Type` other than `application/json` or `application/x-www-form-urlencoded`, Buttons inserts values without encoding. Use this only when you control the full body format and know the values are safe.
+For bodies with a `Content-Type` other than `application/json`, `text/json`, or `application/x-www-form-urlencoded`, Buttons inserts values without encoding. Use this only when you control the full body format and know the values are safe.
 
 <Warning>
 Raw substitution provides no injection protection. If the body format has its own injection risks (e.g. XML, LDAP query syntax), validate or sanitize argument values before they reach the button.

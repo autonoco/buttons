@@ -9,19 +9,19 @@ Every button has a `button.json` spec in its button folder. It is the source of 
 ~/.buttons/buttons/<name>/
   button.json
   main.sh | main.py | main.js
-  AGENT.md
+  AGENTS.md
   pressed/
 ```
 
-Project-local buttons use the same shape under `.buttons/buttons/<name>/`.
+Project-local buttons use the same shape under `.buttons/buttons/<name>/`. App buttons (created with `--app`) live under `apps/<name>/` instead — see [App buttons](#app-buttons). The agent prompt file is `AGENTS.md`; an older `AGENT.md` is still read as a fallback but never written.
 
 ## Example
 
 ```json
 {
-  "schema_version": 2,
-  "name": "deploy",
-  "description": "Deploy a tagged release",
+  "schema_version": 1,
+  "name": "release",
+  "description": "Ship a tagged release",
   "runtime": "shell",
   "args": [
     { "name": "env", "type": "enum", "required": true, "values": ["staging", "prod"] },
@@ -35,22 +35,27 @@ Project-local buttons use the same shape under `.buttons/buttons/<name>/`.
     }
   },
   "queue": {
-    "name": "deploys",
+    "name": "releases",
     "concurrency": 1
   }
 }
 ```
 
+Real files always carry `runtime`, `env`, `timeout_seconds`, and `mcp_enabled` even when empty or default; the example omits the zero-value ones for brevity.
+
 ## Core fields
 
 | Field | Meaning |
 | --- | --- |
-| `schema_version` | Button spec version. Newly created buttons use version `2`. |
+| `schema_version` | On-disk format counter. Currently `1`. Distinct from the packaging `version`. |
 | `name` | Kebab-case button name. |
 | `description` | One-line description surfaced by `buttons list`, `summary`, and the board. |
-| `runtime` | `shell`, `python`, `node`, `http`, or `prompt`. |
+| `kind` | `""`/`"button"` for a regular button (pressed); `"app"` for an app button under `apps/` (see [App buttons](#app-buttons)). |
+| `runtime` | `shell`, `python`, or `node`. HTTP buttons (created with `--url`) carry an empty runtime and are identified by `url`; prompt-only buttons (created with `--prompt`) use `prompt`. |
 | `args` | Typed press-time arguments. |
+| `env` | Static environment variables injected into every press. |
 | `timeout_seconds` | Default timeout for this button. |
+| `mcp_enabled` | When true, the button is exposed as a tool by `buttons mcp`. |
 | `created_at`, `updated_at` | UTC timestamps. |
 
 ## Code buttons
@@ -63,32 +68,54 @@ Arguments arrive as environment variables:
 BUTTONS_ARG_<NAME>
 ```
 
+Battery secrets arrive as `BUTTONS_BAT_<KEY>`.
+
 ## HTTP buttons
 
-HTTP buttons use `runtime: http`.
+HTTP buttons are created with `--url`. They have no `main.*` file and carry an empty `runtime`; the `url` field identifies them.
 
 | Field | Meaning |
 | --- | --- |
-| `url` | URL template created with `--url`. |
+| `url` | URL template created with `--url`. `{{arg}}` substitutes path/query/fragment only — never scheme or host. |
 | `method` | HTTP method. Defaults to `GET`. |
 | `headers` | Header templates. |
 | `body` | Request body template. |
 | `max_response_bytes` | Response body cap. Defaults to 10 MB for HTTP buttons. |
 | `allow_private_networks` | Allows loopback/RFC1918/link-local targets when true. |
-| `allowed_host` | Scheme/host lock derived at create time. Template args cannot redirect to a new host. |
+| `allowed_host` | Scheme/host lock derived from `url` at create time. Template args cannot redirect to a new host. A literal `"*"` opts out (requires `BUTTONS_ALLOW_ANY_HOST=1` at press). |
 
 ## Prompt buttons
 
-Prompt-only buttons use `runtime: prompt` and do not have a `main.*` file. Their instruction lives in `AGENT.md` and is returned in the `prompt` field when pressed.
+Prompt-only buttons use `runtime: prompt` and do not have a `main.*` file. Their instruction lives in `AGENTS.md` and is returned in the `prompt` field when pressed.
 
-Code and HTTP buttons can also carry `AGENT.md` instructions; in that case the command runs first and the prompt is attached to the result.
+Code and HTTP buttons can also carry `AGENTS.md` instructions; in that case the command runs first and the prompt is attached to the result.
+
+## App buttons
+
+App buttons set `kind: "app"` and live under `apps/<name>/` instead of `buttons/<name>/`. They are created by cloning a git URL or copying a local path:
+
+```bash
+buttons create my-app --app https://github.com/owner/repo
+```
+
+They have no `main.*` file. Instead they carry a `serve` block describing how the app builds and runs:
+
+| Field | Meaning |
+| --- | --- |
+| `type` | `"static"` (build, then serve the `output` dir) or `"dynamic"` (run a server on `$PORT`). |
+| `build` | Build command, e.g. `"pnpm install && pnpm build"`. |
+| `run` | Dynamic only — the long-running server command. |
+| `output` | Static only — the built directory to serve, e.g. `"dist"`. |
+| `port` | Dynamic only — local port. |
+
+`CreateApp` defaults `serve` to `{ "type": "static", "output": "dist" }`.
 
 ## Arguments
 
 Args are declared at create time:
 
 ```bash
-buttons create deploy \
+buttons create release \
   --arg env:enum:required:staging|prod \
   --arg version:string:required
 ```
@@ -130,16 +157,20 @@ Buttons sharing a queue name share the same slot pool. A `key` scopes that pool 
 
 ## Packaging fields
 
-Installed buttons can include package metadata:
+Installed buttons can include package metadata. Pinning is per-button: install stamps these fields into each installed `button.json` (there is no separate project manifest or lockfile).
 
 | Field | Meaning |
 | --- | --- |
 | `tags` | Groups used by `buttons install tag:<tag>`. |
-| `version` | Button content version. |
+| `version` | Button content version (semver). Required to `buttons publish` to a registry. |
 | `requires` | Other buttons to install with this one. |
 | `requires_batteries` | Battery keys the button needs. Values are never shipped. |
-| `source` | Install source reference. |
-| `content_hash` | Hash recorded at install time for drift/update checks. |
+| `source` | Install source reference (e.g. the registry URL or `local:<dir>`). |
+| `content_hash` | Hash recorded at install time for drift/update checks. Set by install tooling, never `create`. |
+
+## Triggers
+
+A button can carry a `triggers` array so it fires automatically on cron, file-watch, or webhook events. Triggers run under `buttons serve` and are managed with `buttons trigger add|list|rm`.
 
 ## Board metadata
 

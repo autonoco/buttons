@@ -2,110 +2,58 @@
 title: "Hook triggers"
 sidebarTitle: "Hook"
 description: "Run a button or drawer when a local event happens."
-tag: "Design proposal"
 ---
 
-A hook trigger runs when a local event happens. It is not time-based and it is not an inbound HTTP request.
+A hook trigger fires a button when something changes on the local machine. It is one of the three button trigger kinds, and the counterpart to the time-based and inbound-HTTP kinds:
 
-- `cron` means time caused the run.
-- `webhook` means a remote service posted to Buttons.
-- `hook` means the local machine, repo, app, or Buttons runtime emitted an event.
+- `cron` — time fires the run (a schedule).
+- `webhook` — a remote service POSTs to fire the run.
+- `watch` — a local file changes and fires the run. This is the shipped "hook."
 
-## Command shape
+All three live on a button's spec and run inside `buttons serve`, which hosts the trigger engine alongside the local REST API.
 
-```bash
-buttons trigger hook <target> --enable "<source>"
-```
-
-`--enable` names the event source that should cause the target to run.
-
-## File hooks
+## Watch a file
 
 ```bash
-buttons trigger hook docs-sync --enable "file:docs/**/*.md"
-buttons trigger hook downloads-ingest --enable "file:~/Downloads/**/*.pdf" --event created
+buttons trigger add docs-index --watch --path ./docs/CHANGELOG.md
 ```
 
-Useful file options:
+`--watch` selects the file-watch kind; `--path` is the single file to watch (required). When that file's size or modification time changes, the button presses.
+
+Pass args that the press should receive each time it fires:
 
 ```bash
---event created|modified|deleted|renamed|any
---ignore "node_modules/**"
---debounce 10s
---batch 30s
---include-existing false
+buttons trigger add reindex --watch --path ./data/index.json --arg mode=incremental
 ```
 
-## History hooks
+`--arg KEY=VALUE` is repeatable.
 
-Buttons can use the same file-hook machinery internally to maintain `.buttons/history.json`.
+## How watching works
 
-The internal watcher should track creates, edits, deletes, and renames for button and drawer files:
+The engine polls the file with `os.Stat` every 500 ms and compares modification time and size. It deliberately does not use fsnotify — polling survives editor rename-on-save and needs no native dependency. The first poll records a baseline and does **not** fire; only a later change triggers the press. Each firing is recorded in run history like a normal press.
 
-```text
-.buttons/buttons.json
-.buttons/buttons-lock.json
-.buttons/buttons/*/button.json
-.buttons/buttons/*/main.*
-.buttons/buttons/*/AGENT.md
-.buttons/drawers/*/drawer.json
-```
-
-Explicit commands like `buttons create`, `buttons install`, and `buttons update` should write history events directly. File hooks catch manual edits and agent edits that happen outside a Buttons command.
-
-See [History](/concepts/history) for the event shape.
-
-## Git hooks
+Watching is active only while `buttons serve` is running — the same process that serves the REST API also runs the cron/watch trigger engine in-process. Pass `--no-triggers` to serve the API without firing triggers.
 
 ```bash
-buttons trigger hook repo-index --enable "git:post-commit"
-buttons trigger hook preflight --enable "git:pre-push"
+buttons serve
 ```
 
-Planned Git events:
-
-```text
-git:pre-commit
-git:post-commit
-git:pre-push
-git:post-checkout
-git:post-merge
-```
-
-## Buttons runtime hooks
+## Manage triggers
 
 ```bash
-buttons trigger hook brain-audit --enable "button:*-sync.completed"
-buttons trigger hook notify-failure --enable "button:*.failed"
-buttons trigger hook qa-after-linkedin --enable "button:linkedin-sync.completed"
+buttons trigger list             # every trigger across all buttons
+buttons trigger list <button>    # one button's triggers
+buttons trigger rm <button> <trigger-id>
 ```
 
-Planned runtime events:
+`trigger list` shows each trigger's id; `rm` takes the button name and that id. There is no pause/resume — remove and re-add to change a trigger.
 
-```text
-button:<name>.started
-button:<name>.completed
-button:<name>.failed
-drawer:<name>.started
-drawer:<name>.completed
-drawer:<name>.failed
-```
+## Not yet shipped
 
-## Common options
+Only three trigger kinds exist today: `cron`, `watch`, and `webhook`. There is no `buttons trigger hook ... --enable "<source>"` command, no git-event hooks (`pre-commit`, `post-push`), and no button/drawer lifecycle events (`button:<name>.completed`, `*.failed`). The `--watch` trigger is the way to react to a local file change.
 
-```bash
---name <trigger-id>
---arg key=value
---filter '<CEL expression>'
---overlap skip|queue|replace
-```
+For the other shipped paths:
 
-For lifecycle control, use trigger management commands instead of overloading `--enable`:
-
-```bash
-buttons trigger pause <id>
-buttons trigger resume <id>
-buttons trigger remove <id>
-```
-
-Recommended first implementation: ship `file:` and `button:` hooks, then add `git:` after the filesystem watcher and runtime event bus are stable.
+- Time-based: `buttons trigger add <button> --cron --schedule "0 */6 * * *"`.
+- Remote callback into a button: `buttons trigger add <button> --webhook --webhook-path /hooks/x [--token …]`.
+- Remote callback into a drawer (n8n-style auth, Cloudflare tunnel): `buttons drawer <name> trigger webhook`, served by `buttons webhook listen`.
