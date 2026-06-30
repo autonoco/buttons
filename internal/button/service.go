@@ -137,6 +137,16 @@ func (s *Service) CreateApp(opts AppOpts) (*Button, error) {
 		return nil, err
 	}
 
+	// Roll back a half-created app dir on any failure below — a failed clone/copy
+	// or metadata write must not leave a partial dir that blocks a retry with
+	// ALREADY_EXISTS.
+	success := false
+	defer func() {
+		if !success {
+			_ = os.RemoveAll(dir)
+		}
+	}()
+
 	switch {
 	case opts.From == "":
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -173,6 +183,7 @@ func (s *Service) CreateApp(opts AppOpts) (*Button, error) {
 	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(appAgentsMD(name)), 0o600); err != nil {
 		return nil, err
 	}
+	success = true
 	return btn, nil
 }
 

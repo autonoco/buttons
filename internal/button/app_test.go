@@ -118,6 +118,24 @@ func TestCreateAppRejectsDuplicate(t *testing.T) {
 	}
 }
 
+func TestCreateAppRollsBackOnFailure(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	orig := gitClone
+	defer func() { gitClone = orig }()
+	gitClone = func(url, dest string) error {
+		_ = os.MkdirAll(dest, 0o700)
+		_ = os.WriteFile(filepath.Join(dest, "partial"), []byte("x"), 0o644)
+		return os.ErrInvalid // clone fails AFTER leaving a partial dir
+	}
+	if _, err := NewService().CreateApp(AppOpts{Name: "boom", From: "https://github.com/x/y"}); err == nil {
+		t.Fatal("expected clone failure")
+	}
+	if _, err := os.Stat(filepath.Join(home, "apps", "boom")); !os.IsNotExist(err) {
+		t.Fatal("partial app dir must be rolled back so a retry isn't blocked by ALREADY_EXISTS")
+	}
+}
+
 func TestIsGitURL(t *testing.T) {
 	for _, ok := range []string{"https://github.com/x/y", "http://x/y", "git@github.com:x/y.git", "x/y.git"} {
 		if !isGitURL(ok) {
