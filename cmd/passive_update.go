@@ -19,6 +19,9 @@ func maybeRunPassiveUpdate(cmd *cobra.Command) {
 	if isUpdateCommand(cmd) || passiveUpdatesDisabledByEnv() {
 		return
 	}
+	if shouldSkipPassiveUpdate() {
+		return
+	}
 	opts := updater.Options{
 		CurrentVersion: version,
 		RegistryURL:    registryURL(),
@@ -26,9 +29,6 @@ func maybeRunPassiveUpdate(cmd *cobra.Command) {
 		Writer:         io.Discard,
 	}
 	force := forcedPassiveUpdateRequired(opts)
-	if shouldSkipPassiveUpdate(force) {
-		return
-	}
 	svc, err := settings.NewServiceFromEnv()
 	if err != nil {
 		return
@@ -51,10 +51,7 @@ func maybeRunPassiveUpdate(cmd *cobra.Command) {
 	_, _ = updater.Apply(ctx, opts)
 }
 
-func shouldSkipPassiveUpdate(force bool) bool {
-	if force {
-		return false
-	}
+func shouldSkipPassiveUpdate() bool {
 	if os.Getenv("CI") != "" {
 		return true
 	}

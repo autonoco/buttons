@@ -86,3 +86,21 @@ func TestWakeHandlerAllowUnauthenticatedIsExplicit(t *testing.T) {
 		t.Fatal("expected wake handler to run update")
 	}
 }
+
+func TestWakeHandlerBoundsRequestBody(t *testing.T) {
+	handler := WakeHandler{
+		AllowUnauthenticated: true,
+		Update: func(context.Context) error {
+			t.Fatal("update should not run")
+			return nil
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/wake", strings.NewReader(`{"type":"`+strings.Repeat("x", maxWakeEventBytes)+`"}`))
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", res.Code)
+	}
+}

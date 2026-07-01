@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -24,6 +25,7 @@ type HTTPSource struct {
 	BaseURL string       // the registry base URL ($BUTTONS_REGISTRY_URL), trailing / trimmed
 	Key     string       // bearer key (the REGISTRY_KEY battery / BUTTONS_BAT_REGISTRY_KEY)
 	Client  *http.Client // nil → a 30s-timeout default
+	Context context.Context
 }
 
 // Caps on a fetched artifact — defend against a hostile or oversized registry.
@@ -41,7 +43,11 @@ func (s *HTTPSource) httpClient() *http.Client {
 }
 
 func (s *HTTPSource) get(p string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(s.BaseURL, "/")+p, nil)
+	ctx := s.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(s.BaseURL, "/")+p, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -212,10 +218,10 @@ func untarGz(data []byte) (map[string][]byte, error) {
 		if hdr.Typeflag != tar.TypeReg {
 			continue // dirs, symlinks, etc.
 		}
-		clean := path.Clean(hdr.Name)
-		if clean == "." || clean == ".." || path.IsAbs(clean) || strings.HasPrefix(clean, "../") {
+		if !safeArchivePath(hdr.Name) {
 			return nil, fmt.Errorf("unsafe path in artifact: %q", hdr.Name)
 		}
+		clean := path.Clean(hdr.Name)
 		i := strings.IndexByte(clean, '/')
 		if i < 0 {
 			continue // a bare top-level file (no wrapping button dir) — skip
@@ -223,6 +229,9 @@ func untarGz(data []byte) (map[string][]byte, error) {
 		rel := clean[i+1:]
 		if rel == "" || strings.HasPrefix(rel, "pressed/") {
 			continue // skip the wrapper itself and local run history
+		}
+		if !safeArchivePath(rel) {
+			return nil, fmt.Errorf("unsafe path in artifact: %q", hdr.Name)
 		}
 		if base := path.Base(rel); strings.HasPrefix(base, "._") || base == ".DS_Store" {
 			continue // macOS AppleDouble / Finder junk — never part of a button
@@ -241,4 +250,17 @@ func untarGz(data []byte) (map[string][]byte, error) {
 		files[rel] = buf
 	}
 	return files, nil
+}
+
+func safeArchivePath(name string) bool {
+	if name == "" || path.IsAbs(name) {
+		return false
+	}
+	for _, part := range strings.Split(name, "/") {
+		if part == ".." {
+			return false
+		}
+	}
+	clean := path.Clean(name)
+	return clean != "." && clean != ".." && !path.IsAbs(clean) && !strings.HasPrefix(clean, "../")
 }

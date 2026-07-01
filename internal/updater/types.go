@@ -30,6 +30,7 @@ type BinaryReport struct {
 	UpdateAvailable bool   `json:"update_available"`
 	HomebrewManaged bool   `json:"homebrew_managed,omitempty"`
 	Error           string `json:"error,omitempty"`
+	release         *ghRelease
 }
 
 type ButtonReport struct {

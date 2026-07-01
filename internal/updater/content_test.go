@@ -261,3 +261,44 @@ func TestApplyContentUpdateSkipsLocalEdits(t *testing.T) {
 		t.Fatalf("local edit was overwritten: %q", string(got))
 	}
 }
+
+func TestCheckContentHonorsContextDuringRegistryFetch(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	if err := manifest.Save(&manifest.Manifest{
+		SchemaVersion: manifest.SchemaVersion,
+		Dependencies:  map[string]string{"@autono/slow": "latest"},
+	}); err != nil {
+		t.Fatalf("save manifest: %v", err)
+	}
+
+	started := make(chan struct{})
+	var once sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		once.Do(func() { close(started) })
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	client := srv.Client()
+	client.Timeout = time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	reports, err := CheckContent(ctx, Options{RegistryURL: srv.URL, RegistryKey: "rk", Client: client})
+	if err != nil {
+		t.Fatalf("CheckContent: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("CheckContent took %s, want context deadline to stop registry fetch quickly", elapsed)
+	}
+	select {
+	case <-started:
+	default:
+		t.Fatal("registry was not called")
+	}
+	if len(reports) != 1 || !strings.Contains(reports[0].Error, "context") {
+		t.Fatalf("report = %+v, want context cancellation error", reports)
+	}
+}

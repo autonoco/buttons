@@ -29,6 +29,8 @@ type WakeHandler struct {
 	Options              Options
 }
 
+const maxWakeEventBytes = 64 << 10
+
 func (h WakeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -46,7 +48,7 @@ func (h WakeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var event WakeEvent
-	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxWakeEventBytes)).Decode(&event); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}

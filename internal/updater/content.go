@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
@@ -45,7 +46,7 @@ func Apply(ctx context.Context, opts Options) (*Result, error) {
 	result := &Result{Report: *report}
 
 	if report.Binary != nil && report.Binary.UpdateAvailable {
-		updated, bin := applyBinary(ctx, opts)
+		updated, bin := applyBinary(ctx, opts, *report.Binary)
 		if updated {
 			bin.UpdateAvailable = false
 		}
@@ -99,7 +100,7 @@ func CheckContent(ctx context.Context, opts Options) ([]ButtonReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	src, err := sourceForManifest(opts)
+	src, err := sourceForManifest(ctx, opts)
 	if err != nil {
 		return reportsWithSourceError(m, err), nil
 	}
@@ -192,7 +193,7 @@ func applyContentUpdate(ctx context.Context, opts Options, rep *ButtonReport) er
 	if rep.Pinned {
 		return nil
 	}
-	src, err := sourceForManifest(opts)
+	src, err := sourceForManifest(ctx, opts)
 	if err != nil {
 		return err
 	}
@@ -236,7 +237,7 @@ func locallyModified(entry manifest.LockEntry) (bool, error) {
 	return state.InstalledHash != "" && current != state.InstalledHash, nil
 }
 
-func sourceForManifest(opts Options) (store.Source, error) {
+func sourceForManifest(ctx context.Context, opts Options) (store.Source, error) {
 	if opts.RegistryURL == "" {
 		return nil, fmt.Errorf("registry URL not set")
 	}
@@ -247,6 +248,7 @@ func sourceForManifest(opts Options) (store.Source, error) {
 		BaseURL: opts.RegistryURL,
 		Key:     opts.RegistryKey,
 		Client:  httpClient(opts),
+		Context: ctx,
 	}, nil
 }
 
@@ -254,7 +256,7 @@ func httpClient(opts Options) *http.Client {
 	if opts.Client != nil {
 		return opts.Client
 	}
-	return http.DefaultClient
+	return &http.Client{Timeout: 30 * time.Second}
 }
 
 func localNameFromPackage(name string) string {

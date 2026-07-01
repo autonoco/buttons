@@ -53,6 +53,7 @@ func checkBinary(ctx context.Context, opts Options) BinaryReport {
 		report.Error = err.Error()
 		return report
 	}
+	report.release = latest
 	report.Latest = NormalizeVersion(latest.TagName)
 	report.UpdateAvailable = report.Forced || CompareVersions(current, report.Latest) < 0
 	if report.UpdateAvailable {
@@ -63,8 +64,7 @@ func checkBinary(ctx context.Context, opts Options) BinaryReport {
 	return report
 }
 
-func applyBinary(ctx context.Context, opts Options) (bool, BinaryReport) {
-	report := checkBinary(ctx, opts)
+func applyBinary(ctx context.Context, opts Options, report BinaryReport) (bool, BinaryReport) {
 	if report.Error != "" || !report.UpdateAvailable {
 		return false, report
 	}
@@ -80,9 +80,9 @@ func applyBinary(ctx context.Context, opts Options) (bool, BinaryReport) {
 		return false, report
 	}
 
-	latest, err := fetchLatestRelease(ctx, opts)
-	if err != nil {
-		report.Error = err.Error()
+	latest := report.release
+	if latest == nil {
+		report.Error = "latest release metadata unavailable"
 		return false, report
 	}
 	archiveName := archiveNameForPlatform(report.Latest)
@@ -93,7 +93,7 @@ func applyBinary(ctx context.Context, opts Options) (bool, BinaryReport) {
 	}
 	checksumsAsset := latest.findAsset("checksums.txt")
 	if checksumsAsset == nil {
-		report.Error = fmt.Sprintf("checksums.txt not found in release %s", latest.TagName)
+		report.Error = fmt.Sprintf("checksums.txt not found in release %s", report.Latest)
 		return false, report
 	}
 
@@ -233,7 +233,7 @@ func atomicReplace(path string, newData []byte) error {
 		_ = os.Remove(tmpPath)
 		return err
 	}
-	if err := tmp.Chmod(0o755); err != nil {
+	if err := tmp.Chmod(0o700); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
 		return err
