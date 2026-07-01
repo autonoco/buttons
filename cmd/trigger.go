@@ -41,9 +41,10 @@ var triggerAddFlags struct {
 }
 
 var triggerAddCmd = &cobra.Command{
-	Use:   "add <button>",
-	Short: "Add a trigger to a button",
-	Args:  exactArgs(1),
+	Use:               "add <button>",
+	Short:             "Add a trigger to a button",
+	Args:              exactArgs(1),
+	ValidArgsFunction: completeFirstButtonName,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 
@@ -82,9 +83,10 @@ var triggerAddCmd = &cobra.Command{
 }
 
 var triggerListCmd = &cobra.Command{
-	Use:   "list [button]",
-	Short: "List triggers (all buttons, or one)",
-	Args:  cobra.MaximumNArgs(1),
+	Use:               "list [button]",
+	Short:             "List triggers (all buttons, or one)",
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: completeFirstButtonName,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		svc := button.NewService()
 		if len(args) == 1 {
@@ -124,9 +126,10 @@ var triggerListCmd = &cobra.Command{
 }
 
 var triggerRmCmd = &cobra.Command{
-	Use:   "rm <button> <trigger-id>",
-	Short: "Remove a trigger from a button",
-	Args:  exactArgs(2),
+	Use:               "rm <button> <trigger-id>",
+	Short:             "Remove a trigger from a button",
+	Args:              exactArgs(2),
+	ValidArgsFunction: completeFirstButtonName,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		svc := button.NewService()
 		if err := trigger.Remove(svc, args[0], args[1]); err != nil {

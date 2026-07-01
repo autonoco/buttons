@@ -36,8 +36,9 @@ long-running press live.
 Agent mode (--json or non-TTY) returns the full Run shape for
 non-follow calls. TTY mode prints a compact one-line-per-run table.
 The verb-first form (buttons logs NAME) still works as an alias.`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runLogs,
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: completeFirstButtonName,
+	RunE:              runLogs,
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {

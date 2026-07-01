@@ -42,8 +42,9 @@ var smashCmd = &cobra.Command{
 
 JSON mode returns an array of per-button results; every run is recorded in
 history. Exits non-zero if any button failed.`,
-	Args: cobra.MinimumNArgs(1),
-	RunE: runSmash,
+	Args:              cobra.MinimumNArgs(1),
+	ValidArgsFunction: completeButtonNames,
+	RunE:              runSmash,
 }
 
 func runSmash(_ *cobra.Command, args []string) error {

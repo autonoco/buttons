@@ -25,7 +25,8 @@ Examples:
   buttons history deploy
   buttons history deploy --last 5
   buttons history --json`,
-	Args: cobra.MaximumNArgs(1),
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: completeFirstButtonName,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var runs []history.Run
 		var err error

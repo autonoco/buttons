@@ -26,7 +26,8 @@ Examples:
   buttons delete deploy
   buttons delete deploy -F
   buttons delete deploy --json`,
-	Args: exactArgs(1),
+	Args:              exactArgs(1),
+	ValidArgsFunction: completeFirstButtonName,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := button.Slugify(args[0])
 		svc := button.NewService()

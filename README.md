@@ -32,6 +32,7 @@ brew install autonoco/tap/buttons
 ```
 
 Tap is auto-updated by goreleaser on every release. `brew upgrade buttons` to update.
+Homebrew installs shell completions automatically, so tab completion works without a separate setup step.
 
 ### Go
 

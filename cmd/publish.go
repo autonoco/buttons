@@ -32,7 +32,8 @@ the read key install uses.
 
 Examples:
   BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello`,
-	Args: exactArgs(1),
+	Args:              exactArgs(1),
+	ValidArgsFunction: completeFirstButtonName,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 

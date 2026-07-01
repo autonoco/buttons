@@ -44,7 +44,8 @@ Examples:
   buttons press weather --arg city=Miami --json
   buttons press deploy --dry-run
   buttons press slow-task --timeout 120`,
-	Args: exactArgs(1),
+	Args:              exactArgs(1),
+	ValidArgsFunction: completeFirstButtonName,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 		svc := button.NewService()

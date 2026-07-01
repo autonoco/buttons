@@ -39,15 +39,17 @@ while iterating.
 
 The .buttons/.gitignore file is a standard gitignore scoped to the
 .buttons/ subtree — git applies it natively, no extra config.`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runIgnore,
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: completeFirstButtonName,
+	RunE:              runIgnore,
 }
 
 var unignoreCmd = &cobra.Command{
-	Use:   "unignore [name]",
-	Short: "Re-include a previously-ignored button or drawer in git",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runUnignore,
+	Use:               "unignore [name]",
+	Short:             "Re-include a previously-ignored button or drawer in git",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeFirstButtonName,
+	RunE:              runUnignore,
 }
 
 func init() {
