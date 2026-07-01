@@ -57,10 +57,10 @@ func TestInstallByNameWithDeps(t *testing.T) {
 		t.Fatalf("want [alpha beta] (dep pulled), got %v", res.Installed)
 	}
 
-	// alpha is stamped with source/version/content_hash
+	// alpha is stamped with source/source_name/version/content_hash
 	a := installedSpec(t, home, "alpha")
-	if a.Source != "local:test" || a.Version != "1.0.0" || a.ContentHash == "" {
-		t.Fatalf("alpha not stamped: source=%q version=%q hash=%q", a.Source, a.Version, a.ContentHash)
+	if a.Source != "local:test" || a.SourceName != "alpha" || a.Version != "1.0.0" || a.ContentHash == "" {
+		t.Fatalf("alpha not stamped: source=%q source_name=%q version=%q hash=%q", a.Source, a.SourceName, a.Version, a.ContentHash)
 	}
 	// dep beta installed too
 	if b := installedSpec(t, home, "beta"); b.Version != "2.0.0" {

@@ -86,6 +86,7 @@ func install(src Source, name, version, sourceRef string) (*button.Button, error
 		return nil, fmt.Errorf("button %q: invalid button.json: %w", name, err)
 	}
 	spec.Source = sourceRef
+	spec.SourceName = name
 	spec.Version = bundle.Version
 	spec.ContentHash = bundle.SHA256
 	stamped, err := json.MarshalIndent(&spec, "", "  ")
@@ -123,6 +124,9 @@ func install(src Source, name, version, sourceRef string) (*button.Button, error
 		if err := os.WriteFile(dst, data, mode); err != nil {
 			return nil, fmt.Errorf("write %s: %w", rel, err)
 		}
+	}
+	if err := writeInstallState(dir, spec.ContentHash); err != nil {
+		return nil, fmt.Errorf("write install state: %w", err)
 	}
 	return &spec, nil
 }

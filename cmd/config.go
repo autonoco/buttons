@@ -25,6 +25,8 @@ Known keys:
                     an explicit --timeout flag (fallback: 300)
   theme             board TUI theme: default | paper | phosphor | amber
                     (fallback: default — adapts to terminal background)
+  auto-update       true | false; passive update checks before CLI commands
+                    (fallback: true)
 
 Running ` + "`buttons config`" + ` with no subcommand prints the current values.
 
@@ -35,6 +37,7 @@ Examples:
   buttons config
   buttons config set default-timeout 600
   buttons config set theme amber
+  buttons config set auto-update false
   buttons config unset theme`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return showConfig()
@@ -102,6 +105,7 @@ func showConfig() error {
 		if v, ok := st.Theme(); ok {
 			payload[settings.KeyTheme] = v
 		}
+		payload[settings.KeyAutoUpdate] = st.AutoUpdateEnabled()
 		return config.WriteJSON(payload)
 	}
 
@@ -122,6 +126,7 @@ func showConfig() error {
 	} else {
 		render(settings.KeyTheme, nil, "default (adaptive)")
 	}
+	render(settings.KeyAutoUpdate, st.AutoUpdateEnabled(), "")
 	return nil
 }
 

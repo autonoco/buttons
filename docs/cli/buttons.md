@@ -44,11 +44,12 @@ buttons [flags]
 * [buttons publish](buttons_publish.md)	 - Publish a local button to the registry (or a local source)
 * [buttons serve](buttons_serve.md)	 - Run a REST API server exposing buttons over HTTP
 * [buttons smash](buttons_smash.md)	 - Run multiple buttons in parallel
+* [buttons status](buttons_status.md)	 - Show available CLI and button updates
 * [buttons summary](buttons_summary.md)	 - Print a workspace snapshot (buttons, drawers, recent runs)
 * [buttons tail](buttons_tail.md)	 - Follow the progress JSONL of a press
 * [buttons trigger](buttons_trigger.md)	 - Manage button triggers (cron, watch, webhook)
 * [buttons unignore](buttons_unignore.md)	 - Re-include a previously-ignored button or drawer in git
-* [buttons update](buttons_update.md)	 - Update buttons to the latest version
+* [buttons update](buttons_update.md)	 - Update the CLI and installed registry buttons
 * [buttons version](buttons_version.md)	 - Print build version, commit, and date
 * [buttons webhook](buttons_webhook.md)	 - Expose a local URL via Cloudflare to receive webhook callbacks
 

@@ -73,7 +73,7 @@ func resolveInstallSource() (store.Source, string, error) {
 	if dir != "" {
 		return &store.LocalSource{Root: dir}, "local:" + dir, nil
 	}
-	if reg := strings.TrimRight(os.Getenv("BUTTONS_REGISTRY_URL"), "/"); reg != "" {
+	if reg := registryURL(); reg != "" {
 		key := registryKey()
 		if key == "" {
 			return nil, "", fmt.Errorf("registry key not set: run `buttons batteries set REGISTRY_KEY <key>` (or set $BUTTONS_BAT_REGISTRY_KEY)")
@@ -95,6 +95,10 @@ func registryKey() string {
 		}
 	}
 	return ""
+}
+
+func registryURL() string {
+	return strings.TrimRight(os.Getenv("BUTTONS_REGISTRY_URL"), "/")
 }
 
 func init() {

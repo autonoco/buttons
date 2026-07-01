@@ -5,21 +5,20 @@ description: "CLI reference for buttons update"
 
 ## buttons update
 
-Update buttons to the latest version
+Update the CLI and installed registry buttons
 
 ### Synopsis
 
-Check for and install the latest version of buttons from GitHub Releases.
+Install available updates for the buttons CLI and installed registry buttons.
 
-Downloads the correct archive for your OS and architecture, verifies
-the SHA256 checksum, and atomically replaces the running binary.
+The CLI binary is updated from GitHub Releases. Installed buttons are refreshed
+from the source stamped in each installed button.json.
 
 **Examples:**
 
 ```bash
-buttons update              # download and install the latest version
-buttons update --check      # just check, don't install
-buttons update --json       # structured output
+buttons update
+buttons update --json
 ```
 
 ```
@@ -29,8 +28,7 @@ buttons update [flags]
 ### Options
 
 ```
-      --check   check for updates without installing
-  -h, --help    help for update
+  -h, --help   help for update
 ```
 
 ### Options inherited from parent commands

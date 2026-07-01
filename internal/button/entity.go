@@ -80,6 +80,10 @@ type Button struct {
 	// source ref, e.g. "git+https://github.com/autonoco/autono-desk@v1").
 	// Empty for locally-created buttons.
 	Source string `json:"source,omitempty"`
+	// SourceName records the exact name fetched from Source, such as
+	// "@autono/hello". It can differ from Name for scoped registry buttons
+	// whose local display name is unscoped.
+	SourceName string `json:"source_name,omitempty"`
 	// ContentHash is the SHA256 of the button's content at install time —
 	// the lock-file pin used to detect drift and available updates. Set
 	// by the store, never by `create`.

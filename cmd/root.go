@@ -22,18 +22,22 @@ var noInput bool
 var errSilent = fmt.Errorf("silent error")
 
 var rootCmd = &cobra.Command{
-	Use:   "buttons",
-	Short: "Deterministic workflow engine for agents",
-	Long:  "Buttons gives agents deterministic escape hatches. Create, compose, and execute self-contained actions with clear inputs, outputs, and status.",
-	SilenceErrors:         true,
-	SilenceUsage:          true,
-	DisableFlagParsing:    false,
-	TraverseChildren:      true,
+	Use:                "buttons",
+	Short:              "Deterministic workflow engine for agents",
+	Long:               "Buttons gives agents deterministic escape hatches. Create, compose, and execute self-contained actions with clear inputs, outputs, and status.",
+	SilenceErrors:      true,
+	SilenceUsage:       true,
+	DisableFlagParsing: false,
+	TraverseChildren:   true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if !jsonOutput {
 			jsonOutput = config.IsNonTTY()
 		}
-		return config.EnsureDataDir()
+		if err := config.EnsureDataDir(); err != nil {
+			return err
+		}
+		maybeRunPassiveUpdate(cmd)
+		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// NAME-first verb form matching `buttons drawer NAME add/...`
@@ -71,7 +75,7 @@ func Execute() {
 		switch os.Args[1] {
 		case "drawer", "create", "press", "list", "delete", "rm", "remove",
 			"batteries", "board", "config", "history", "init", "logs",
-			"smash", "store", "summary", "tail", "update", "version":
+			"smash", "status", "store", "summary", "tail", "update", "version":
 			// Already a subcommand; don't rewrite.
 		default:
 			rewritten := make([]string, 0, len(os.Args))

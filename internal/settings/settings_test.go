@@ -70,6 +70,60 @@ func TestService_Set_Theme(t *testing.T) {
 	}
 }
 
+func TestService_AutoUpdateDefaultsOn(t *testing.T) {
+	svc := NewService(t.TempDir())
+	st, err := svc.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.AutoUpdateEnabled() {
+		t.Fatal("auto-update should default on")
+	}
+}
+
+func TestService_SetAutoUpdate(t *testing.T) {
+	svc := NewService(t.TempDir())
+	if err := svc.Set(KeyAutoUpdate, "false"); err != nil {
+		t.Fatalf("set false: %v", err)
+	}
+	st, err := svc.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.AutoUpdateEnabled() {
+		t.Fatal("auto-update should be disabled")
+	}
+
+	if err := svc.Set(KeyAutoUpdate, "true"); err != nil {
+		t.Fatalf("set true: %v", err)
+	}
+	st, err = svc.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.AutoUpdateEnabled() {
+		t.Fatal("auto-update should be enabled")
+	}
+
+	if err := svc.Set(KeyAutoUpdate, "maybe"); err == nil {
+		t.Fatal("invalid bool should fail")
+	}
+}
+
+func TestService_LastUpdateCheckUnix(t *testing.T) {
+	svc := NewService(t.TempDir())
+	if err := svc.SetLastUpdateCheckUnix(1234); err != nil {
+		t.Fatalf("set last check: %v", err)
+	}
+	st, err := svc.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := st.LastUpdateCheckUnixOrZero(); got != 1234 {
+		t.Fatalf("last check = %d, want 1234", got)
+	}
+}
+
 func TestService_Unset_Theme(t *testing.T) {
 	svc := NewService(t.TempDir())
 	if err := svc.Set(KeyTheme, "phosphor"); err != nil {
