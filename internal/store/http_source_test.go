@@ -84,7 +84,7 @@ func TestHTTPSourceIndexAndFetch(t *testing.T) {
 		"AGENTS.md":   "# hello\n",
 	}
 	tb := makeTarball(t, "hello", files)
-	entries := []indexEntry{{Name: "@autono/hello", Kind: "button", Version: "0.1.0", SHA256: sha(tb)}}
+	entries := []indexEntry{{Name: "@autono/hello", Kind: "button", Version: "1", SHA256: sha(tb)}}
 	srv := registryServer(t, key, entries, map[string][]byte{"@autono/hello": tb})
 	defer srv.Close()
 
@@ -94,7 +94,7 @@ func TestHTTPSourceIndexAndFetch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Index: %v", err)
 	}
-	if len(refs) != 1 || refs[0].Name != "@autono/hello" || refs[0].Version != "0.1.0" {
+	if len(refs) != 1 || refs[0].Name != "@autono/hello" || refs[0].Version != "1" {
 		t.Fatalf("unexpected refs: %+v", refs)
 	}
 
@@ -103,8 +103,8 @@ func TestHTTPSourceIndexAndFetch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if b.Version != "0.1.0" {
-		t.Errorf("version = %q, want 0.1.0", b.Version)
+	if b.Version != "1" {
+		t.Errorf("version = %q, want 1", b.Version)
 	}
 	if got := string(b.Files["main.sh"]); got != "echo hi\n" {
 		t.Errorf("main.sh = %q", got)
@@ -143,7 +143,7 @@ func TestHTTPSourceRejectsHashMismatch(t *testing.T) {
 	defer srv.Close()
 
 	src := &HTTPSource{BaseURL: srv.URL, Key: key}
-	_, err := src.Fetch("x", "1.0.0") // pinned version → goes straight to download
+	_, err := src.Fetch("x", "1") // pinned version → goes straight to download
 	if err == nil || !strings.Contains(err.Error(), "content hash mismatch") {
 		t.Fatalf("expected content hash mismatch, got %v", err)
 	}
@@ -170,7 +170,7 @@ func TestHTTPSourceUsesContextForRequests(t *testing.T) {
 	cancel()
 
 	src := &HTTPSource{BaseURL: srv.URL, Client: srv.Client(), Context: ctx}
-	_, err := src.Fetch("@autono/hello", "1.0.0")
+	_, err := src.Fetch("@autono/hello", "1")
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Fetch error = %v, want context canceled", err)
 	}
@@ -199,11 +199,11 @@ func TestHTTPSourceSkipsMacJunk(t *testing.T) {
 		".DS_Store":     "finder-junk",
 	}
 	tb := makeTarball(t, "hello", files)
-	entries := []indexEntry{{Name: "@autono/hello", Version: "0.1.0", SHA256: sha(tb)}}
+	entries := []indexEntry{{Name: "@autono/hello", Version: "1", SHA256: sha(tb)}}
 	srv := registryServer(t, key, entries, map[string][]byte{"@autono/hello": tb})
 	defer srv.Close()
 
-	b, err := (&HTTPSource{BaseURL: srv.URL, Key: key}).Fetch("@autono/hello", "0.1.0")
+	b, err := (&HTTPSource{BaseURL: srv.URL, Key: key}).Fetch("@autono/hello", "1")
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}

@@ -12,6 +12,7 @@ func TestCompareVersions(t *testing.T) {
 		{"1.2.3", "1.2.4", -1},
 		{"1.10.0", "1.9.9", 1},
 		{"1.2", "1.2.0", 0},
+		{"1", "2", -1},
 		{"dev", "v1.0.0", 1},
 	}
 	for _, c := range cases {

@@ -19,7 +19,7 @@ an exact immutable version.
 
 ```bash
 buttons add @your-desk/hello
-buttons add @your-desk/hello@1.2.3
+buttons add @your-desk/hello@1
 ```
 
 ```

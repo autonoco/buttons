@@ -12,7 +12,7 @@ func TestLockfileSaveLoad(t *testing.T) {
 		"@autono/hello": {
 			Kind:          "button",
 			Requested:     "latest",
-			Version:       "1.2.3",
+			Version:       "1",
 			ContentHash:   "sha256:abc",
 			InstalledName: "hello",
 			ResolvedAt:    "2026-07-01T12:00:00Z",
@@ -26,7 +26,7 @@ func TestLockfileSaveLoad(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 	entry := got.Dependencies["@autono/hello"]
-	if entry.Version != "1.2.3" || entry.Requested != "latest" || entry.InstalledName != "hello" {
+	if entry.Version != "1" || entry.Requested != "latest" || entry.InstalledName != "hello" {
 		t.Fatalf("loaded entry = %+v", entry)
 	}
 	info, err := os.Stat(path)
@@ -42,7 +42,7 @@ func TestLockfileValidation(t *testing.T) {
 	valid := LockEntry{
 		Kind:          "button",
 		Requested:     "latest",
-		Version:       "1.2.3",
+		Version:       "1",
 		ContentHash:   "sha256:abc",
 		InstalledName: "hello",
 		ResolvedAt:    "2026-07-01T12:00:00Z",

@@ -167,13 +167,13 @@ func installFromRegistry(t *testing.T, home, url, key string, deps map[string]st
 func TestApplyContentUpdateFromManifest(t *testing.T) {
 	home := t.TempDir()
 	reg := newTestRegistry("rk")
-	reg.addButton(t, "@autono/hello", "hello", "1.0.0", "#!/bin/sh\necho v1\n")
+	reg.addButton(t, "@autono/hello", "hello", "1", "#!/bin/sh\necho v1\n")
 	srv := httptest.NewServer(reg.handler())
 	defer srv.Close()
 
 	installFromRegistry(t, home, srv.URL, "rk", map[string]string{"@autono/hello": "latest"})
 
-	reg.addButton(t, "@autono/hello", "hello", "1.1.0", "#!/bin/sh\necho v2\n")
+	reg.addButton(t, "@autono/hello", "hello", "2", "#!/bin/sh\necho v2\n")
 	report, err := Check(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
 	if err != nil {
 		t.Fatalf("check: %v", err)
@@ -189,27 +189,27 @@ func TestApplyContentUpdateFromManifest(t *testing.T) {
 	if len(result.UpdatedButtons) != 1 || result.UpdatedButtons[0] != "hello" {
 		t.Fatalf("updated buttons = %v, want [hello]", result.UpdatedButtons)
 	}
-	if got := readInstalledButton(t, home, "hello"); got.Version != "1.1.0" {
-		t.Fatalf("installed version = %q, want 1.1.0", got.Version)
+	if got := readInstalledButton(t, home, "hello"); got.Version != "2" {
+		t.Fatalf("installed version = %q, want 2", got.Version)
 	}
 	lock, err := manifest.LoadLockfile()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := lock.Dependencies["@autono/hello"].Version; got != "1.1.0" {
-		t.Fatalf("lock version = %q, want 1.1.0", got)
+	if got := lock.Dependencies["@autono/hello"].Version; got != "2" {
+		t.Fatalf("lock version = %q, want 2", got)
 	}
 }
 
 func TestPinnedContentDoesNotUpdate(t *testing.T) {
 	home := t.TempDir()
 	reg := newTestRegistry("rk")
-	reg.addButton(t, "@autono/hello", "hello", "1.0.0", "#!/bin/sh\necho v1\n")
+	reg.addButton(t, "@autono/hello", "hello", "1", "#!/bin/sh\necho v1\n")
 	srv := httptest.NewServer(reg.handler())
 	defer srv.Close()
 
-	installFromRegistry(t, home, srv.URL, "rk", map[string]string{"@autono/hello": "1.0.0"})
-	reg.addButton(t, "@autono/hello", "hello", "1.1.0", "#!/bin/sh\necho v2\n")
+	installFromRegistry(t, home, srv.URL, "rk", map[string]string{"@autono/hello": "1"})
+	reg.addButton(t, "@autono/hello", "hello", "2", "#!/bin/sh\necho v2\n")
 
 	report, err := Check(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
 	if err != nil {
@@ -225,15 +225,15 @@ func TestPinnedContentDoesNotUpdate(t *testing.T) {
 	if len(result.UpdatedButtons) != 0 {
 		t.Fatalf("updated pinned buttons = %v, want none", result.UpdatedButtons)
 	}
-	if got := readInstalledButton(t, home, "hello"); got.Version != "1.0.0" {
-		t.Fatalf("pinned installed version = %q, want 1.0.0", got.Version)
+	if got := readInstalledButton(t, home, "hello"); got.Version != "1" {
+		t.Fatalf("pinned installed version = %q, want 1", got.Version)
 	}
 }
 
 func TestApplyContentUpdateSkipsLocalEdits(t *testing.T) {
 	home := t.TempDir()
 	reg := newTestRegistry("rk")
-	reg.addButton(t, "@autono/hello", "hello", "1.0.0", "#!/bin/sh\necho v1\n")
+	reg.addButton(t, "@autono/hello", "hello", "1", "#!/bin/sh\necho v1\n")
 	srv := httptest.NewServer(reg.handler())
 	defer srv.Close()
 
@@ -241,7 +241,7 @@ func TestApplyContentUpdateSkipsLocalEdits(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, "buttons", "hello", "main.sh"), []byte("#!/bin/sh\necho local\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	reg.addButton(t, "@autono/hello", "hello", "1.1.0", "#!/bin/sh\necho v2\n")
+	reg.addButton(t, "@autono/hello", "hello", "2", "#!/bin/sh\necho v2\n")
 
 	result, err := Apply(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
 	if err != nil {

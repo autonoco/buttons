@@ -96,7 +96,7 @@ Registry dependencies are tracked at the project root:
 
 When you install with `buttons add @desk/name` or `buttons install`, the runnable copy is written into `buttons/<name>/`, and the dependency resolution is written to the lockfile. Dependencies declared in `button.json` `requires` are installed transitively and recorded in the lockfile too.
 
-To share authored local buttons with a team, commit their folders under `buttons/` and `drawers/`. To share registry dependencies with a team, commit `buttons.json` and `buttons-lock.json` so teammates install the same resolved versions. To push a button to a registry, use `buttons publish @desk/<name>`; publish needs a scoped `@desk/name` and a `version` in `button.json`, and registry versions are immutable.
+To share authored local buttons with a team, commit their folders under `buttons/` and `drawers/`. To share registry dependencies with a team, commit `buttons.json` and `buttons-lock.json` so teammates install the same resolved versions. To push a button to a registry, use `buttons publish @desk/<name>`; versions are simple numbers starting at `1`, and registry versions are immutable.
 
 ## history.json
 

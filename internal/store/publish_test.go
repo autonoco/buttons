@@ -9,6 +9,27 @@ import (
 	"github.com/autonoco/buttons/internal/button"
 )
 
+type capturePublisher struct {
+	bundle *Bundle
+}
+
+func (p *capturePublisher) Publish(b *Bundle) error {
+	p.bundle = b
+	return nil
+}
+
+type duplicateOncePublisher struct {
+	versions []string
+}
+
+func (p *duplicateOncePublisher) Publish(b *Bundle) error {
+	p.versions = append(p.versions, b.Version)
+	if len(p.versions) == 1 {
+		return &registryResponseError{statusCode: 409, code: "VERSION_EXISTS", message: "versions are immutable", what: "publish"}
+	}
+	return nil
+}
+
 // writeInstalledButton drops a local button into BUTTONS_HOME (as if created).
 func writeInstalledButton(t *testing.T, home string, b button.Button, body string) {
 	t.Helper()
@@ -66,5 +87,79 @@ func TestPublishMissingButton(t *testing.T) {
 	t.Setenv("BUTTONS_HOME", t.TempDir())
 	if _, err := Publish(&LocalSource{Root: t.TempDir()}, "ghost"); err == nil {
 		t.Fatal("publishing a missing button should error")
+	}
+}
+
+func TestPublishToRegistryStampsAutomaticVersion(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	writeInstalledButton(t, home, button.Button{SchemaVersion: 1, Name: "hello", Runtime: "shell"}, "#!/bin/sh\necho hello\n")
+
+	pub := &capturePublisher{}
+	res, err := PublishToRegistry(pub, "@autono/hello")
+	if err != nil {
+		t.Fatalf("publish to registry: %v", err)
+	}
+	if res.Name != "@autono/hello" {
+		t.Fatalf("name = %q, want @autono/hello", res.Name)
+	}
+	if res.Version != "1" {
+		t.Fatalf("version = %q, want 1", res.Version)
+	}
+	if pub.bundle == nil {
+		t.Fatal("publisher did not receive bundle")
+	}
+	if pub.bundle.Version != res.Version {
+		t.Fatalf("bundle version = %q, want %q", pub.bundle.Version, res.Version)
+	}
+
+	var bundled button.Button
+	if err := json.Unmarshal(pub.bundle.Files["button.json"], &bundled); err != nil {
+		t.Fatalf("bundled button.json: %v", err)
+	}
+	if bundled.Version != res.Version {
+		t.Fatalf("bundled button.json version = %q, want %q", bundled.Version, res.Version)
+	}
+
+	data, err := os.ReadFile(filepath.Join(home, "buttons", "hello", "button.json"))
+	if err != nil {
+		t.Fatalf("read local button.json: %v", err)
+	}
+	var local button.Button
+	if err := json.Unmarshal(data, &local); err != nil {
+		t.Fatalf("local button.json: %v", err)
+	}
+	if local.Version != res.Version {
+		t.Fatalf("local button.json version = %q, want %q", local.Version, res.Version)
+	}
+}
+
+func TestPublishToRegistryBumpsSimpleVersionOnConflict(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	writeInstalledButton(t, home, button.Button{SchemaVersion: 1, Name: "hello", Runtime: "shell", Version: "1"}, "#!/bin/sh\necho hello\n")
+
+	pub := &duplicateOncePublisher{}
+	res, err := PublishToRegistry(pub, "@autono/hello")
+	if err != nil {
+		t.Fatalf("publish to registry: %v", err)
+	}
+	if res.Version != "2" {
+		t.Fatalf("version = %q, want 2", res.Version)
+	}
+	if got, want := pub.versions, []string{"1", "2"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("published versions = %v, want %v", got, want)
+	}
+
+	data, err := os.ReadFile(filepath.Join(home, "buttons", "hello", "button.json"))
+	if err != nil {
+		t.Fatalf("read local button.json: %v", err)
+	}
+	var local button.Button
+	if err := json.Unmarshal(data, &local); err != nil {
+		t.Fatalf("local button.json: %v", err)
+	}
+	if local.Version != "2" {
+		t.Fatalf("local button.json version = %q, want 2", local.Version)
 	}
 }

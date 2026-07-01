@@ -44,7 +44,8 @@ func Publish(dst Publisher, name string) (*PublishResult, error) {
 // PublishToRegistry publishes a local button to the hosted registry under a
 // scoped identity (@desk/name). The on-disk button is found by its bare name;
 // the @desk scope is registry identity, assigned here (not stored on disk). A
-// version is required — the registry pins immutable versions.
+// publish stamps a simple integer version because the registry pins immutable
+// versions and users should not have to hand-edit release counters.
 func PublishToRegistry(dst Publisher, ref string) (*PublishResult, error) {
 	_, localName, err := splitScoped(ref)
 	if err != nil {
@@ -54,13 +55,29 @@ func PublishToRegistry(dst Publisher, ref string) (*PublishResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if bundle.Version == "" {
-		return nil, fmt.Errorf("registry publish requires a version: set \"version\" in %q's button.json", localName)
+	version := strings.TrimSpace(bundle.Version)
+	if version == "" {
+		version = button.InitialContentVersion
 	}
-	if err := dst.Publish(bundle); err != nil {
-		return nil, err
+
+	for attempts := 0; attempts < 1000; attempts++ {
+		if err := stampLocalBundleVersion(localName, bundle, version); err != nil {
+			return nil, err
+		}
+		if err := dst.Publish(bundle); err != nil {
+			if !isVersionExists(err) {
+				return nil, err
+			}
+			next, bumpErr := button.NextVersion(version)
+			if bumpErr != nil {
+				return nil, fmt.Errorf("registry version %q already exists and cannot be auto-bumped: %w", version, bumpErr)
+			}
+			version = next
+			continue
+		}
+		return &PublishResult{Name: bundle.Name, Version: bundle.Version, SHA256: bundle.SHA256, Files: len(bundle.Files)}, nil
 	}
-	return &PublishResult{Name: bundle.Name, Version: bundle.Version, SHA256: bundle.SHA256, Files: len(bundle.Files)}, nil
+	return nil, fmt.Errorf("registry publish could not find an unused version after 1000 attempts")
 }
 
 // loadLocalBundle reads a local button folder into a Bundle. localName locates
@@ -103,6 +120,36 @@ func loadLocalBundle(localName, identity string) (*Bundle, error) {
 		name = identity
 	}
 	return &Bundle{Name: name, Version: spec.Version, SHA256: hashFiles(files), Files: files}, nil
+}
+
+func stampLocalBundleVersion(localName string, bundle *Bundle, version string) error {
+	specData, ok := bundle.Files["button.json"]
+	if !ok {
+		return fmt.Errorf("button %q has no button.json", localName)
+	}
+	var spec button.Button
+	if err := json.Unmarshal(specData, &spec); err != nil {
+		return fmt.Errorf("button %q: invalid button.json: %w", localName, err)
+	}
+	spec.Version = version
+	data, err := json.MarshalIndent(&spec, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal %q button.json: %w", localName, err)
+	}
+
+	bundle.Version = version
+	bundle.Files["button.json"] = data
+	bundle.SHA256 = hashFiles(bundle.Files)
+
+	dir, err := config.ButtonDir(button.Slugify(localName))
+	if err != nil {
+		return err
+	}
+	// #nosec G306 -- button.json is user-owned metadata in the configured button dir.
+	if err := os.WriteFile(filepath.Join(dir, "button.json"), data, 0o600); err != nil {
+		return fmt.Errorf("write %q button.json: %w", localName, err)
+	}
+	return nil
 }
 
 // splitScoped parses a registry identity @desk/name into its parts, rejecting

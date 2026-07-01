@@ -18,7 +18,7 @@ func TestManifestLoadMissing(t *testing.T) {
 func TestManifestValidateDependencies(t *testing.T) {
 	m := &Manifest{SchemaVersion: 1, Dependencies: map[string]string{
 		"@autono/hello":  "latest",
-		"@autono/deploy": "1.2.3",
+		"@autono/deploy": "1",
 	}}
 	if err := m.Validate(); err != nil {
 		t.Fatalf("valid manifest rejected: %v", err)
@@ -32,6 +32,7 @@ func TestManifestValidateDependencies(t *testing.T) {
 		{"empty-scope", map[string]string{"@/hello": "latest"}},
 		{"nested", map[string]string{"@autono/a/b": "latest"}},
 		{"range-not-mvp", map[string]string{"@autono/hello": "^1.2.0"}},
+		{"dotted-version", map[string]string{"@autono/hello": "1.2.3"}},
 		{"bad-version", map[string]string{"@autono/hello": "v1.2.3"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -47,7 +48,7 @@ func TestManifestSaveLoadStable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "buttons.json")
 	m := &Manifest{SchemaVersion: 1, Dependencies: map[string]string{
 		"@autono/hello":  "latest",
-		"@autono/deploy": "1.2.3",
+		"@autono/deploy": "1",
 	}}
 	if err := SavePath(path, m); err != nil {
 		t.Fatalf("save: %v", err)
@@ -56,7 +57,7 @@ func TestManifestSaveLoadStable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if got.Dependencies["@autono/hello"] != "latest" || got.Dependencies["@autono/deploy"] != "1.2.3" {
+	if got.Dependencies["@autono/hello"] != "latest" || got.Dependencies["@autono/deploy"] != "1" {
 		t.Fatalf("loaded deps = %+v", got.Dependencies)
 	}
 	data, err := os.ReadFile(path)
@@ -82,8 +83,7 @@ func TestParsePackageSpec(t *testing.T) {
 		requested string
 	}{
 		{"@autono/hello", "@autono/hello", "latest"},
-		{"@autono/hello@1.2.3", "@autono/hello", "1.2.3"},
-		{"@autono/hello@1.2.3-beta.1", "@autono/hello", "1.2.3-beta.1"},
+		{"@autono/hello@1", "@autono/hello", "1"},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			name, requested, err := ParsePackageSpec(tc.in)
@@ -95,7 +95,7 @@ func TestParsePackageSpec(t *testing.T) {
 			}
 		})
 	}
-	for _, bad := range []string{"hello", "@autono/hello@latest", "@autono/hello@v1.2.3", "@autono"} {
+	for _, bad := range []string{"hello", "@autono/hello@latest", "@autono/hello@1.2.3", "@autono/hello@v1.2.3", "@autono"} {
 		if _, _, err := ParsePackageSpec(bad); err == nil {
 			t.Fatalf("ParsePackageSpec(%q) should fail", bad)
 		}

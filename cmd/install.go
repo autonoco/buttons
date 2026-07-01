@@ -24,7 +24,7 @@ to materialize the dependency manifest into .buttons/buttons/ and refresh
 Examples:
   buttons install
   buttons add @your-desk/hello
-  buttons add @your-desk/hello@1.2.3`,
+  buttons add @your-desk/hello@1`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return nil
