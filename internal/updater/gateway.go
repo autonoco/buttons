@@ -2,6 +2,7 @@ package updater
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -19,9 +20,13 @@ type WakeEvent struct {
 }
 
 type WakeHandler struct {
-	Token   string
-	Update  func(context.Context) error
-	Options Options
+	Token string
+	// AllowUnauthenticated must be set deliberately for local-only tests or
+	// trusted private listeners. The default is fail-closed: a wake token is
+	// required before publish-triggered updates are accepted.
+	AllowUnauthenticated bool
+	Update               func(context.Context) error
+	Options              Options
 }
 
 func (h WakeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -29,9 +34,15 @@ func (h WakeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if h.Token != "" && bearerToken(r.Header.Get("Authorization")) != h.Token {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
+	if !h.AllowUnauthenticated {
+		if h.Token == "" {
+			http.Error(w, "wake token required", http.StatusUnauthorized)
+			return
+		}
+		if !secureEqual(bearerToken(r.Header.Get("Authorization")), h.Token) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	var event WakeEvent
@@ -64,4 +75,11 @@ func bearerToken(header string) string {
 		return parts[1]
 	}
 	return ""
+}
+
+func secureEqual(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
