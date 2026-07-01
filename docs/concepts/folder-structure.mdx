@@ -13,6 +13,8 @@ Each button gets its own subdirectory with a spec file, optional code file, agen
 
 ```
 ~/.buttons/ or .buttons/
+├── buttons.json               # registry dependency manifest; committed for projects
+├── buttons-lock.json          # exact resolved versions/hashes; committed for projects
 ├── history.json              # local create/edit/install/update activity log; gitignored
 ├── .gitignore                # written by `buttons init`
 ├── buttons/
@@ -65,7 +67,7 @@ The spec file for a button. It describes the button type, arguments, runtime, an
 }
 ```
 
-See [button.json](/concepts/button-json) for every field, including HTTP host locks, queues, output schemas, the installed-package pin (`source` / `version` / `content_hash`), and required batteries.
+See [button.json](/concepts/button-json) for every field, including HTTP host locks, queues, output schemas, packaging metadata (`version`, `requires`, `requires_batteries`), and triggers.
 
 ## drawer.json
 
@@ -86,9 +88,15 @@ See [drawer.json](/concepts/drawer-json) for the full workflow schema.
 
 ## Installed buttons and pinning
 
-There is no project-level manifest or lockfile. When you install a button with `buttons install <name>` (from `$BUTTONS_REGISTRY_URL`, or from a local directory via `--source`), the pin is written **into that button's own `button.json`**: `source` (where it came from), `version`, and `content_hash` (a SHA256 over the installed files). Each installed button carries its own provenance — that per-button stamp *is* the lock. Dependencies declared in `requires` are installed transitively from the same source.
+Registry dependencies are tracked at the project root:
 
-To share buttons with a team, commit their folders under `buttons/` (and `drawers/`). Anyone who clones the repo gets the same specs, code, `AGENTS.md`, and pins. To push a button to a registry or a local source, use `buttons publish @desk/<name>` — registry publish needs a scoped `@desk/name` and a `version` in `button.json`, and pins immutable versions.
+- `.buttons/buttons.json` is desired state: scoped package names mapped to `"latest"` or an exact version.
+- `.buttons/buttons-lock.json` is resolved state: exact versions, content hashes, local installed names, and timestamps.
+- `.buttons/buttons/<name>/button.json` is the installed button's runtime/package spec.
+
+When you install with `buttons add @desk/name` or `buttons install`, the runnable copy is written into `buttons/<name>/`, and the dependency resolution is written to the lockfile. Dependencies declared in `button.json` `requires` are installed transitively and recorded in the lockfile too.
+
+To share authored local buttons with a team, commit their folders under `buttons/` and `drawers/`. To share registry dependencies with a team, commit `buttons.json` and `buttons-lock.json` so teammates install the same resolved versions. To push a button to a registry, use `buttons publish @desk/<name>`; publish needs a scoped `@desk/name` and a `version` in `button.json`, and registry versions are immutable.
 
 ## history.json
 

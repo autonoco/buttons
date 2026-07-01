@@ -4,12 +4,15 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -152,6 +155,38 @@ func TestHTTPSourceAuthFailure(t *testing.T) {
 	src := &HTTPSource{BaseURL: srv.URL, Key: "wrong-key"}
 	if _, err := src.Index(); err == nil {
 		t.Fatal("expected auth failure with wrong key")
+	}
+}
+
+func TestHTTPSourceUsesContextForRequests(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	src := &HTTPSource{BaseURL: srv.URL, Client: srv.Client(), Context: ctx}
+	_, err := src.Fetch("@autono/hello", "1.0.0")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Fetch error = %v, want context canceled", err)
+	}
+	if got := hits.Load(); got != 0 {
+		t.Fatalf("registry request count = %d, want 0", got)
+	}
+}
+
+func TestHTTPSourceRejectsTraversalEntries(t *testing.T) {
+	tb := makeTarball(t, "hello", map[string]string{
+		"button.json": `{"name":"hello"}`,
+		"../evil":     "bad",
+	})
+	_, err := untarGz(tb)
+	if err == nil || !strings.Contains(err.Error(), "unsafe path in artifact") {
+		t.Fatalf("untarGz error = %v, want unsafe path", err)
 	}
 }
 

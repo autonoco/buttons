@@ -33,8 +33,10 @@ type Settings struct {
 // zero-valued keys — we never want to apply a 0-second timeout
 // silently because someone set the key and then blanked the value.
 type Defaults struct {
-	TimeoutSeconds *int    `json:"timeout_seconds,omitempty"`
-	Theme          *string `json:"theme,omitempty"`
+	TimeoutSeconds      *int    `json:"timeout_seconds,omitempty"`
+	Theme               *string `json:"theme,omitempty"`
+	AutoUpdate          *bool   `json:"auto_update,omitempty"`
+	LastUpdateCheckUnix *int64  `json:"last_update_check_unix,omitempty"`
 }
 
 // Service is the file-backed settings store. One file, one instance.
@@ -74,6 +76,7 @@ var ErrUnknownKey = errors.New("unknown settings key")
 const (
 	KeyDefaultTimeout = "default-timeout"
 	KeyTheme          = "theme"
+	KeyAutoUpdate     = "auto-update"
 )
 
 // validThemes lists accepted theme names. Kept in settings (not tui)
@@ -150,6 +153,12 @@ func (s *Service) Set(key, value string) error {
 		}
 		v := value
 		st.Defaults.Theme = &v
+	case KeyAutoUpdate:
+		v, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("%s expects true or false, got %q", key, value)
+		}
+		st.Defaults.AutoUpdate = &v
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownKey, key)
 	}
@@ -167,6 +176,8 @@ func (s *Service) Unset(key string) error {
 		st.Defaults.TimeoutSeconds = nil
 	case KeyTheme:
 		st.Defaults.Theme = nil
+	case KeyAutoUpdate:
+		st.Defaults.AutoUpdate = nil
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownKey, key)
 	}
@@ -191,4 +202,29 @@ func (st *Settings) Theme() (string, bool) {
 		return "", false
 	}
 	return *st.Defaults.Theme, true
+}
+
+// AutoUpdateEnabled returns true unless the user explicitly disables the
+// passive update gate.
+func (st *Settings) AutoUpdateEnabled() bool {
+	if st == nil || st.Defaults.AutoUpdate == nil {
+		return true
+	}
+	return *st.Defaults.AutoUpdate
+}
+
+func (st *Settings) LastUpdateCheckUnixOrZero() int64 {
+	if st == nil || st.Defaults.LastUpdateCheckUnix == nil {
+		return 0
+	}
+	return *st.Defaults.LastUpdateCheckUnix
+}
+
+func (s *Service) SetLastUpdateCheckUnix(ts int64) error {
+	st, err := s.Load()
+	if err != nil {
+		return err
+	}
+	st.Defaults.LastUpdateCheckUnix = &ts
+	return s.Save(st)
 }

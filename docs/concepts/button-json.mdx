@@ -157,16 +157,29 @@ Buttons sharing a queue name share the same slot pool. A `key` scopes that pool 
 
 ## Packaging fields
 
-Installed buttons can include package metadata. Pinning is per-button: install stamps these fields into each installed `button.json` (there is no separate project manifest or lockfile).
+Buttons published to or installed from a registry can include package metadata. The root dependency manifest is `.buttons/buttons.json`; the exact resolved versions and hashes live in `.buttons/buttons-lock.json`. `button.json` remains the runtime/package spec for one button.
 
 | Field | Meaning |
 | --- | --- |
-| `tags` | Groups used by `buttons install tag:<tag>`. |
+| `tags` | Groups/categories exposed in registry discovery. |
 | `version` | Button content version (semver). Required to `buttons publish` to a registry. |
-| `requires` | Other buttons to install with this one. |
+| `requires` | Transitive package dependencies, keyed by scoped name and valued as `"latest"` or an exact version. |
 | `requires_batteries` | Battery keys the button needs. Values are never shipped. |
-| `source` | Install source reference (e.g. the registry URL or `local:<dir>`). |
-| `content_hash` | Hash recorded at install time for drift/update checks. Set by install tooling, never `create`. |
+
+Example package fields:
+
+```json
+{
+  "version": "1.0.0",
+  "requires": {
+    "@your-desk/base": "latest",
+    "@your-desk/deploy-lib": "2.0.1"
+  },
+  "requires_batteries": ["OPENAI_API_KEY"]
+}
+```
+
+If `@your-desk/hello` is later published as `1.1.0`, `buttons status` can report the newer version by reading `.buttons/buttons.json` and `.buttons/buttons-lock.json`. `buttons update` moves it only when the manifest requested `"latest"`.
 
 ## Triggers
 

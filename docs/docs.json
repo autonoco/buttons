@@ -137,6 +137,7 @@
               "cli/buttons_summary",
               "cli/buttons_tail",
               "cli/buttons_delete",
+              "cli/buttons_status",
               "cli/buttons_update",
               "cli/buttons_version"
             ]
@@ -169,6 +170,7 @@
             "public": true,
             "expanded": false,
             "pages": [
+              "cli/buttons_add",
               "cli/buttons_install",
               "cli/buttons_publish",
               "cli/buttons_import",

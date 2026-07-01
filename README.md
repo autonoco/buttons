@@ -62,12 +62,12 @@ Multi-arch Alpine image, ~5 MB, published to GHCR. Mount a volume to persist sta
 ## Updating
 
 ```bash
-buttons update           # download and install the latest release
-buttons update --check   # check only
+buttons status           # show available CLI/content updates
+buttons update           # install available CLI/content updates
 buttons update --json    # structured output
 ```
 
-The command downloads the latest release, verifies the SHA256, and atomically replaces the running binary. Homebrew installs are auto-detected — you'll be told to `brew upgrade buttons` instead. Docker users re-pull the image.
+`buttons update` checks GitHub Releases for the CLI and refreshes floating button dependencies from `.buttons/buttons.json` and `.buttons/buttons-lock.json`. Use `buttons status` for a read-only check. Homebrew installs are auto-detected — you'll be told to `brew upgrade buttons` instead. Docker users re-pull the image.
 
 ## Verify the installation
 
@@ -252,23 +252,56 @@ The unified `buttons trigger ...` command is the planned surface over the same d
 
 ## Registry Install Contract
 
-The intended registry layout keeps runnable buttons in `.buttons/buttons/`, desired dependencies and registries in `.buttons/buttons.json`, exact resolved versions in `.buttons/buttons-lock.json`, and local audit events in `.buttons/history.json`. Commit `buttons.json` and `buttons-lock.json` as the team install contract; keep `history.json` local.
-
-Once registry-backed install lands, a teammate who pulls the repo should be able to materialize the project buttons from the manifest and lock file:
+Registry installs use a package-manager style manifest and lockfile:
 
 ```bash
-buttons install
+buttons add @your-desk/hello        # writes .buttons/buttons.json and installs latest
+buttons add @your-desk/deploy@1.2.3 # pins an exact version
+buttons install                     # materializes .buttons/buttons.json
+buttons status                      # reports available CLI/content updates
+buttons update                      # updates floating dependencies
 ```
 
-Today, the install command still reads an explicit external source directory:
+The root manifest is committed:
+
+```json
+{
+  "schema_version": 1,
+  "dependencies": {
+    "@your-desk/hello": "latest",
+    "@your-desk/deploy": "1.2.3"
+  }
+}
+```
+
+`"latest"` floats and can move when `buttons update`, passive OTA, or a publish-triggered wake runs. Exact versions are pins and do not move unless you change the manifest with another `buttons add @desk/name@version`.
+
+`.buttons/buttons-lock.json` stores the exact resolved version, content hash, installed local name, kind, and resolution time. Installed runtime specs live in `.buttons/buttons/<name>/button.json`; they do not need `source`, `source_name`, or `content_hash` for update resolution.
+
+Install from the hosted registry:
 
 ```bash
-buttons install deploy --source ../button-source
-buttons install deploy@1.2.0 --source ../button-source
-buttons install tag:autono-cal --source ../button-source
+BUTTONS_REGISTRY_URL=https://registry.example buttons add @your-desk/hello
+BUTTONS_REGISTRY_URL=https://registry.example buttons add @your-desk/hello@1.2.0
+BUTTONS_REGISTRY_URL=https://registry.example buttons install
 ```
 
-Set `BUTTONS_SOURCE` to avoid repeating `--source`. Installed buttons record source, version, and content hash in `button.json`; required peer buttons from `requires` are installed too.
+Version flow:
+
+```bash
+# Publisher publishes immutable v1.0.0 from a button.json with "version": "1.0.0"
+BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello
+
+# Agent workspace tracks latest and installs version 1.0.0
+BUTTONS_REGISTRY_URL=https://registry.example buttons add @your-desk/hello
+
+# Publisher later changes button.json to "version": "1.1.0" and publishes again.
+# The agent workspace can see and apply the new version:
+buttons status
+buttons update
+```
+
+Required peer buttons from `button.json` `requires` are installed transitively from the registry. `requires` uses the same shape as the root manifest: scoped package names mapped to `"latest"` or an exact version.
 
 ## REST API Server
 

@@ -20,6 +20,7 @@ import (
 // Used for search and tag-collection resolution.
 type ButtonRef struct {
 	Name    string   `json:"name"`
+	Kind    string   `json:"kind,omitempty"`
 	Version string   `json:"version,omitempty"`
 	Tags    []string `json:"tags,omitempty"`
 	SHA256  string   `json:"sha256,omitempty"`
@@ -110,7 +111,7 @@ func (s *LocalSource) Index() ([]ButtonRef, error) {
 		if json.Unmarshal(data, &b) != nil {
 			continue
 		}
-		refs = append(refs, ButtonRef{Name: b.Name, Version: b.Version, Tags: b.Tags})
+		refs = append(refs, ButtonRef{Name: b.Name, Kind: "button", Version: b.Version, Tags: b.Tags})
 	}
 	return refs, nil
 }

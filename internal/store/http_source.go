@@ -4,14 +4,17 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -24,6 +27,7 @@ type HTTPSource struct {
 	BaseURL string       // the registry base URL ($BUTTONS_REGISTRY_URL), trailing / trimmed
 	Key     string       // bearer key (the REGISTRY_KEY battery / BUTTONS_BAT_REGISTRY_KEY)
 	Client  *http.Client // nil → a 30s-timeout default
+	Context context.Context
 }
 
 // Caps on a fetched artifact — defend against a hostile or oversized registry.
@@ -41,7 +45,11 @@ func (s *HTTPSource) httpClient() *http.Client {
 }
 
 func (s *HTTPSource) get(p string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(s.BaseURL, "/")+p, nil)
+	ctx := s.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(s.BaseURL, "/")+p, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +114,7 @@ func (s *HTTPSource) Index() ([]ButtonRef, error) {
 	}
 	refs := make([]ButtonRef, 0, len(entries))
 	for _, e := range entries {
-		refs = append(refs, ButtonRef{Name: e.Name, Version: e.Version, Tags: e.Tags, SHA256: e.SHA256})
+		refs = append(refs, ButtonRef{Name: e.Name, Kind: e.Kind, Version: e.Version, Tags: e.Tags, SHA256: e.SHA256})
 	}
 	return refs, nil
 }
@@ -212,8 +220,8 @@ func untarGz(data []byte) (map[string][]byte, error) {
 		if hdr.Typeflag != tar.TypeReg {
 			continue // dirs, symlinks, etc.
 		}
-		clean := path.Clean(hdr.Name)
-		if clean == "." || clean == ".." || path.IsAbs(clean) || strings.HasPrefix(clean, "../") {
+		clean, err := cleanArchivePath(hdr.Name)
+		if err != nil {
 			return nil, fmt.Errorf("unsafe path in artifact: %q", hdr.Name)
 		}
 		i := strings.IndexByte(clean, '/')
@@ -223,6 +231,10 @@ func untarGz(data []byte) (map[string][]byte, error) {
 		rel := clean[i+1:]
 		if rel == "" || strings.HasPrefix(rel, "pressed/") {
 			continue // skip the wrapper itself and local run history
+		}
+		rel, err = cleanArchivePath(rel)
+		if err != nil {
+			return nil, fmt.Errorf("unsafe path in artifact: %q", hdr.Name)
 		}
 		if base := path.Base(rel); strings.HasPrefix(base, "._") || base == ".DS_Store" {
 			continue // macOS AppleDouble / Finder junk — never part of a button
@@ -241,4 +253,27 @@ func untarGz(data []byte) (map[string][]byte, error) {
 		files[rel] = buf
 	}
 	return files, nil
+}
+
+func cleanArchivePath(name string) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("empty path")
+	}
+	for _, part := range strings.Split(name, "/") {
+		if part == ".." {
+			return "", fmt.Errorf("path traversal")
+		}
+	}
+	clean := path.Clean(name)
+	if clean == "." || !fs.ValidPath(clean) {
+		return "", fmt.Errorf("invalid path")
+	}
+	local, err := filepath.Localize(clean)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsLocal(local) {
+		return "", fmt.Errorf("non-local path")
+	}
+	return filepath.ToSlash(local), nil
 }

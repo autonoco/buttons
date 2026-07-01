@@ -79,9 +79,14 @@ type result struct {
 }
 
 func (e *testEnv) run(args ...string) result {
+	return e.runWithEnv(nil, args...)
+}
+
+func (e *testEnv) runWithEnv(extraEnv []string, args ...string) result {
 	e.t.Helper()
 	cmd := exec.Command(e.binary, args...)
 	cmd.Env = append(os.Environ(), "BUTTONS_HOME="+e.home)
+	cmd.Env = append(cmd.Env, extraEnv...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
