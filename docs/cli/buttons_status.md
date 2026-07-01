@@ -34,5 +34,5 @@ buttons status [flags]
 
 ### SEE ALSO
 
-* [buttons](buttons.md)  - Deterministic workflow engine for agents
-* [buttons update](buttons_update.md)  - Update the CLI and floating button dependencies
+* [buttons](buttons.md)	 - Deterministic workflow engine for agents
+

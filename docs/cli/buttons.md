@@ -26,8 +26,8 @@ buttons [flags]
 
 ### SEE ALSO
 
-* [buttons batteries](buttons_batteries.md)	 - Manage environment variables and secrets
 * [buttons add](buttons_add.md)	 - Add a button dependency
+* [buttons batteries](buttons_batteries.md)	 - Manage environment variables and secrets
 * [buttons board](buttons_board.md)	 - Open the button board in a new terminal window
 * [buttons config](buttons_config.md)	 - Read and write per-user settings
 * [buttons create](buttons_create.md)	 - Create a new button
@@ -53,3 +53,4 @@ buttons [flags]
 * [buttons update](buttons_update.md)	 - Update the CLI and floating button dependencies
 * [buttons version](buttons_version.md)	 - Print build version, commit, and date
 * [buttons webhook](buttons_webhook.md)	 - Expose a local URL via Cloudflare to receive webhook callbacks
+
