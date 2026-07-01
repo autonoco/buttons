@@ -23,8 +23,8 @@ The argument is one of:
   tag:<tag>         every button in the source carrying <tag>
 
 Each installed button's dependencies (its button.json "requires") are
-installed too. Source + version + content hash are recorded in each
-installed button.json for pinning and updates.
+installed too. Source + source_name + version + content hash are recorded
+in each installed button.json for pinning and updates.
 
 Source resolution, in order: --source <dir> / $BUTTONS_SOURCE (a local source),
 else $BUTTONS_REGISTRY_URL (the hosted registry, bearer-authed with the

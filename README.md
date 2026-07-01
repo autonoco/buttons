@@ -62,12 +62,12 @@ Multi-arch Alpine image, ~5 MB, published to GHCR. Mount a volume to persist sta
 ## Updating
 
 ```bash
-buttons update           # download and install the latest release
-buttons update --check   # check only
+buttons status           # show available CLI/content updates
+buttons update           # install available CLI/content updates
 buttons update --json    # structured output
 ```
 
-The command downloads the latest release, verifies the SHA256, and atomically replaces the running binary. Homebrew installs are auto-detected — you'll be told to `brew upgrade buttons` instead. Docker users re-pull the image.
+`buttons update` checks GitHub Releases for the CLI and the stamped source for installed registry buttons, verifies hashes, and applies available updates. Use `buttons status` for a read-only check. Homebrew installs are auto-detected — you'll be told to `brew upgrade buttons` instead. Docker users re-pull the image.
 
 ## Verify the installation
 
@@ -252,23 +252,49 @@ The unified `buttons trigger ...` command is the planned surface over the same d
 
 ## Registry Install Contract
 
-The intended registry layout keeps runnable buttons in `.buttons/buttons/`, desired dependencies and registries in `.buttons/buttons.json`, exact resolved versions in `.buttons/buttons-lock.json`, and local audit events in `.buttons/history.json`. Commit `buttons.json` and `buttons-lock.json` as the team install contract; keep `history.json` local.
+The shipped registry model has no project-level `.buttons/buttons.json` or lockfile yet. Runnable buttons live in `.buttons/buttons/`, and each installed button carries its own pin in `.buttons/buttons/<name>/button.json`.
 
-Once registry-backed install lands, a teammate who pulls the repo should be able to materialize the project buttons from the manifest and lock file:
+An installed registry button looks like this:
 
-```bash
-buttons install
+```json
+{
+  "schema_version": 1,
+  "name": "hello",
+  "runtime": "shell",
+  "source": "https://registry.example",
+  "source_name": "@your-desk/hello",
+  "version": "1.0.0",
+  "content_hash": "4f8c..."
+}
 ```
 
-Today, the install command still reads an explicit external source directory:
+`source` says where updates come from, `source_name` keeps the scoped registry identity, `version` is the immutable published version, and `content_hash` pins the installed content. That per-button stamp is the lock.
+
+Install from the hosted registry or a local source:
 
 ```bash
+BUTTONS_REGISTRY_URL=https://registry.example buttons install @your-desk/hello
 buttons install deploy --source ../button-source
 buttons install deploy@1.2.0 --source ../button-source
 buttons install tag:autono-cal --source ../button-source
 ```
 
-Set `BUTTONS_SOURCE` to avoid repeating `--source`. Installed buttons record source, version, and content hash in `button.json`; required peer buttons from `requires` are installed too.
+Version flow:
+
+```bash
+# Publisher publishes immutable v1.0.0 from a button.json with "version": "1.0.0"
+BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello
+
+# Agent workspace installs it; button.json is stamped with version 1.0.0
+BUTTONS_REGISTRY_URL=https://registry.example buttons install @your-desk/hello
+
+# Publisher later changes button.json to "version": "1.1.0" and publishes again.
+# The agent workspace can see and apply the new version:
+buttons status
+buttons update
+```
+
+Set `BUTTONS_SOURCE` to avoid repeating `--source` for local sources. Required peer buttons from `requires` are installed too.
 
 ## REST API Server
 

@@ -65,7 +65,7 @@ The spec file for a button. It describes the button type, arguments, runtime, an
 }
 ```
 
-See [button.json](/concepts/button-json) for every field, including HTTP host locks, queues, output schemas, the installed-package pin (`source` / `version` / `content_hash`), and required batteries.
+See [button.json](/concepts/button-json) for every field, including HTTP host locks, queues, output schemas, the installed-package pin (`source` / `source_name` / `version` / `content_hash`), and required batteries.
 
 ## drawer.json
 
@@ -86,7 +86,7 @@ See [drawer.json](/concepts/drawer-json) for the full workflow schema.
 
 ## Installed buttons and pinning
 
-There is no project-level manifest or lockfile. When you install a button with `buttons install <name>` (from `$BUTTONS_REGISTRY_URL`, or from a local directory via `--source`), the pin is written **into that button's own `button.json`**: `source` (where it came from), `version`, and `content_hash` (a SHA256 over the installed files). Each installed button carries its own provenance — that per-button stamp *is* the lock. Dependencies declared in `requires` are installed transitively from the same source.
+There is no project-level manifest or lockfile. When you install a button with `buttons install <name>` (from `$BUTTONS_REGISTRY_URL`, or from a local directory via `--source`), the pin is written **into that button's own `button.json`**: `source` (where it came from), `source_name` (the exact source identity fetched), `version`, and `content_hash` (a SHA256 over the installed files). Each installed button carries its own provenance — that per-button stamp *is* the lock. Dependencies declared in `requires` are installed transitively from the same source.
 
 To share buttons with a team, commit their folders under `buttons/` (and `drawers/`). Anyone who clones the repo gets the same specs, code, `AGENTS.md`, and pins. To push a button to a registry or a local source, use `buttons publish @desk/<name>` — registry publish needs a scoped `@desk/name` and a `version` in `button.json`, and pins immutable versions.
 

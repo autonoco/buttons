@@ -5,14 +5,14 @@ description: "How Buttons resolves, installs, pins, and publishes shared buttons
 
 A registry is a catalog of installable buttons. It answers: "What buttons are available, what versions exist, what tags do they belong to, and what content hash should I install?"
 
-The registry does not contain runnable local buttons. Runnable buttons live in `.buttons/buttons/`. Install copies a button out of a registry into that directory and stamps where it came from. There is **no project-level dependency manifest and no lockfile** — pinning is recorded **per button**, inside each installed `button.json`, as the `source`, `version`, and `content_hash` fields.
+The registry does not contain runnable local buttons. Runnable buttons live in `.buttons/buttons/`. Install copies a button out of a registry into that directory and stamps where it came from. There is **no project-level dependency manifest and no lockfile** — pinning is recorded **per button**, inside each installed `button.json`, as the `source`, `source_name`, `version`, and `content_hash` fields.
 
 ```text
 .buttons/
   history.json          # local activity log (gitignored)
   buttons/
     slack-sync/
-      button.json       # carries source / version / content_hash after install
+      button.json       # carries source / source_name / version / content_hash after install
       main.sh
       AGENTS.md
 ```
@@ -27,6 +27,33 @@ The CLI codes against a swappable `Source` (read) / `Publisher` (write) interfac
 | **Local directory** | `--source <dir>` or `$BUTTONS_SOURCE` | `install` | `publish` |
 
 The base URL is taken from `$BUTTONS_REGISTRY_URL` (trailing `/` trimmed). This repo is public, so docs never name a real host — substitute your own registry URL, or use a placeholder like `registry.example`.
+
+## Where is buttons.json?
+
+There is no `.buttons/buttons.json` in the current shipped model. There is also no `.buttons/buttons-lock.json`. That npm-style manifest/lockfile model is future lifecycle work, not the way registry install/update works today.
+
+Today the installed button is the lock. Each installed `.buttons/buttons/<name>/button.json` carries the resolved source and version:
+
+```json
+{
+  "schema_version": 1,
+  "name": "hello",
+  "runtime": "shell",
+  "source": "https://registry.example",
+  "source_name": "@your-desk/hello",
+  "version": "1.0.0",
+  "content_hash": "4f8c..."
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `source` | Where install/update should fetch from, such as `$BUTTONS_REGISTRY_URL` or `local:<dir>`. |
+| `source_name` | The exact registry/source identity that was fetched, such as `@your-desk/hello`. |
+| `version` | The immutable published version that was installed. |
+| `content_hash` | The deterministic hash of the installed button content. It is used to detect drift and update availability. |
+
+`buttons status` and `buttons update` read these fields. If `source_name` is `@your-desk/hello`, update asks the stamped `source` for the latest `@your-desk/hello`, compares the installed `version` and `content_hash`, and skips the button if local files changed since install.
 
 ## Scoped names: `@desk/name`
 
@@ -68,7 +95,7 @@ Then install:
 2. Fetch the button bundle (`button.json`, `main.*`, `AGENTS.md`, support files).
 3. Install the runnable copy into `.buttons/buttons/<name>/`.
 4. Install the dependency closure: each button's `button.json` `requires` is installed transitively from the same source (the version pin applies only to the explicitly-named root).
-5. Stamp `source`, `version`, and `content_hash` into each installed `button.json`. This per-button record **is** the pin.
+5. Stamp `source`, `source_name`, `version`, and `content_hash` into each installed `button.json`. This per-button record **is** the pin.
 6. Append an event to `.buttons/history.json`.
 
 ```bash
@@ -96,6 +123,42 @@ Publishing to the hosted registry:
 - `--kind button|drawer` sets the catalog entry kind (default `button`); a drawer is publishable as a registry entry via this flag.
 
 If neither `--source`/`$BUTTONS_SOURCE` nor `$BUTTONS_REGISTRY_URL` is set, `publish` errors with "no publish target" — there is no default public registry baked in.
+
+### Version example
+
+The publisher starts with a local button whose `button.json` contains `"version": "1.0.0"`:
+
+```bash
+BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello
+```
+
+An agent workspace installs the latest copy:
+
+```bash
+BUTTONS_REGISTRY_URL=https://registry.example buttons install @your-desk/hello
+```
+
+The installed `.buttons/buttons/hello/button.json` is stamped with:
+
+```json
+{
+  "source": "https://registry.example",
+  "source_name": "@your-desk/hello",
+  "version": "1.0.0",
+  "content_hash": "4f8c..."
+}
+```
+
+Later the publisher edits the source button, changes `button.json` to `"version": "1.1.0"`, and runs the same publish command. Re-publishing `1.0.0` is rejected because versions are immutable.
+
+The agent workspace can then check and apply the new version:
+
+```bash
+buttons status
+buttons update
+```
+
+`buttons status` reports `hello 1.0.0 -> 1.1.0`. `buttons update` fetches `@your-desk/hello@1.1.0` from the stamped `source` and rewrites the installed button if local files have not changed.
 
 ## Content-hash pinning
 
@@ -126,8 +189,9 @@ Each button folder must include `button.json`; support files are copied into the
 
 ## HTTP registry contract
 
-A hosted registry implements three routes (the Worker is the other half of the client). Errors on any route use the envelope `{ "error": { "code": "...", "message": "..." } }`.
+A hosted registry implements these routes (the Worker is the other half of the client). Errors on any route use the envelope `{ "error": { "code": "...", "message": "..." } }`.
 
+- `GET /v1/meta` — registry metadata. May include `{ "service": "buttons-registry", "min_cli_version": "..." }` so the CLI can require a minimum client version.
 - `GET /v1/index` — catalog. Returns a JSON array of entries `{ name, kind, version, tags, sha256 }`, where `sha256` is the tarball hash. **Latest = the last entry for a given name.**
 - `GET /v1/buttons/<@desk/name>/<version>/download` — fetch the gzip tarball (`application/gzip`); should set `X-Content-Sha256` so the client can verify without a prior index round-trip.
 - `POST /v1/buttons/<@desk/name>/<version>` — publish. Body is the gzip tarball; headers `Content-Type: application/gzip`, `X-Content-Sha256: <sum>` (re-verified server-side), `X-Button-Kind: button|drawer`. Versions are immutable. Success is `200` or `201`.

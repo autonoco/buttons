@@ -104,7 +104,7 @@ The fastest way to update is the built-in self-update command:
 buttons update
 ```
 
-This downloads the latest release, verifies the SHA256 checksum, and atomically replaces the running binary. Use `--check` to see if an update is available without installing.
+This checks GitHub Releases for the CLI and the stamped source for installed registry buttons, verifies hashes, and applies available updates. Use `buttons status` for a read-only check.
 
 You can also update through your original install channel:
 

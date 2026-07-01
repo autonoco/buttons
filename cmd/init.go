@@ -169,7 +169,7 @@ drawers/*/pressed/
 # Local execution state.
 idempotency/
 queues/
-# Local audit history. Commit buttons.json and buttons-lock.json instead.
+# Local audit history. Commit button and drawer folders instead.
 history.json
 `
 }

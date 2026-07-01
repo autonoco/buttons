@@ -74,7 +74,7 @@ func installWithDeps(src Source, name, version, sourceRef string, seen map[strin
 }
 
 // install fetches one button and writes it into the buttons data dir, stamping
-// source/version/content_hash into its button.json. Returns the installed spec.
+// source/source_name/version/content_hash into its button.json. Returns the installed spec.
 func install(src Source, name, version, sourceRef string) (*button.Button, error) {
 	bundle, err := src.Fetch(name, version)
 	if err != nil {

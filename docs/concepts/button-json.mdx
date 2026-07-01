@@ -166,7 +166,21 @@ Installed buttons can include package metadata. Pinning is per-button: install s
 | `requires` | Other buttons to install with this one. |
 | `requires_batteries` | Battery keys the button needs. Values are never shipped. |
 | `source` | Install source reference (e.g. the registry URL or `local:<dir>`). |
+| `source_name` | Exact name fetched from `source`, such as `@your-desk/hello`. Used by `buttons status` and `buttons update` to find newer versions. |
 | `content_hash` | Hash recorded at install time for drift/update checks. Set by install tooling, never `create`. |
+
+Example installed registry stamp:
+
+```json
+{
+  "source": "https://registry.example",
+  "source_name": "@your-desk/hello",
+  "version": "1.0.0",
+  "content_hash": "4f8c..."
+}
+```
+
+If `@your-desk/hello` is later published as `1.1.0`, `buttons status` can report the newer version and `buttons update` can fetch it from the stamped `source`.
 
 ## Triggers
 

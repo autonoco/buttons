@@ -137,6 +137,7 @@
               "cli/buttons_summary",
               "cli/buttons_tail",
               "cli/buttons_delete",
+              "cli/buttons_status",
               "cli/buttons_update",
               "cli/buttons_version"
             ]

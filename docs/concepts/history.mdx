@@ -91,7 +91,7 @@ Do not commit:
 - pressed run history (`buttons/*/pressed/`, `drawers/*/pressed/`)
 - `batteries.json`, `webhook.json`, `idempotency/`, `queues/`
 
-There is no separate dependency manifest or lockfile. An installed button is pinned **in place**: each installed `button.json` carries `source`, `version`, and `content_hash` (the SHA256 of its content at install time). Committing the button commits its pin, so a teammate gets the same version and content hash on checkout. `history.json` stays local — it is each machine's own audit trail.
+There is no separate dependency manifest or lockfile. An installed button is pinned **in place**: each installed `button.json` carries `source`, `source_name`, `version`, and `content_hash` (the SHA256 of its content at install time). Committing the button commits its pin, so a teammate gets the same version and content hash on checkout. `history.json` stays local — it is each machine's own audit trail.
 
 ## Related
 
