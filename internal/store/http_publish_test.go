@@ -98,11 +98,11 @@ func (m *mockRegistry) handler() http.Handler {
 
 func sampleBundle() (map[string][]byte, *Bundle) {
 	files := map[string][]byte{
-		"button.json": []byte(`{"schema_version":1,"name":"hello","runtime":"shell","version":"1.0.0"}`),
+		"button.json": []byte(`{"schema_version":1,"name":"hello","runtime":"shell","version":"1"}`),
 		"main.sh":     []byte("#!/bin/sh\necho hi\n"),
 		"AGENTS.md":   []byte("# hello\n"),
 	}
-	return files, &Bundle{Name: "@autono/hello", Version: "1.0.0", SHA256: hashFiles(files), Files: files}
+	return files, &Bundle{Name: "@autono/hello", Version: "1", SHA256: hashFiles(files), Files: files}
 }
 
 // TestPublishThenFetchRoundTrip is the whole point: an artifact published by
@@ -118,7 +118,7 @@ func TestPublishThenFetchRoundTrip(t *testing.T) {
 		t.Fatalf("publish: %v", err)
 	}
 
-	got, err := (&HTTPSource{BaseURL: srv.URL, Key: "rk"}).Fetch("@autono/hello", "1.0.0")
+	got, err := (&HTTPSource{BaseURL: srv.URL, Key: "rk"}).Fetch("@autono/hello", "1")
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestPublishThenFetchRoundTrip(t *testing.T) {
 	}
 	// version "" must also resolve to the just-published one via the index.
 	latest, err := (&HTTPSource{BaseURL: srv.URL, Key: "rk"}).Fetch("@autono/hello", "")
-	if err != nil || latest.Version != "1.0.0" {
+	if err != nil || latest.Version != "1" {
 		t.Fatalf("latest resolve: ver=%q err=%v", latest.Version, err)
 	}
 }
@@ -172,7 +172,7 @@ func TestHTTPPublisherRequiresNameAndVersion(t *testing.T) {
 	if err := pub.Publish(&Bundle{Name: "@autono/hello", Files: map[string][]byte{"button.json": []byte("{}")}}); err == nil {
 		t.Error("missing version should error before any network call")
 	}
-	if err := pub.Publish(&Bundle{Version: "1.0.0", Files: map[string][]byte{"button.json": []byte("{}")}}); err == nil {
+	if err := pub.Publish(&Bundle{Version: "1", Files: map[string][]byte{"button.json": []byte("{}")}}); err == nil {
 		t.Error("missing name should error before any network call")
 	}
 }

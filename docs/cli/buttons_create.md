@@ -15,6 +15,10 @@ By default, 'buttons create `<name>`' scaffolds a shell button with a
 placeholder main.sh the agent can edit, then press. Use --runtime to
 scaffold a Python or Node button instead.
 
+New buttons start with package version 1 in button.json. Registry publish uses
+that version, then auto-bumps to the next number if that immutable version
+already exists.
+
 Provide a shortcut flag to skip the placeholder: --code for a one-line
 inline script, --file to copy an existing script, --url for an HTTP
 endpoint, or --prompt for a standalone instruction.

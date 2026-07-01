@@ -332,6 +332,7 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 		SchemaVersion:        2,
 		Name:                 name,
 		Description:          opts.Description,
+		Version:              InitialContentVersion,
 		Runtime:              runtime,
 		URL:                  opts.URL,
 		Method:               method,

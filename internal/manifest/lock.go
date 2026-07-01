@@ -106,7 +106,7 @@ func (l *Lockfile) Validate() error {
 			return fmt.Errorf("%s requested: %w", name, err)
 		}
 		if entry.Version == "" || !exactVersionPattern.MatchString(entry.Version) {
-			return fmt.Errorf("%s version must be exact semver, got %q", name, entry.Version)
+			return fmt.Errorf("%s version must be an exact number, got %q", name, entry.Version)
 		}
 		if entry.Kind != "button" && entry.Kind != "drawer" {
 			return fmt.Errorf("%s kind must be button or drawer, got %q", name, entry.Kind)

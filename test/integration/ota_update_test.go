@@ -236,7 +236,7 @@ func TestUpdateRefreshesFloatingDependency(t *testing.T) {
 	publisher := newTestEnv(t)
 	agent := newTestEnv(t)
 
-	writeOTAPublishButton(t, publisher.home, "hello", "1.0.0", "#!/bin/sh\necho v1\n")
+	writeOTAPublishButton(t, publisher.home, "hello", "1", "#!/bin/sh\necho v1\n")
 	res := publisher.runWithEnv(publishEnv(srv.URL), "publish", "@autono/hello", "--json")
 	if res.ExitCode != 0 {
 		t.Fatalf("publish v1 failed: stdout=%s stderr=%s", res.Stdout, res.Stderr)
@@ -249,11 +249,11 @@ func TestUpdateRefreshesFloatingDependency(t *testing.T) {
 	if got := readManifestDependency(t, agent.home, "@autono/hello"); got != "latest" {
 		t.Fatalf("manifest dependency = %q, want latest", got)
 	}
-	if got := readInstalledVersion(t, agent.home, "hello"); got != "1.0.0" {
-		t.Fatalf("installed version = %q, want 1.0.0", got)
+	if got := readInstalledVersion(t, agent.home, "hello"); got != "1" {
+		t.Fatalf("installed version = %q, want 1", got)
 	}
-	if got := readLockVersion(t, agent.home, "@autono/hello"); got != "1.0.0" {
-		t.Fatalf("lock version = %q, want 1.0.0", got)
+	if got := readLockVersion(t, agent.home, "@autono/hello"); got != "1" {
+		t.Fatalf("lock version = %q, want 1", got)
 	}
 	events := readLifecycleEvents(t, agent.home)
 	if len(events) != 1 || events[0].Action != "add" || events[0].PackageName != "@autono/hello" || events[0].Requested != "latest" {
@@ -269,7 +269,7 @@ func TestUpdateRefreshesFloatingDependency(t *testing.T) {
 		t.Fatalf("history after install = %+v, want second action install", events)
 	}
 
-	writeOTAPublishButton(t, publisher.home, "hello", "1.1.0", "#!/bin/sh\necho v2\n")
+	writeOTAPublishButton(t, publisher.home, "hello", "1", "#!/bin/sh\necho v2\n")
 	res = publisher.runWithEnv(publishEnv(srv.URL), "publish", "@autono/hello", "--json")
 	if res.ExitCode != 0 {
 		t.Fatalf("publish v2 failed: stdout=%s stderr=%s", res.Stdout, res.Stderr)
@@ -291,11 +291,11 @@ func TestUpdateRefreshesFloatingDependency(t *testing.T) {
 	if update.ExitCode != 0 {
 		t.Fatalf("update failed: stdout=%s stderr=%s", update.Stdout, update.Stderr)
 	}
-	if got := readInstalledVersion(t, agent.home, "hello"); got != "1.1.0" {
-		t.Fatalf("updated version = %q, want 1.1.0", got)
+	if got := readInstalledVersion(t, agent.home, "hello"); got != "2" {
+		t.Fatalf("updated version = %q, want 2", got)
 	}
-	if got := readLockVersion(t, agent.home, "@autono/hello"); got != "1.1.0" {
-		t.Fatalf("updated lock version = %q, want 1.1.0", got)
+	if got := readLockVersion(t, agent.home, "@autono/hello"); got != "2" {
+		t.Fatalf("updated lock version = %q, want 2", got)
 	}
 	body, err := os.ReadFile(filepath.Join(agent.home, "buttons", "hello", "main.sh"))
 	if err != nil {
@@ -314,34 +314,34 @@ func TestUpdateDoesNotMoveExactPin(t *testing.T) {
 	publisher := newTestEnv(t)
 	agent := newTestEnv(t)
 
-	writeOTAPublishButton(t, publisher.home, "hello", "1.0.0", "#!/bin/sh\necho v1\n")
+	writeOTAPublishButton(t, publisher.home, "hello", "1", "#!/bin/sh\necho v1\n")
 	res := publisher.runWithEnv(publishEnv(srv.URL), "publish", "@autono/hello", "--json")
 	if res.ExitCode != 0 {
 		t.Fatalf("publish v1 failed: stdout=%s stderr=%s", res.Stdout, res.Stderr)
 	}
-	writeOTAPublishButton(t, publisher.home, "hello", "1.1.0", "#!/bin/sh\necho v2\n")
+	writeOTAPublishButton(t, publisher.home, "hello", "1", "#!/bin/sh\necho v2\n")
 	res = publisher.runWithEnv(publishEnv(srv.URL), "publish", "@autono/hello", "--json")
 	if res.ExitCode != 0 {
 		t.Fatalf("publish v2 failed: stdout=%s stderr=%s", res.Stdout, res.Stderr)
 	}
 
-	res = agent.runWithEnv(registryEnv(srv.URL), "add", "@autono/hello@1.0.0", "--json")
+	res = agent.runWithEnv(registryEnv(srv.URL), "add", "@autono/hello@1", "--json")
 	if res.ExitCode != 0 {
 		t.Fatalf("add exact pin failed: stdout=%s stderr=%s", res.Stdout, res.Stderr)
 	}
-	if got := readManifestDependency(t, agent.home, "@autono/hello"); got != "1.0.0" {
-		t.Fatalf("manifest dependency = %q, want 1.0.0", got)
+	if got := readManifestDependency(t, agent.home, "@autono/hello"); got != "1" {
+		t.Fatalf("manifest dependency = %q, want 1", got)
 	}
-	if got := readInstalledVersion(t, agent.home, "hello"); got != "1.0.0" {
-		t.Fatalf("installed version = %q, want 1.0.0", got)
+	if got := readInstalledVersion(t, agent.home, "hello"); got != "1" {
+		t.Fatalf("installed version = %q, want 1", got)
 	}
 
 	update := agent.runWithEnv(registryEnv(srv.URL), "update", "--json")
 	if update.ExitCode != 0 {
 		t.Fatalf("update failed: stdout=%s stderr=%s", update.Stdout, update.Stderr)
 	}
-	if got := readInstalledVersion(t, agent.home, "hello"); got != "1.0.0" {
-		t.Fatalf("pinned version moved to %q, want 1.0.0", got)
+	if got := readInstalledVersion(t, agent.home, "hello"); got != "1" {
+		t.Fatalf("pinned version moved to %q, want 1", got)
 	}
 }
 

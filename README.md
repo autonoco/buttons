@@ -256,7 +256,7 @@ Registry installs use a package-manager style manifest and lockfile:
 
 ```bash
 buttons add @your-desk/hello        # writes .buttons/buttons.json and installs latest
-buttons add @your-desk/deploy@1.2.3 # pins an exact version
+buttons add @your-desk/deploy@1     # pins an exact version
 buttons install                     # materializes .buttons/buttons.json
 buttons status                      # reports available CLI/content updates
 buttons update                      # updates floating dependencies
@@ -269,7 +269,7 @@ The root manifest is committed:
   "schema_version": 1,
   "dependencies": {
     "@your-desk/hello": "latest",
-    "@your-desk/deploy": "1.2.3"
+    "@your-desk/deploy": "1"
   }
 }
 ```
@@ -289,14 +289,18 @@ BUTTONS_REGISTRY_URL=https://registry.example buttons install
 Version flow:
 
 ```bash
-# Publisher publishes immutable v1.0.0 from a button.json with "version": "1.0.0"
+# Publisher creates and publishes immutable version 1.
+buttons create hello --code 'echo hello'
 BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello
 
-# Agent workspace tracks latest and installs version 1.0.0
+# Agent workspace tracks latest and installs that published version.
 BUTTONS_REGISTRY_URL=https://registry.example buttons add @your-desk/hello
 
-# Publisher later changes button.json to "version": "1.1.0" and publishes again.
-# The agent workspace can see and apply the new version:
+# Publisher changes the source button and publishes again. If version 1 already
+# exists, publish bumps button.json to version 2 and retries automatically.
+BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello
+
+# The agent workspace can see and apply the new version.
 buttons status
 buttons update
 ```

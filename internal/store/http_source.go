@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -76,9 +77,28 @@ func registryError(what string, resp *http.Response) error {
 		} `json:"error"`
 	}
 	if json.Unmarshal(body, &env) == nil && env.Error.Message != "" {
-		return fmt.Errorf("registry %s: %d %s (%s)", what, resp.StatusCode, env.Error.Message, env.Error.Code)
+		return &registryResponseError{what: what, statusCode: resp.StatusCode, code: env.Error.Code, message: env.Error.Message}
 	}
-	return fmt.Errorf("registry %s: %d %s", what, resp.StatusCode, strings.TrimSpace(string(body)))
+	return &registryResponseError{what: what, statusCode: resp.StatusCode, message: strings.TrimSpace(string(body))}
+}
+
+type registryResponseError struct {
+	what       string
+	statusCode int
+	code       string
+	message    string
+}
+
+func (e *registryResponseError) Error() string {
+	if e.code != "" {
+		return fmt.Sprintf("registry %s: %d %s (%s)", e.what, e.statusCode, e.message, e.code)
+	}
+	return fmt.Sprintf("registry %s: %d %s", e.what, e.statusCode, e.message)
+}
+
+func isVersionExists(err error) bool {
+	var regErr *registryResponseError
+	return errors.As(err, &regErr) && regErr.statusCode == http.StatusConflict && regErr.code == "VERSION_EXISTS"
 }
 
 // indexEntry is one row of the Worker's /v1/index (a superset of ButtonRef).

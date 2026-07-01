@@ -25,9 +25,10 @@ ship a default registry host; the caller must configure the target explicitly.
 
 A registry publish takes a scoped name (@desk/name): the on-disk button is found
 by its bare name, and @desk is its registry namespace. The registry pins
-immutable versions, so button.json must carry a "version". Auth uses the *write*
-key (REGISTRY_WRITE_KEY battery or $BUTTONS_BAT_REGISTRY_WRITE_KEY) — distinct
-from the read key install uses.
+immutable versions; publish starts at the button's current version and auto-bumps
+to the next number if that version already exists. Auth uses the *write* key
+(REGISTRY_WRITE_KEY battery or $BUTTONS_BAT_REGISTRY_WRITE_KEY) — distinct from
+the read key install uses.
 
 Examples:
   BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello`,

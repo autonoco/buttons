@@ -162,7 +162,7 @@ Buttons published to or installed from a registry can include package metadata. 
 | Field | Meaning |
 | --- | --- |
 | `tags` | Groups/categories exposed in registry discovery. |
-| `version` | Button content version (semver). Required to `buttons publish` to a registry. |
+| `version` | Button content version. New buttons start at `1`; registry publish auto-bumps to the next number when the current immutable version already exists. |
 | `requires` | Transitive package dependencies, keyed by scoped name and valued as `"latest"` or an exact version. |
 | `requires_batteries` | Battery keys the button needs. Values are never shipped. |
 
@@ -170,7 +170,7 @@ Example package fields:
 
 ```json
 {
-  "version": "1.0.0",
+  "version": "1",
   "requires": {
     "@your-desk/base": "latest",
     "@your-desk/deploy-lib": "2.0.1"
@@ -179,7 +179,7 @@ Example package fields:
 }
 ```
 
-If `@your-desk/hello` is later published as `1.1.0`, `buttons status` can report the newer version by reading `.buttons/buttons.json` and `.buttons/buttons-lock.json`. `buttons update` moves it only when the manifest requested `"latest"`.
+If `@your-desk/hello` is later published as `2`, `buttons status` can report it by reading `.buttons/buttons.json` and `.buttons/buttons-lock.json`. `buttons update` moves it only when the manifest requested `"latest"`.
 
 ## Triggers
 

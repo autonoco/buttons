@@ -30,7 +30,7 @@ Registry installs use three different files:
   "schema_version": 1,
   "dependencies": {
     "@your-desk/hello": "latest",
-    "@your-desk/deploy": "1.2.3"
+    "@your-desk/deploy": "1"
   }
 }
 ```
@@ -40,9 +40,9 @@ Dependency keys must be scoped package names in the form `@desk/name`.
 | Value | Meaning |
 |---|---|
 | `"latest"` | Floating dependency. `buttons update`, passive OTA, and publish-triggered OTA may move it to the latest published version. |
-| `"1.2.3"` | Exact pin. Install resolves that immutable version; update/status may report newer versions as informational but must not mutate it. |
+| `"1"` | Exact pin. Install resolves that immutable version; update/status may report newer versions as informational but must not mutate it. |
 
-Semver ranges and per-dependency option objects are intentionally not part of the MVP.
+Version ranges and per-dependency option objects are intentionally not part of the MVP.
 
 ## Lockfile
 
@@ -55,7 +55,7 @@ Semver ranges and per-dependency option objects are intentionally not part of th
     "@your-desk/hello": {
       "kind": "button",
       "requested": "latest",
-      "version": "1.2.3",
+      "version": "1",
       "content_hash": "4f8c...",
       "installed_name": "hello",
       "resolved_at": "2026-07-01T12:00:00Z"
@@ -74,7 +74,7 @@ Each installed button still has its own runtime spec:
 {
   "schema_version": 1,
   "name": "hello",
-  "version": "1.2.3",
+  "version": "1",
   "description": "Say hello",
   "runtime": "shell",
   "args": [
@@ -97,14 +97,14 @@ Use the registry like a package manager:
 
 ```bash
 buttons add @your-desk/hello
-buttons add @your-desk/deploy@1.2.3
+buttons add @your-desk/deploy@1
 buttons install
 buttons status
 buttons update
 ```
 
 - `buttons add @desk/name` writes `.buttons/buttons.json` with `"latest"` and installs immediately.
-- `buttons add @desk/name@1.2.3` writes an exact pin and installs that immutable version.
+- `buttons add @desk/name@1` writes an exact pin and installs that immutable version.
 - `buttons install` takes no package argument. It reads `.buttons/buttons.json` and honors `.buttons/buttons-lock.json` for repeatability.
 - `buttons status` reports available CLI and content updates.
 - `buttons update` updates the CLI and floating button dependencies only.
@@ -130,21 +130,21 @@ The registry base URL comes from `$BUTTONS_REGISTRY_URL`. This public repo does 
 BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello
 ```
 
-The on-disk button is found by its bare local name (`hello`), while `@your-desk/hello` is the registry identity. Published versions are immutable, so the source button's `button.json` must include an exact `version`.
+The on-disk button is found by its bare local name (`hello`), while `@your-desk/hello` is the registry identity. Published versions are immutable. New buttons start at version `1`; if that version already exists, publish bumps `button.json` to the next number and retries.
 
 Publishing bundles `button.json`, code files, and `AGENTS.md`. It does not upload `pressed/` run history or battery values.
 
 ## Version Example
 
-1. Publisher sets `"version": "1.0.0"` in `.buttons/buttons/hello/button.json`.
+1. Publisher runs `buttons create hello --code 'echo hello'`.
 2. Publisher runs `buttons publish @your-desk/hello`.
 3. Agent workspace runs `buttons add @your-desk/hello`.
-4. Agent lockfile resolves `@your-desk/hello` to `1.0.0`.
-5. Publisher changes the source button to `"version": "1.1.0"` and publishes again.
+4. Agent lockfile resolves `@your-desk/hello` to version `1`.
+5. Publisher changes the source button and publishes again. Publish auto-bumps to version `2` if `1` already exists.
 6. Agent workspace runs `buttons status` to see the available update.
-7. Agent workspace runs `buttons update` to move the floating dependency to `1.1.0`.
+7. Agent workspace runs `buttons update` to move the floating dependency to the new version.
 
-If the agent had run `buttons add @your-desk/hello@1.0.0`, step 7 would leave it pinned at `1.0.0`.
+If the agent had run `buttons add @your-desk/hello@1`, step 7 would leave it pinned at that exact version.
 
 ## Hardening
 

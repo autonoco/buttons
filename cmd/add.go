@@ -23,7 +23,7 @@ an exact immutable version.
 
 Examples:
   buttons add @your-desk/hello
-  buttons add @your-desk/hello@1.2.3`,
+  buttons add @your-desk/hello@1`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		res, name, requested, err := runAdd(context.Background(), args[0])

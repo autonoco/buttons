@@ -19,10 +19,10 @@ type Button struct {
 	// (e.g. "finance", "sync"). Omitted when empty so existing buttons
 	// don't grow a noisy field.
 	Tags []string `json:"tags,omitempty"`
-	// Version is the button's content release (semver), distinct from
+	// Version is the button's generated content release, distinct from
 	// SchemaVersion (the on-disk format counter). Published and installed
-	// registry buttons must carry an exact immutable version.
-	// Empty for hand-authored local buttons (treated as "unversioned").
+	// registry buttons carry an exact immutable version.
+	// Older or hand-authored local buttons may be empty (treated as unversioned).
 	Version              string            `json:"version,omitempty"`
 	Runtime              string            `json:"runtime"`
 	URL                  string            `json:"url,omitempty"`

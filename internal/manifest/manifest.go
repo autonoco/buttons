@@ -13,7 +13,7 @@ import (
 
 const SchemaVersion = 1
 
-var exactVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
+var exactVersionPattern = regexp.MustCompile(`^[0-9]+$`)
 
 type Manifest struct {
 	SchemaVersion int               `json:"schema_version"`
@@ -125,7 +125,7 @@ func ValidateRequest(requested string) error {
 	if requested == "latest" || exactVersionPattern.MatchString(requested) {
 		return nil
 	}
-	return fmt.Errorf("version must be latest or an exact semver like 1.2.3, got %q", requested)
+	return fmt.Errorf("version must be latest or an exact number like 1, got %q", requested)
 }
 
 func IsFloating(requested string) bool {
