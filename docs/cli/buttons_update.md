@@ -12,8 +12,8 @@ Update the CLI and floating button dependencies
 Install available updates for the buttons CLI and floating button dependencies.
 
 The CLI binary is updated from GitHub Releases. Button dependencies are
-refreshed from `.buttons/buttons.json` and `.buttons/buttons-lock.json`. Exact
-versions are pins; update moves only dependencies requested as `"latest"`.
+refreshed from .buttons/buttons.json and .buttons/buttons-lock.json. Exact
+versions are pins; update moves only dependencies requested as "latest".
 
 **Examples:**
 
@@ -42,5 +42,5 @@ buttons update [flags]
 
 ### SEE ALSO
 
-* [buttons](buttons.md)  - Deterministic workflow engine for agents
-* [buttons status](buttons_status.md)  - Show available CLI and button updates
+* [buttons](buttons.md)	 - Deterministic workflow engine for agents
+

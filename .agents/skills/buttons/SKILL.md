@@ -66,6 +66,14 @@ buttons [command]
 | `--no-input` | bool | disable all interactive prompts |
 | `--summary` | bool | show a read-only plan/snapshot instead of mutating |
 
+### `buttons add`
+
+Add a button dependency
+
+```
+buttons add
+```
+
 ### `buttons batteries`
 
 Manage environment variables and secrets
@@ -281,15 +289,11 @@ buttons init [flags]
 
 ### `buttons install`
 
-Install a button (or every button with a tag) from a source
+Install buttons from .buttons/buttons.json
 
 ```
-buttons install [flags]
+buttons install
 ```
-
-| Flag | Type | Description |
-|------|------|-------------|
-| `--source` | string | local source directory to install from (else $BUTTONS_REGISTRY_URL) |
 
 ### `buttons list`
 
@@ -344,7 +348,7 @@ buttons press [flags]
 
 ### `buttons publish`
 
-Publish a local button to the registry (or a local source)
+Publish a local button to the registry
 
 ```
 buttons publish [flags]
@@ -353,7 +357,6 @@ buttons publish [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `--kind` | string | registry entry kind: button | drawer |
-| `--source` | string | local source directory to publish to (else $BUTTONS_REGISTRY_URL) |
 
 ### `buttons serve`
 
@@ -384,6 +387,14 @@ buttons smash [flags]
 | `--concurrency` | int | max buttons running at once (0 = NumCPU; hard cap 50) |
 | `--on-failure` | string | stop | continue |
 | `--timeout` | int | per-button timeout override (seconds) |
+
+### `buttons status`
+
+Show available CLI and button updates
+
+```
+buttons status
+```
 
 ### `buttons summary`
 
@@ -462,15 +473,11 @@ buttons unignore
 
 ### `buttons update`
 
-Update buttons to the latest version
+Update the CLI and floating button dependencies
 
 ```
-buttons update [flags]
+buttons update
 ```
-
-| Flag | Type | Description |
-|------|------|-------------|
-| `--check` | bool | check for updates without installing |
 
 ### `buttons version`
 
