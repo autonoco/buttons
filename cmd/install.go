@@ -73,6 +73,7 @@ func runManifestInstall(ctx context.Context, refreshFloating bool) (*store.Resul
 	if err := manifest.SaveLockfile(next); err != nil {
 		return nil, err
 	}
+	recordLifecycleHistory("install", "", "", res.Installed, next)
 	return res, nil
 }
 

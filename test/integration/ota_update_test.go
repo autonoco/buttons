@@ -189,6 +189,29 @@ func readLockVersion(t *testing.T, home, name string) string {
 	return lock.Dependencies[name].Version
 }
 
+func readLifecycleEvents(t *testing.T, home string) []struct {
+	Action      string `json:"action"`
+	PackageName string `json:"package_name,omitempty"`
+	Requested   string `json:"requested,omitempty"`
+} {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(home, "history.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var log struct {
+		Events []struct {
+			Action      string `json:"action"`
+			PackageName string `json:"package_name,omitempty"`
+			Requested   string `json:"requested,omitempty"`
+		} `json:"events"`
+	}
+	if err := json.Unmarshal(data, &log); err != nil {
+		t.Fatal(err)
+	}
+	return log.Events
+}
+
 func registryEnv(url string) []string {
 	return []string{
 		"BUTTONS_REGISTRY_URL=" + url,
@@ -231,6 +254,19 @@ func TestUpdateRefreshesFloatingDependency(t *testing.T) {
 	}
 	if got := readLockVersion(t, agent.home, "@autono/hello"); got != "1.0.0" {
 		t.Fatalf("lock version = %q, want 1.0.0", got)
+	}
+	events := readLifecycleEvents(t, agent.home)
+	if len(events) != 1 || events[0].Action != "add" || events[0].PackageName != "@autono/hello" || events[0].Requested != "latest" {
+		t.Fatalf("history after add = %+v, want add @autono/hello latest", events)
+	}
+
+	res = agent.runWithEnv(registryEnv(srv.URL), "install", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("install failed: stdout=%s stderr=%s", res.Stdout, res.Stderr)
+	}
+	events = readLifecycleEvents(t, agent.home)
+	if len(events) != 2 || events[1].Action != "install" {
+		t.Fatalf("history after install = %+v, want second action install", events)
 	}
 
 	writeOTAPublishButton(t, publisher.home, "hello", "1.1.0", "#!/bin/sh\necho v2\n")

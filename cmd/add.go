@@ -89,6 +89,7 @@ func runAdd(ctx context.Context, spec string) (*store.Result, string, string, er
 	if err := manifest.SaveLockfile(next); err != nil {
 		return nil, "", "", err
 	}
+	recordLifecycleHistory("add", name, requested, res.Installed, next)
 	return res, name, requested, nil
 }
 

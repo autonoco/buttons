@@ -240,7 +240,7 @@ Use `buttons add @desk/name` to add a dependency, or `buttons install` to instal
 - [x] Create `.buttons/buttons.json` if missing.
 - [x] Update the dependency entry.
 - [x] Immediately run the same reconciliation path as `buttons install`.
-- [ ] Append history event `add`.
+- [x] Append history event `add`.
 - [x] Print a concise success message.
 
 ### Task 4: Rework `buttons install`
@@ -262,11 +262,7 @@ Use `buttons add @desk/name` to add a dependency, or `buttons install` to instal
 - [x] Verify content hash before writing installed files.
 - [x] Write/update `.buttons/buttons-lock.json`.
 - [x] Install transitive `button.json.requires` dependencies.
-- [ ] Append history event `install`.
-
-Open note: the current `internal/history` package records button press runs under `pressed/`; it is not a lifecycle
-event log for add/install/update mutations. Add/install lifecycle events should be implemented with a real
-`history.json` event model rather than overloading press-run history.
+- [x] Append history event `install`.
 
 ### Task 5: Move Update Logic to Manifest/Lock
 

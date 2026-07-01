@@ -1,14 +1,14 @@
 ---
 title: "History"
-description: "Local audit log for button creates, edits, installs, and updates."
+description: "Local audit log for registry dependency lifecycle events."
 ---
 
 `history.json` is the local audit log for a Buttons workspace.
 
 It records workspace mutations:
 
-- command-driven changes, like `buttons create`, `buttons install`, `buttons update`, and `buttons delete`
-- manual or agent edits to a button or drawer spec (`button.json`, `main.*`, `AGENTS.md`, `drawer.json`) outside a Buttons command
+- registry dependency changes from `buttons add`
+- manifest installs from `buttons install`
 
 It is a single top-level file and is **gitignored** — auditability is per-machine.
 
@@ -21,22 +21,28 @@ It is a single top-level file and is **gitignored** — auditability is per-mach
 
 ## Event shape
 
-Each event looks roughly like this (an `install`):
+The file has a schema version and an ordered `events` array:
 
 ```json
 {
   "schema_version": 1,
   "events": [
     {
-      "at": "2026-06-28T18:42:10Z",
-      "action": "install",
-      "target": "button:slack-sync",
-      "source": "$BUTTONS_REGISTRY_URL",
-      "from_version": null,
-      "to_version": "1.2.4",
-      "from_hash": null,
-      "to_hash": "sha256:4f8c...",
-      "status": "ok"
+      "action": "add",
+      "occurred_at": "2026-07-01T12:00:00Z",
+      "package_name": "@autono/hello",
+      "requested": "latest",
+      "installed": ["hello"],
+      "dependencies": [
+        {
+          "name": "@autono/hello",
+          "kind": "button",
+          "requested": "latest",
+          "version": "1.2.3",
+          "content_hash": "4f8c...",
+          "installed_name": "hello"
+        }
+      ]
     }
   ]
 }
@@ -48,23 +54,16 @@ History records:
 
 | Action | Cause |
 | --- | --- |
-| `create` | A button or drawer is created. |
-| `edit` | A tracked button or drawer spec changes (manual or agent edit). |
-| `delete` | A button or drawer is removed. |
+| `add` | A registry dependency is added to `.buttons/buttons.json` and installed. |
 | `install` | Manifest dependencies are installed from the configured registry. |
-| `update` | An installed button — or the CLI itself (`buttons update`) — resolves to a newer version/hash. |
 
 ## What's tracked
 
-Commands write history events when they mutate state. Manual or agent edits to a spec file are captured as a single (debounced) `edit` event with a before/after content hash.
-
-Tracked paths:
+Lifecycle events are local audit records. They are not the source of truth for dependency resolution; the source of truth is:
 
 ```text
-.buttons/buttons/*/button.json
-.buttons/buttons/*/main.*
-.buttons/buttons/*/AGENTS.md
-.buttons/drawers/*/drawer.json
+.buttons/buttons.json
+.buttons/buttons-lock.json
 ```
 
 Ignored (runtime and secret-bearing):
