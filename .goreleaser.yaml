@@ -82,6 +82,15 @@ homebrew_casks:
   - name: buttons
     binaries:
       - buttons
+    generate_completions_from_executable:
+      executable: buttons
+      shell_parameter_format: cobra
+      base_name: buttons
+      shells:
+        - bash
+        - zsh
+        - fish
+        - pwsh
     repository:
       owner: autonoco
       name: homebrew-tap

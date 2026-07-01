@@ -38,8 +38,9 @@ new window runs until you close it.
 Use ` + "`--inline`" + ` to render the board in the current terminal instead —
 helpful when you're SSH'd somewhere, inside a screen / tmux session
 you want to stay in, or on a headless machine without a window server.`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runBoard,
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: completeFirstButtonName,
+	RunE:              runBoard,
 }
 
 func runBoard(cmd *cobra.Command, args []string) error {
