@@ -5,7 +5,9 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/autonoco/buttons/internal/settings"
 	"github.com/spf13/cobra"
 )
 
@@ -32,5 +34,28 @@ func TestPassiveUpdateSkipsCIWithoutRegistryProbe(t *testing.T) {
 
 	if got := hits.Load(); got != 0 {
 		t.Fatalf("registry probe count = %d, want 0", got)
+	}
+}
+
+func TestPassiveUpdatePlanRunsContentInsideBinaryThrottle(t *testing.T) {
+	autoUpdate := true
+	now := time.Unix(2000, 0)
+	last := now.Add(-time.Minute).Unix()
+	st := &settings.Settings{
+		Defaults: settings.Defaults{
+			AutoUpdate:          &autoUpdate,
+			LastUpdateCheckUnix: &last,
+		},
+	}
+
+	plan := passiveUpdatePlan(st, false, now)
+	if !plan.run {
+		t.Fatal("passive content update should run even when binary check is throttled")
+	}
+	if !plan.skipBinary {
+		t.Fatal("binary update should stay throttled")
+	}
+	if plan.recordCheck {
+		t.Fatal("content-only passive update should not refresh binary throttle timestamp")
 	}
 }

@@ -34,21 +34,44 @@ func maybeRunPassiveUpdate(cmd *cobra.Command) {
 		return
 	}
 	st, err := svc.Load()
-	if err != nil || (!force && !st.AutoUpdateEnabled()) {
+	if err != nil {
 		return
 	}
-	now := time.Now()
-	last := st.LastUpdateCheckUnixOrZero()
-	if !force && last > 0 && now.Sub(time.Unix(last, 0)) < passiveUpdateThrottle {
+	plan := passiveUpdatePlan(st, force, time.Now())
+	if !plan.run {
 		return
 	}
-	if err := svc.SetLastUpdateCheckUnix(now.Unix()); err != nil {
-		return
+	opts.SkipBinary = plan.skipBinary
+	if plan.recordCheck {
+		if err := svc.SetLastUpdateCheckUnix(plan.now.Unix()); err != nil {
+			return
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	_, _ = updater.Apply(ctx, opts)
+}
+
+type passiveUpdateDecision struct {
+	run         bool
+	skipBinary  bool
+	recordCheck bool
+	now         time.Time
+}
+
+func passiveUpdatePlan(st *settings.Settings, force bool, now time.Time) passiveUpdateDecision {
+	if force {
+		return passiveUpdateDecision{run: true, recordCheck: true, now: now}
+	}
+	if st == nil || !st.AutoUpdateEnabled() {
+		return passiveUpdateDecision{}
+	}
+	last := st.LastUpdateCheckUnixOrZero()
+	if last > 0 && now.Sub(time.Unix(last, 0)) < passiveUpdateThrottle {
+		return passiveUpdateDecision{run: true, skipBinary: true, now: now}
+	}
+	return passiveUpdateDecision{run: true, recordCheck: true, now: now}
 }
 
 func shouldSkipPassiveUpdate() bool {

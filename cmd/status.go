@@ -16,7 +16,8 @@ var statusCmd = &cobra.Command{
 	Long: `Show whether the buttons CLI or manifest dependencies have updates.
 
 Like every user-invoked command, status also enters the passive auto-update
-gate before it prints. Use 'buttons update' to force an update immediately.`,
+gate before it prints. Floating button dependencies may refresh before status
+reports. Use 'buttons update' to force the full update path immediately.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		report, err := updater.Check(context.Background(), updater.Options{
