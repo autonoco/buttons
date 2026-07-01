@@ -20,8 +20,8 @@ type Button struct {
 	// don't grow a noisy field.
 	Tags []string `json:"tags,omitempty"`
 	// Version is the button's content release (semver), distinct from
-	// SchemaVersion (the on-disk format counter). Set by install tooling
-	// tooling so an installed copy can be pinned and diffed for updates.
+	// SchemaVersion (the on-disk format counter). Published and installed
+	// registry buttons must carry an exact immutable version.
 	// Empty for hand-authored local buttons (treated as "unversioned").
 	Version              string            `json:"version,omitempty"`
 	Runtime              string            `json:"runtime"`
@@ -67,27 +67,14 @@ type Button struct {
 	// scopes the pool by dimension so "openai, 3 concurrent per user"
 	// is expressible without per-user buttons. Omitted → no limit.
 	Queue *QueueConfig `json:"queue,omitempty"`
-	// Requires names peer buttons this button presses (e.g. an autono
-	// sync button requires "pd-proxy-request"). The store uses it to
-	// install dependencies and to resolve presses by button id rather
-	// than by cwd. Omitted when empty.
-	Requires []string `json:"requires,omitempty"`
+	// Requires names package dependencies this button needs installed
+	// alongside it. Keys are scoped registry names ("@desk/name"); values
+	// are "latest" or an exact version.
+	Requires map[string]string `json:"requires,omitempty"`
 	// RequiresBatteries names the secret keys this button needs (e.g.
 	// "PIPEDREAM_CLIENT_ID"). An install source ships requirement NAMES, never
 	// values; `store install` prompts for them via `buttons batteries`.
 	RequiresBatteries []string `json:"requires_batteries,omitempty"`
-	// Source records where an installed button came from (the store
-	// source ref, e.g. "git+https://github.com/autonoco/autono-desk@v1").
-	// Empty for locally-created buttons.
-	Source string `json:"source,omitempty"`
-	// SourceName records the exact name fetched from Source, such as
-	// "@autono/hello". It can differ from Name for scoped registry buttons
-	// whose local display name is unscoped.
-	SourceName string `json:"source_name,omitempty"`
-	// ContentHash is the SHA256 of the button's content at install time —
-	// the lock-file pin used to detect drift and available updates. Set
-	// by the store, never by `create`.
-	ContentHash string `json:"content_hash,omitempty"`
 	// Triggers fire this button on an event — a cron schedule, a watched
 	// file change, or a webhook POST (served by `buttons serve`). Managed
 	// via `buttons trigger`. Omitted when empty.

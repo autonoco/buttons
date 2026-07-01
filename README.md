@@ -67,7 +67,7 @@ buttons update           # install available CLI/content updates
 buttons update --json    # structured output
 ```
 
-`buttons update` checks GitHub Releases for the CLI and the stamped source for installed registry buttons, verifies hashes, and applies available updates. Use `buttons status` for a read-only check. Homebrew installs are auto-detected — you'll be told to `brew upgrade buttons` instead. Docker users re-pull the image.
+`buttons update` checks GitHub Releases for the CLI and refreshes floating button dependencies from `.buttons/buttons.json` and `.buttons/buttons-lock.json`. Use `buttons status` for a read-only check. Homebrew installs are auto-detected — you'll be told to `brew upgrade buttons` instead. Docker users re-pull the image.
 
 ## Verify the installation
 
@@ -252,31 +252,38 @@ The unified `buttons trigger ...` command is the planned surface over the same d
 
 ## Registry Install Contract
 
-The shipped registry model has no project-level `.buttons/buttons.json` or lockfile yet. Runnable buttons live in `.buttons/buttons/`, and each installed button carries its own pin in `.buttons/buttons/<name>/button.json`.
+Registry installs use a package-manager style manifest and lockfile:
 
-An installed registry button looks like this:
+```bash
+buttons add @your-desk/hello        # writes .buttons/buttons.json and installs latest
+buttons add @your-desk/deploy@1.2.3 # pins an exact version
+buttons install                     # materializes .buttons/buttons.json
+buttons status                      # reports available CLI/content updates
+buttons update                      # updates floating dependencies
+```
+
+The root manifest is committed:
 
 ```json
 {
   "schema_version": 1,
-  "name": "hello",
-  "runtime": "shell",
-  "source": "https://registry.example",
-  "source_name": "@your-desk/hello",
-  "version": "1.0.0",
-  "content_hash": "4f8c..."
+  "dependencies": {
+    "@your-desk/hello": "latest",
+    "@your-desk/deploy": "1.2.3"
+  }
 }
 ```
 
-`source` says where updates come from, `source_name` keeps the scoped registry identity, `version` is the immutable published version, and `content_hash` pins the installed content. That per-button stamp is the lock.
+`"latest"` floats and can move when `buttons update`, passive OTA, or a publish-triggered wake runs. Exact versions are pins and do not move unless you change the manifest with another `buttons add @desk/name@version`.
 
-Install from the hosted registry or a local source:
+`.buttons/buttons-lock.json` stores the exact resolved version, content hash, installed local name, kind, and resolution time. Installed runtime specs live in `.buttons/buttons/<name>/button.json`; they do not need `source`, `source_name`, or `content_hash` for update resolution.
+
+Install from the hosted registry:
 
 ```bash
-BUTTONS_REGISTRY_URL=https://registry.example buttons install @your-desk/hello
-buttons install deploy --source ../button-source
-buttons install deploy@1.2.0 --source ../button-source
-buttons install tag:autono-cal --source ../button-source
+BUTTONS_REGISTRY_URL=https://registry.example buttons add @your-desk/hello
+BUTTONS_REGISTRY_URL=https://registry.example buttons add @your-desk/hello@1.2.0
+BUTTONS_REGISTRY_URL=https://registry.example buttons install
 ```
 
 Version flow:
@@ -285,8 +292,8 @@ Version flow:
 # Publisher publishes immutable v1.0.0 from a button.json with "version": "1.0.0"
 BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello
 
-# Agent workspace installs it; button.json is stamped with version 1.0.0
-BUTTONS_REGISTRY_URL=https://registry.example buttons install @your-desk/hello
+# Agent workspace tracks latest and installs version 1.0.0
+BUTTONS_REGISTRY_URL=https://registry.example buttons add @your-desk/hello
 
 # Publisher later changes button.json to "version": "1.1.0" and publishes again.
 # The agent workspace can see and apply the new version:
@@ -294,7 +301,7 @@ buttons status
 buttons update
 ```
 
-Set `BUTTONS_SOURCE` to avoid repeating `--source` for local sources. Required peer buttons from `requires` are installed too.
+Required peer buttons from `button.json` `requires` are installed transitively from the registry. `requires` uses the same shape as the root manifest: scoped package names mapped to `"latest"` or an exact version.
 
 ## REST API Server
 

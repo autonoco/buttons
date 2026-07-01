@@ -12,11 +12,12 @@ import (
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Update the CLI and installed registry buttons",
-	Long: `Install available updates for the buttons CLI and installed registry buttons.
+	Short: "Update the CLI and floating button dependencies",
+	Long: `Install available updates for the buttons CLI and floating button dependencies.
 
-The CLI binary is updated from GitHub Releases. Installed buttons are refreshed
-from the source stamped in each installed button.json.
+The CLI binary is updated from GitHub Releases. Button dependencies are
+refreshed from .buttons/buttons.json and .buttons/buttons-lock.json. Exact
+versions are pins; update moves only dependencies requested as "latest".
 
 Examples:
   buttons update
@@ -59,7 +60,7 @@ func printUpdateResult(result *updater.Result) {
 	}
 
 	if len(result.Buttons) == 0 {
-		fmt.Fprintln(os.Stderr, "No registry-installed buttons found.")
+		fmt.Fprintln(os.Stderr, "No manifest dependencies found.")
 		return
 	}
 	updated := 0
@@ -68,6 +69,12 @@ func printUpdateResult(result *updater.Result) {
 		case b.Updated:
 			updated++
 			fmt.Fprintf(os.Stderr, "Updated %s to %s\n", b.Name, b.LatestVersion)
+		case b.Pinned && b.CurrentVersion == "":
+			fmt.Fprintf(os.Stderr, "Button %s pinned at %s (not installed; run buttons install)\n", b.PackageName, b.Requested)
+		case b.Pinned && b.LatestVersion != "" && b.CurrentVersion != "" && b.LatestVersion != b.CurrentVersion:
+			fmt.Fprintf(os.Stderr, "Button %s pinned at %s (latest %s)\n", b.Name, b.CurrentVersion, b.LatestVersion)
+		case b.Pinned:
+			fmt.Fprintf(os.Stderr, "Button %s pinned at %s\n", b.Name, b.CurrentVersion)
 		case b.Skipped:
 			fmt.Fprintf(os.Stderr, "Button %s skipped: %s\n", b.Name, b.SkipReason)
 		case b.Error != "":

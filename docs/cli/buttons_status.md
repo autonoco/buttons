@@ -9,7 +9,7 @@ Show available CLI and button updates
 
 ### Synopsis
 
-Show whether the buttons CLI or installed registry buttons have updates.
+Show whether the buttons CLI or manifest dependencies have updates.
 
 Like every user-invoked command, status also enters the passive auto-update
 gate before it prints. Use 'buttons update' to force an update immediately.
@@ -34,4 +34,5 @@ buttons status [flags]
 
 ### SEE ALSO
 
-* [buttons](buttons.md)	 - Deterministic workflow engine for agents
+* [buttons](buttons.md)  - Deterministic workflow engine for agents
+* [buttons update](buttons_update.md)  - Update the CLI and floating button dependencies

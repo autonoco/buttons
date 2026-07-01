@@ -106,7 +106,7 @@ func (s *HTTPSource) Index() ([]ButtonRef, error) {
 	}
 	refs := make([]ButtonRef, 0, len(entries))
 	for _, e := range entries {
-		refs = append(refs, ButtonRef{Name: e.Name, Version: e.Version, Tags: e.Tags, SHA256: e.SHA256})
+		refs = append(refs, ButtonRef{Name: e.Name, Kind: e.Kind, Version: e.Version, Tags: e.Tags, SHA256: e.SHA256})
 	}
 	return refs, nil
 }

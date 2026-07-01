@@ -5,154 +5,205 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
+	"github.com/autonoco/buttons/internal/manifest"
 )
 
-// Result is what an install run produced, for structured output.
 type Result struct {
-	Installed []string `json:"installed"` // button names written this run
+	Installed []string `json:"installed"`
 }
 
-// InstallSpec installs a spec from src and returns the names written. The spec is:
-//   - "name" or "name@version" — one button (+ its `requires` deps, transitively)
-//   - "tag:<x>"                — every button in the source carrying tag <x> (+ deps)
-//
-// sourceRef is recorded in each installed button.json's `source` field (provenance).
-func InstallSpec(src Source, spec, sourceRef string) (*Result, error) {
+type InstallOptions struct {
+	// RefreshFloating resolves "latest" dependencies against the registry even
+	// when the lock already has a version. `buttons add` and `buttons update`
+	// set this; plain `buttons install` leaves it false to honor the lock.
+	RefreshFloating bool
+	Now             func() time.Time
+}
+
+func InstallManifest(src Source, m *manifest.Manifest, prior *manifest.Lockfile, opts InstallOptions) (*Result, *manifest.Lockfile, error) {
+	if m == nil {
+		return nil, nil, fmt.Errorf("manifest is required")
+	}
+	if err := m.Validate(); err != nil {
+		return nil, nil, err
+	}
+	if prior == nil {
+		prior = manifest.NewLockfile()
+	}
+	if opts.Now == nil {
+		opts.Now = time.Now
+	}
+	next := manifest.NewLockfile()
 	seen := map[string]bool{}
+	installedNames := map[string]string{}
 	var installed []string
 
-	var roots []string
-	var version string
-	if tag, ok := strings.CutPrefix(spec, "tag:"); ok {
-		names, err := resolveTag(src, tag)
-		if err != nil {
-			return nil, err
-		}
-		if len(names) == 0 {
-			return nil, fmt.Errorf("no buttons carry tag %q", tag)
-		}
-		roots = names
-	} else {
-		name, v := splitVersion(spec)
-		roots = []string{name}
-		version = v
+	names := make([]string, 0, len(m.Dependencies))
+	for name := range m.Dependencies {
+		names = append(names, name)
 	}
-
-	// Install each root + its `requires` closure (deps come from the same source).
-	for _, name := range roots {
-		if err := installWithDeps(src, name, version, sourceRef, seen, &installed); err != nil {
-			return nil, err
+	sort.Strings(names)
+	for _, name := range names {
+		if err := installPackage(src, name, m.Dependencies[name], prior, next, seen, installedNames, opts, &installed); err != nil {
+			return nil, nil, err
 		}
-		version = "" // version pin only applies to the explicitly-named root
 	}
-	return &Result{Installed: installed}, nil
+	return &Result{Installed: installed}, next, nil
 }
 
-func installWithDeps(src Source, name, version, sourceRef string, seen map[string]bool, out *[]string) error {
-	key := button.Slugify(name)
-	if seen[key] {
+func installPackage(src Source, name, requested string, prior, next *manifest.Lockfile, seen map[string]bool, installedNames map[string]string, opts InstallOptions, out *[]string) error {
+	if seen[name] {
 		return nil
 	}
-	seen[key] = true
+	seen[name] = true
 
-	b, err := install(src, name, version, sourceRef)
+	if err := manifest.ValidatePackageName(name); err != nil {
+		return err
+	}
+	if err := manifest.ValidateRequest(requested); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+
+	version := requested
+	if manifest.IsFloating(requested) {
+		version = ""
+		if !opts.RefreshFloating {
+			if locked, ok := prior.Dependencies[name]; ok && locked.Requested == requested && locked.Version != "" {
+				version = locked.Version
+			}
+		}
+	}
+	ref, err := Resolve(src, name, version)
 	if err != nil {
 		return err
 	}
-	*out = append(*out, b.Name)
+	bundle, spec, err := fetchInstallable(src, name, ref.Version)
+	if err != nil {
+		return err
+	}
+	if ref.Kind == "" {
+		ref.Kind = "button"
+	}
+	if ref.Kind != "button" {
+		return fmt.Errorf("installing %s kind %q is not implemented yet", name, ref.Kind)
+	}
+	localName := button.Slugify(spec.Name)
+	if owner, exists := installedNames[localName]; exists && owner != name {
+		return fmt.Errorf("dependencies %s and %s both install as %q", owner, name, localName)
+	}
+	installedNames[localName] = name
 
-	for _, dep := range b.Requires {
-		if err := installWithDeps(src, dep, "", sourceRef, seen, out); err != nil {
-			return fmt.Errorf("dependency of %q: %w", b.Name, err)
+	if err := writeBundle(spec, bundle); err != nil {
+		return err
+	}
+	*out = append(*out, spec.Name)
+	next.Dependencies[name] = manifest.LockEntry{
+		Kind:          ref.Kind,
+		Requested:     requested,
+		Version:       bundle.Version,
+		ContentHash:   bundle.SHA256,
+		InstalledName: spec.Name,
+		ResolvedAt:    opts.Now().UTC().Format(time.RFC3339),
+	}
+
+	deps := make([]string, 0, len(spec.Requires))
+	for dep := range spec.Requires {
+		deps = append(deps, dep)
+	}
+	sort.Strings(deps)
+	for _, dep := range deps {
+		if err := installPackage(src, dep, spec.Requires[dep], prior, next, seen, installedNames, opts, out); err != nil {
+			return fmt.Errorf("dependency of %q: %w", spec.Name, err)
 		}
 	}
 	return nil
 }
 
-// install fetches one button and writes it into the buttons data dir, stamping
-// source/source_name/version/content_hash into its button.json. Returns the installed spec.
-func install(src Source, name, version, sourceRef string) (*button.Button, error) {
+func Resolve(src Source, name, version string) (ButtonRef, error) {
+	refs, err := src.Index()
+	if err != nil {
+		return ButtonRef{}, err
+	}
+	var latest *ButtonRef
+	for i := range refs {
+		ref := refs[i]
+		if ref.Name != name {
+			continue
+		}
+		if ref.Kind == "" {
+			ref.Kind = "button"
+		}
+		if version != "" && ref.Version == version {
+			return ref, nil
+		}
+		if version == "" {
+			latest = &ref
+		}
+	}
+	if version != "" {
+		return ButtonRef{}, fmt.Errorf("button %q@%s not found in registry", name, version)
+	}
+	if latest == nil {
+		return ButtonRef{}, fmt.Errorf("button %q not found in registry", name)
+	}
+	return *latest, nil
+}
+
+func fetchInstallable(src Source, name, version string) (*Bundle, *button.Button, error) {
 	bundle, err := src.Fetch(name, version)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
 	var spec button.Button
 	if err := json.Unmarshal(bundle.Files["button.json"], &spec); err != nil {
-		return nil, fmt.Errorf("button %q: invalid button.json: %w", name, err)
+		return nil, nil, fmt.Errorf("button %q: invalid button.json: %w", name, err)
 	}
-	spec.Source = sourceRef
-	spec.SourceName = name
 	spec.Version = bundle.Version
-	spec.ContentHash = bundle.SHA256
 	stamped, err := json.MarshalIndent(&spec, "", "  ")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	bundle.Files["button.json"] = stamped
+	bundle.Files["button.json"] = append(stamped, '\n')
+	return bundle, &spec, nil
+}
 
+func writeBundle(spec *button.Button, bundle *Bundle) error {
 	dir, err := config.ButtonDir(button.Slugify(spec.Name))
 	if err != nil {
-		return nil, err
+		return err
 	}
-	// Validate every bundle path BEFORE creating dirs or writing, so a rejected
-	// (traversal) bundle leaves nothing partially installed.
 	dsts := make(map[string]string, len(bundle.Files))
 	for rel := range bundle.Files {
 		dst, err := safeJoin(dir, rel)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		dsts[rel] = dst
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "pressed"), 0700); err != nil {
-		return nil, fmt.Errorf("create button dir: %w", err)
+	if err := os.MkdirAll(filepath.Join(dir, "pressed"), 0o700); err != nil {
+		return fmt.Errorf("create button dir: %w", err)
 	}
 	for rel, data := range bundle.Files {
 		dst := dsts[rel]
-		mode := os.FileMode(0600)
+		mode := os.FileMode(0o600)
 		if strings.HasPrefix(rel, "main.") {
-			mode = 0700 // #nosec G302 -- code files need the exec bit to run via sh/python/node
+			mode = 0o700
 		}
-		if err := os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
-			return nil, fmt.Errorf("create parent for %s: %w", rel, err)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+			return fmt.Errorf("create parent for %s: %w", rel, err)
 		}
 		if err := os.WriteFile(dst, data, mode); err != nil {
-			return nil, fmt.Errorf("write %s: %w", rel, err)
+			return fmt.Errorf("write %s: %w", rel, err)
 		}
 	}
-	if err := writeInstallState(dir, spec.ContentHash); err != nil {
-		return nil, fmt.Errorf("write install state: %w", err)
+	if err := writeInstallState(dir, bundle.SHA256); err != nil {
+		return fmt.Errorf("write install state: %w", err)
 	}
-	return &spec, nil
-}
-
-// resolveTag returns the names of every button in the source carrying tag.
-func resolveTag(src Source, tag string) ([]string, error) {
-	refs, err := src.Index()
-	if err != nil {
-		return nil, err
-	}
-	var names []string
-	for _, r := range refs {
-		for _, t := range r.Tags {
-			if t == tag {
-				names = append(names, r.Name)
-				break
-			}
-		}
-	}
-	return names, nil
-}
-
-// splitVersion parses "name@version" → (name, version). No "@" → version "".
-func splitVersion(spec string) (name, version string) {
-	if i := strings.LastIndex(spec, "@"); i > 0 {
-		return spec[:i], spec[i+1:]
-	}
-	return spec, ""
+	return nil
 }

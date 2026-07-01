@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/store"
@@ -11,20 +10,18 @@ import (
 )
 
 var (
-	publishSource string
-	publishKind   string
+	publishKind string
 )
 
 var publishCmd = &cobra.Command{
 	Use:   "publish <name | @desk/name>",
-	Short: "Publish a local button to the registry (or a local source)",
-	Long: `Publish a button — the inverse of 'buttons install'. The button folder
+	Short: "Publish a local button to the registry",
+	Long: `Publish a button. The button folder
 (button.json + code + AGENTS.md, never its run history) is content-hashed and
-uploaded so others can 'buttons install' it.
+uploaded so others can add and install it.
 
-Targets, in order:
-  --source <dir> / $BUTTONS_SOURCE   a local source directory (dev round-trip)
-  $BUTTONS_REGISTRY_URL              the hosted registry (publish @desk/name)
+Publish uses $BUTTONS_REGISTRY_URL as the registry base URL. This repo does not
+ship a default registry host; the caller must configure the target explicitly.
 
 A registry publish takes a scoped name (@desk/name): the on-disk button is found
 by its bare name, and @desk is its registry namespace. The registry pins
@@ -33,25 +30,12 @@ key (REGISTRY_WRITE_KEY battery or $BUTTONS_BAT_REGISTRY_WRITE_KEY) — distinct
 from the read key install uses.
 
 Examples:
-  BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello
-  buttons publish deploy --source ./pack`,
+  BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello`,
 	Args: exactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 
-		// A local source (--source / $BUTTONS_SOURCE) wins, mirroring install.
-		srcDir := publishSource
-		if srcDir == "" {
-			srcDir = os.Getenv("BUTTONS_SOURCE")
-		}
-		if srcDir != "" {
-			return renderPublish(func() (*store.PublishResult, error) {
-				return store.Publish(&store.LocalSource{Root: srcDir}, name)
-			}, "to "+srcDir, " --source "+srcDir)
-		}
-
-		// Otherwise the hosted registry.
-		if reg := strings.TrimRight(os.Getenv("BUTTONS_REGISTRY_URL"), "/"); reg != "" {
+		if reg := registryURL(); reg != "" {
 			key := registryWriteKey()
 			if key == "" {
 				return publishConfigError("registry write key not set: run `buttons batteries set REGISTRY_WRITE_KEY <key>` (or set $BUTTONS_BAT_REGISTRY_WRITE_KEY)")
@@ -59,17 +43,16 @@ Examples:
 			pub := &store.HTTPPublisher{BaseURL: reg, Key: key, Kind: publishKind}
 			return renderPublish(func() (*store.PublishResult, error) {
 				return store.PublishToRegistry(pub, name)
-			}, "to "+reg, "")
+			}, "to "+reg)
 		}
 
-		return publishConfigError("no publish target: set $BUTTONS_REGISTRY_URL (+ REGISTRY_WRITE_KEY) for the registry, or pass --source <dir> / $BUTTONS_SOURCE for a local source")
+		return publishConfigError("no publish target: set $BUTTONS_REGISTRY_URL (+ REGISTRY_WRITE_KEY) for the registry")
 	},
 }
 
 // renderPublish runs a publish closure and renders the shared success/error
-// output. dest describes where it went; installSuffix is appended to the
-// "buttons install <name>" next-step hint (e.g. " --source ./pack").
-func renderPublish(do func() (*store.PublishResult, error), dest, installSuffix string) error {
+// output. dest describes where it went.
+func renderPublish(do func() (*store.PublishResult, error), dest string) error {
 	res, err := do()
 	if err != nil {
 		if jsonOutput {
@@ -86,7 +69,7 @@ func renderPublish(do func() (*store.PublishResult, error), dest, installSuffix 
 		v = "@" + v
 	}
 	fmt.Fprintf(os.Stderr, "Published %s%s (%d files, sha256 %s) %s\n", res.Name, v, res.Files, res.SHA256[:12], dest)
-	printNextHint("buttons install %s%s", res.Name, installSuffix)
+	printNextHint("buttons add %s", res.Name)
 	return nil
 }
 
@@ -115,7 +98,6 @@ func registryWriteKey() string {
 }
 
 func init() {
-	publishCmd.Flags().StringVar(&publishSource, "source", "", "local source directory to publish to (else $BUTTONS_REGISTRY_URL)")
 	publishCmd.Flags().StringVar(&publishKind, "kind", "button", "registry entry kind: button | drawer")
 	rootCmd.AddCommand(publishCmd)
 }

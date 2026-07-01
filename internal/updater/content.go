@@ -2,15 +2,13 @@ package updater
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
+	"github.com/autonoco/buttons/internal/manifest"
 	"github.com/autonoco/buttons/internal/store"
 )
 
@@ -57,7 +55,7 @@ func Apply(ctx context.Context, opts Options) (*Result, error) {
 
 	if !opts.SkipContent {
 		for i := range result.Buttons {
-			if !result.Buttons[i].UpdateAvailable || result.Buttons[i].Error != "" {
+			if !result.Buttons[i].UpdateAvailable || result.Buttons[i].Error != "" || result.Buttons[i].Pinned {
 				continue
 			}
 			if err := applyContentUpdate(ctx, opts, &result.Buttons[i]); err != nil {
@@ -90,36 +88,62 @@ func CheckContent(ctx context.Context, opts Options) ([]ButtonReport, error) {
 	default:
 	}
 
-	installed, err := installedButtons()
+	m, err := manifest.Load()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	lock, err := manifest.LoadLockfile()
 	if err != nil {
 		return nil, err
 	}
-	reports := make([]ButtonReport, 0, len(installed))
-	for _, b := range installed {
-		rep := checkOneButton(ctx, opts, b)
-		if rep.Source != "" {
-			reports = append(reports, rep)
-		}
+	src, err := sourceForManifest(opts)
+	if err != nil {
+		return reportsWithSourceError(m, err), nil
+	}
+
+	reports := make([]ButtonReport, 0, len(m.Dependencies))
+	for name, requested := range m.Dependencies {
+		rep := checkOneDependency(ctx, src, name, requested, lock)
+		reports = append(reports, rep)
 	}
 	return reports, nil
 }
 
-func checkOneButton(ctx context.Context, opts Options, b button.Button) ButtonReport {
+func reportsWithSourceError(m *manifest.Manifest, err error) []ButtonReport {
+	reports := make([]ButtonReport, 0, len(m.Dependencies))
+	for name, requested := range m.Dependencies {
+		reports = append(reports, ButtonReport{
+			Name:        localNameFromPackage(name),
+			PackageName: name,
+			Requested:   requested,
+			Pinned:      !manifest.IsFloating(requested),
+			Error:       err.Error(),
+		})
+	}
+	return reports
+}
+
+func checkOneDependency(ctx context.Context, src store.Source, name, requested string, lock *manifest.Lockfile) ButtonReport {
+	entry, locked := lock.Dependencies[name]
 	rep := ButtonReport{
-		Name:           b.Name,
-		SourceName:     b.SourceName,
-		Source:         b.Source,
-		CurrentVersion: b.Version,
-		CurrentHash:    b.ContentHash,
+		Name:           entry.InstalledName,
+		PackageName:    name,
+		Requested:      requested,
+		CurrentVersion: entry.Version,
+		CurrentHash:    entry.ContentHash,
+		Pinned:         !manifest.IsFloating(requested),
 	}
-	if b.Source == "" {
-		return rep
+	if rep.Name == "" {
+		rep.Name = localNameFromPackage(name)
 	}
-	if b.SourceName == "" {
-		rep.Error = "installed button is missing source_name"
-		return rep
+	if !locked {
+		rep.UpdateAvailable = true
 	}
-	modified, err := locallyModified(b)
+
+	modified, err := locallyModified(entry)
 	if err != nil {
 		rep.Error = err.Error()
 		return rep
@@ -129,25 +153,23 @@ func checkOneButton(ctx context.Context, opts Options, b button.Button) ButtonRe
 		rep.SkipReason = "local files changed since install"
 		return rep
 	}
-	src, err := sourceFor(b.Source, opts)
-	if err != nil {
-		rep.Error = err.Error()
-		return rep
-	}
+
 	select {
 	case <-ctx.Done():
 		rep.Error = ctx.Err().Error()
 		return rep
 	default:
 	}
-	bundle, err := src.Fetch(b.SourceName, "")
+	ref, err := store.Resolve(src, name, "")
 	if err != nil {
 		rep.Error = err.Error()
 		return rep
 	}
-	rep.LatestVersion = bundle.Version
-	rep.LatestHash = bundle.SHA256
-	rep.UpdateAvailable = contentUpdateAvailable(rep)
+	rep.LatestVersion = ref.Version
+	rep.LatestHash = ref.SHA256
+	if manifest.IsFloating(requested) {
+		rep.UpdateAvailable = !locked || contentUpdateAvailable(rep)
+	}
 	return rep
 }
 
@@ -155,8 +177,8 @@ func contentUpdateAvailable(rep ButtonReport) bool {
 	if rep.LatestVersion != "" && CompareVersions(rep.CurrentVersion, rep.LatestVersion) < 0 {
 		return true
 	}
-	if rep.CurrentVersion == "" && rep.LatestHash != "" && rep.CurrentHash != "" {
-		return rep.CurrentHash != rep.LatestHash
+	if rep.CurrentVersion == "" && rep.LatestVersion != "" {
+		return true
 	}
 	return false
 }
@@ -167,18 +189,33 @@ func applyContentUpdate(ctx context.Context, opts Options, rep *ButtonReport) er
 		return ctx.Err()
 	default:
 	}
-	src, err := sourceFor(rep.Source, opts)
+	if rep.Pinned {
+		return nil
+	}
+	src, err := sourceForManifest(opts)
 	if err != nil {
 		return err
 	}
-	if _, err := store.InstallSpec(src, rep.SourceName, rep.Source); err != nil {
+	prior, err := manifest.LoadLockfile()
+	if err != nil {
 		return err
 	}
-	return nil
+	m := &manifest.Manifest{SchemaVersion: manifest.SchemaVersion, Dependencies: map[string]string{rep.PackageName: rep.Requested}}
+	_, next, err := store.InstallManifest(src, m, prior, store.InstallOptions{RefreshFloating: true})
+	if err != nil {
+		return err
+	}
+	for name, entry := range next.Dependencies {
+		prior.Dependencies[name] = entry
+	}
+	return manifest.SaveLockfile(prior)
 }
 
-func locallyModified(b button.Button) (bool, error) {
-	dir, err := config.ButtonDir(button.Slugify(b.Name))
+func locallyModified(entry manifest.LockEntry) (bool, error) {
+	if entry.InstalledName == "" {
+		return false, nil
+	}
+	dir, err := config.ButtonDir(button.Slugify(entry.InstalledName))
 	if err != nil {
 		return false, err
 	}
@@ -187,33 +224,30 @@ func locallyModified(b button.Button) (bool, error) {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
-		return false, fmt.Errorf("read install state for %s: %w", b.Name, err)
+		return false, fmt.Errorf("read install state for %s: %w", entry.InstalledName, err)
 	}
-	if state.ContentHash != "" && b.ContentHash != "" && state.ContentHash != b.ContentHash {
+	if state.ContentHash != "" && entry.ContentHash != "" && state.ContentHash != entry.ContentHash {
 		return false, nil
 	}
 	current, err := store.HashInstalledDir(dir)
 	if err != nil {
-		return false, fmt.Errorf("hash installed files for %s: %w", b.Name, err)
+		return false, fmt.Errorf("hash installed files for %s: %w", entry.InstalledName, err)
 	}
 	return state.InstalledHash != "" && current != state.InstalledHash, nil
 }
 
-func sourceFor(sourceRef string, opts Options) (store.Source, error) {
-	if local, ok := strings.CutPrefix(sourceRef, "local:"); ok {
-		return &store.LocalSource{Root: local}, nil
+func sourceForManifest(opts Options) (store.Source, error) {
+	if opts.RegistryURL == "" {
+		return nil, fmt.Errorf("registry URL not set")
 	}
-	if strings.HasPrefix(sourceRef, "http://") || strings.HasPrefix(sourceRef, "https://") {
-		if opts.RegistryKey == "" {
-			return nil, fmt.Errorf("registry key not set")
-		}
-		return &store.HTTPSource{
-			BaseURL: sourceRef,
-			Key:     opts.RegistryKey,
-			Client:  httpClient(opts),
-		}, nil
+	if opts.RegistryKey == "" {
+		return nil, fmt.Errorf("registry key not set")
 	}
-	return nil, fmt.Errorf("unsupported update source %q", sourceRef)
+	return &store.HTTPSource{
+		BaseURL: opts.RegistryURL,
+		Key:     opts.RegistryKey,
+		Client:  httpClient(opts),
+	}, nil
 }
 
 func httpClient(opts Options) *http.Client {
@@ -223,33 +257,11 @@ func httpClient(opts Options) *http.Client {
 	return http.DefaultClient
 }
 
-func installedButtons() ([]button.Button, error) {
-	dir, err := config.ButtonsDir()
-	if err != nil {
-		return nil, err
+func localNameFromPackage(name string) string {
+	for i := len(name) - 1; i >= 0; i-- {
+		if name[i] == '/' {
+			return name[i+1:]
+		}
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	buttons := make([]button.Button, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		path := filepath.Join(dir, entry.Name(), "button.json")
-		data, err := os.ReadFile(path) // #nosec G304 -- path is under ButtonsDir plus an enumerated entry.
-		if err != nil {
-			continue
-		}
-		var b button.Button
-		if err := json.Unmarshal(data, &b); err != nil {
-			continue
-		}
-		buttons = append(buttons, b)
-	}
-	return buttons, nil
+	return name
 }

@@ -124,9 +124,9 @@ func splitScoped(ref string) (desk, name string, err error) {
 }
 
 // Publish writes a bundle into the LocalSource directory as <Root>/<name>/…,
-// making it installable by `buttons install <name> --source <Root>`. Immutable
-// in spirit: a re-publish overwrites the folder (the registry enforces true
-// version immutability; a dir source is dev-grade).
+// making it fetchable by LocalSource in tests/dev helpers. Immutable in spirit:
+// a re-publish overwrites the folder (the registry enforces true version
+// immutability; a dir source is dev-grade).
 func (s *LocalSource) Publish(b *Bundle) error {
 	dir := filepath.Join(s.Root, b.Name)
 	if err := os.MkdirAll(dir, 0700); err != nil {

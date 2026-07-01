@@ -1,32 +1,134 @@
 package updater
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/autonoco/buttons/internal/button"
+	"github.com/autonoco/buttons/internal/manifest"
 	"github.com/autonoco/buttons/internal/store"
 )
 
-func writeSourceButton(t *testing.T, root string, b button.Button, body string) {
+func contextWithTestDeadline(t *testing.T) context.Context {
 	t.Helper()
-	dir := filepath.Join(root, b.Name)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.MarshalIndent(&b, "", "  ")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	return ctx
+}
+
+type testRegistry struct {
+	key     string
+	mu      sync.Mutex
+	entries []registryEntry
+	blobs   map[string][]byte
+}
+
+type registryEntry struct {
+	Name    string `json:"name"`
+	Kind    string `json:"kind"`
+	Version string `json:"version"`
+	SHA256  string `json:"sha256"`
+}
+
+func newTestRegistry(key string) *testRegistry {
+	return &testRegistry{key: key, blobs: map[string][]byte{}}
+}
+
+func (r *testRegistry) addButton(t *testing.T, pkg, localName, version, body string) {
+	t.Helper()
+	spec := button.Button{SchemaVersion: 1, Name: localName, Runtime: "shell", Version: version}
+	data, err := json.MarshalIndent(&spec, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "button.json"), data, 0o644); err != nil {
+	files := map[string][]byte{
+		"button.json": append(data, '\n'),
+		"main.sh":     []byte(body),
+	}
+	tb := makeRegistryTarball(t, localName, files)
+	sum := sha(tb)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.entries = append(r.entries, registryEntry{Name: pkg, Kind: "button", Version: version, SHA256: sum})
+	r.blobs[pkg+"@"+version] = tb
+}
+
+func (r *testRegistry) handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Header.Get("Authorization") != "Bearer "+r.key {
+			http.Error(w, `{"error":{"code":"UNAUTHORIZED","message":"read key required"}}`, http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/index":
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			_ = json.NewEncoder(w).Encode(r.entries)
+		case req.Method == http.MethodGet && strings.HasPrefix(req.URL.Path, "/v1/buttons/") && strings.HasSuffix(req.URL.Path, "/download"):
+			mid := strings.TrimSuffix(strings.TrimPrefix(req.URL.Path, "/v1/buttons/"), "/download")
+			i := strings.LastIndex(mid, "/")
+			name, version := mid[:i], mid[i+1:]
+			r.mu.Lock()
+			tb, ok := r.blobs[name+"@"+version]
+			r.mu.Unlock()
+			if !ok {
+				http.NotFound(w, req)
+				return
+			}
+			w.Header().Set("X-Content-Sha256", sha(tb))
+			w.Header().Set("Content-Type", "application/gzip")
+			_, _ = w.Write(tb)
+		default:
+			http.NotFound(w, req)
+		}
+	})
+}
+
+func makeRegistryTarball(t *testing.T, wrapper string, files map[string][]byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for name, data := range files {
+		hdr := &tar.Header{
+			Name:     path.Join(wrapper, name),
+			Mode:     0o644,
+			Size:     int64(len(data)),
+			Typeflag: tar.TypeReg,
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "main.sh"), []byte(body), 0o644); err != nil {
+	if err := gz.Close(); err != nil {
 		t.Fatal(err)
 	}
+	return buf.Bytes()
+}
+
+func sha(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
 func readInstalledButton(t *testing.T, home, name string) button.Button {
@@ -42,18 +144,37 @@ func readInstalledButton(t *testing.T, home, name string) button.Button {
 	return b
 }
 
-func TestApplyContentUpdateFromLocalSource(t *testing.T) {
-	home := t.TempDir()
+func installFromRegistry(t *testing.T, home, url, key string, deps map[string]string) {
+	t.Helper()
 	t.Setenv("BUTTONS_HOME", home)
-	src := t.TempDir()
-
-	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "hello", Runtime: "shell", Version: "1.0.0"}, "#!/bin/sh\necho v1\n")
-	if _, err := store.InstallSpec(&store.LocalSource{Root: src}, "hello", "local:"+src); err != nil {
-		t.Fatalf("install v1: %v", err)
+	m := &manifest.Manifest{SchemaVersion: 1, Dependencies: deps}
+	if err := manifest.Save(m); err != nil {
+		t.Fatalf("save manifest: %v", err)
 	}
+	src := &store.HTTPSource{BaseURL: url, Key: key}
+	res, lock, err := store.InstallManifest(src, m, nil, store.InstallOptions{RefreshFloating: true})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if len(res.Installed) == 0 {
+		t.Fatal("expected install to write at least one button")
+	}
+	if err := manifest.SaveLockfile(lock); err != nil {
+		t.Fatalf("save lock: %v", err)
+	}
+}
 
-	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "hello", Runtime: "shell", Version: "1.1.0"}, "#!/bin/sh\necho v2\n")
-	report, err := Check(context.Background(), Options{SkipBinary: true})
+func TestApplyContentUpdateFromManifest(t *testing.T) {
+	home := t.TempDir()
+	reg := newTestRegistry("rk")
+	reg.addButton(t, "@autono/hello", "hello", "1.0.0", "#!/bin/sh\necho v1\n")
+	srv := httptest.NewServer(reg.handler())
+	defer srv.Close()
+
+	installFromRegistry(t, home, srv.URL, "rk", map[string]string{"@autono/hello": "latest"})
+
+	reg.addButton(t, "@autono/hello", "hello", "1.1.0", "#!/bin/sh\necho v2\n")
+	report, err := Check(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}
@@ -61,56 +182,68 @@ func TestApplyContentUpdateFromLocalSource(t *testing.T) {
 		t.Fatalf("expected one available content update, got %+v", report.Buttons)
 	}
 
-	result, err := Apply(context.Background(), Options{SkipBinary: true})
+	result, err := Apply(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
 	if err != nil {
 		t.Fatalf("apply: %v", err)
 	}
 	if len(result.UpdatedButtons) != 1 || result.UpdatedButtons[0] != "hello" {
 		t.Fatalf("updated buttons = %v, want [hello]", result.UpdatedButtons)
 	}
-	got := readInstalledButton(t, home, "hello")
-	if got.Version != "1.1.0" || got.SourceName != "hello" {
-		t.Fatalf("installed version/source_name = %q/%q, want 1.1.0/hello", got.Version, got.SourceName)
+	if got := readInstalledButton(t, home, "hello"); got.Version != "1.1.0" {
+		t.Fatalf("installed version = %q, want 1.1.0", got.Version)
+	}
+	lock, err := manifest.LoadLockfile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lock.Dependencies["@autono/hello"].Version; got != "1.1.0" {
+		t.Fatalf("lock version = %q, want 1.1.0", got)
 	}
 }
 
-func TestCheckContentRequiresSourceName(t *testing.T) {
+func TestPinnedContentDoesNotUpdate(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("BUTTONS_HOME", home)
-	dir := filepath.Join(home, "buttons", "hello")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	b := button.Button{SchemaVersion: 1, Name: "hello", Runtime: "shell", Version: "1.0.0", Source: "local:/tmp/source"}
-	data, _ := json.MarshalIndent(&b, "", "  ")
-	if err := os.WriteFile(filepath.Join(dir, "button.json"), data, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	reg := newTestRegistry("rk")
+	reg.addButton(t, "@autono/hello", "hello", "1.0.0", "#!/bin/sh\necho v1\n")
+	srv := httptest.NewServer(reg.handler())
+	defer srv.Close()
 
-	report, err := Check(context.Background(), Options{SkipBinary: true})
+	installFromRegistry(t, home, srv.URL, "rk", map[string]string{"@autono/hello": "1.0.0"})
+	reg.addButton(t, "@autono/hello", "hello", "1.1.0", "#!/bin/sh\necho v2\n")
+
+	report, err := Check(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}
-	if len(report.Buttons) != 1 || report.Buttons[0].Error == "" {
-		t.Fatalf("expected source_name error, got %+v", report.Buttons)
+	if len(report.Buttons) != 1 || !report.Buttons[0].Pinned || report.Buttons[0].UpdateAvailable {
+		t.Fatalf("pinned dependency should not be updateable: %+v", report.Buttons)
+	}
+	result, err := Apply(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if len(result.UpdatedButtons) != 0 {
+		t.Fatalf("updated pinned buttons = %v, want none", result.UpdatedButtons)
+	}
+	if got := readInstalledButton(t, home, "hello"); got.Version != "1.0.0" {
+		t.Fatalf("pinned installed version = %q, want 1.0.0", got.Version)
 	}
 }
 
 func TestApplyContentUpdateSkipsLocalEdits(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("BUTTONS_HOME", home)
-	src := t.TempDir()
+	reg := newTestRegistry("rk")
+	reg.addButton(t, "@autono/hello", "hello", "1.0.0", "#!/bin/sh\necho v1\n")
+	srv := httptest.NewServer(reg.handler())
+	defer srv.Close()
 
-	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "hello", Runtime: "shell", Version: "1.0.0"}, "#!/bin/sh\necho v1\n")
-	if _, err := store.InstallSpec(&store.LocalSource{Root: src}, "hello", "local:"+src); err != nil {
-		t.Fatalf("install v1: %v", err)
-	}
+	installFromRegistry(t, home, srv.URL, "rk", map[string]string{"@autono/hello": "latest"})
 	if err := os.WriteFile(filepath.Join(home, "buttons", "hello", "main.sh"), []byte("#!/bin/sh\necho local\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "hello", Runtime: "shell", Version: "1.1.0"}, "#!/bin/sh\necho v2\n")
+	reg.addButton(t, "@autono/hello", "hello", "1.1.0", "#!/bin/sh\necho v2\n")
 
-	result, err := Apply(context.Background(), Options{SkipBinary: true})
+	result, err := Apply(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
 	if err != nil {
 		t.Fatalf("apply: %v", err)
 	}

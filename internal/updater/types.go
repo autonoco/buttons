@@ -34,8 +34,9 @@ type BinaryReport struct {
 
 type ButtonReport struct {
 	Name            string `json:"name"`
-	SourceName      string `json:"source_name"`
-	Source          string `json:"source"`
+	PackageName     string `json:"package_name"`
+	Requested       string `json:"requested,omitempty"`
+	Pinned          bool   `json:"pinned,omitempty"`
 	CurrentVersion  string `json:"current_version,omitempty"`
 	LatestVersion   string `json:"latest_version,omitempty"`
 	CurrentHash     string `json:"current_hash,omitempty"`

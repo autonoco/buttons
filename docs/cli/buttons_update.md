@@ -5,14 +5,15 @@ description: "CLI reference for buttons update"
 
 ## buttons update
 
-Update the CLI and installed registry buttons
+Update the CLI and floating button dependencies
 
 ### Synopsis
 
-Install available updates for the buttons CLI and installed registry buttons.
+Install available updates for the buttons CLI and floating button dependencies.
 
-The CLI binary is updated from GitHub Releases. Installed buttons are refreshed
-from the source stamped in each installed button.json.
+The CLI binary is updated from GitHub Releases. Button dependencies are
+refreshed from `.buttons/buttons.json` and `.buttons/buttons-lock.json`. Exact
+versions are pins; update moves only dependencies requested as `"latest"`.
 
 **Examples:**
 
@@ -41,5 +42,5 @@ buttons update [flags]
 
 ### SEE ALSO
 
-* [buttons](buttons.md)	 - Deterministic workflow engine for agents
-
+* [buttons](buttons.md)  - Deterministic workflow engine for agents
+* [buttons status](buttons_status.md)  - Show available CLI and button updates

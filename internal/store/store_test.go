@@ -7,24 +7,46 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/autonoco/buttons/internal/button"
+	"github.com/autonoco/buttons/internal/manifest"
 )
 
-// writeSourceButton writes a button folder into a LocalSource root.
-func writeSourceButton(t *testing.T, root string, b button.Button) {
+func sourceBundle(t *testing.T, ref string, b button.Button, body string) *Bundle {
 	t.Helper()
-	dir := filepath.Join(root, b.Name)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	files := map[string][]byte{}
+	data, err := json.MarshalIndent(&b, "", "  ")
+	if err != nil {
 		t.Fatal(err)
 	}
-	data, _ := json.MarshalIndent(&b, "", "  ")
-	if err := os.WriteFile(filepath.Join(dir, "button.json"), data, 0644); err != nil {
-		t.Fatal(err)
+	files["button.json"] = data
+	files["main.sh"] = []byte(body)
+	return &Bundle{Name: ref, Version: b.Version, SHA256: hashFiles(files), Files: files}
+}
+
+type memorySource struct {
+	refs    []ButtonRef
+	bundles map[string]*Bundle
+}
+
+func (s memorySource) Index() ([]ButtonRef, error) {
+	return s.refs, nil
+}
+
+func (s memorySource) Fetch(name, version string) (*Bundle, error) {
+	if version == "" {
+		for _, ref := range s.refs {
+			if ref.Name == name {
+				version = ref.Version
+			}
+		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "main.sh"), []byte("#!/bin/sh\necho hi\n"), 0644); err != nil {
-		t.Fatal(err)
+	b, ok := s.bundles[name+"@"+version]
+	if !ok {
+		return nil, os.ErrNotExist
 	}
+	return b, nil
 }
 
 func installedSpec(t *testing.T, home, name string) button.Button {
@@ -40,98 +62,167 @@ func installedSpec(t *testing.T, home, name string) button.Button {
 	return b
 }
 
-func TestInstallByNameWithDeps(t *testing.T) {
+func TestInstallManifestWithDepsWritesLock(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("BUTTONS_HOME", home)
-	src := t.TempDir()
-	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "alpha", Runtime: "shell", Version: "1.0.0", Tags: []string{"demo"}, Requires: []string{"beta"}})
-	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "beta", Runtime: "shell", Version: "2.0.0", Tags: []string{"demo"}})
+	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
 
-	res, err := InstallSpec(&LocalSource{Root: src}, "alpha", "local:test")
+	alpha := sourceBundle(t, "@autono/alpha", button.Button{
+		SchemaVersion: 1,
+		Name:          "alpha",
+		Runtime:       "shell",
+		Version:       "1.0.0",
+		Requires:      map[string]string{"@autono/beta": "latest"},
+	}, "#!/bin/sh\necho alpha\n")
+	beta := sourceBundle(t, "@autono/beta", button.Button{
+		SchemaVersion: 1,
+		Name:          "beta",
+		Runtime:       "shell",
+		Version:       "2.0.0",
+	}, "#!/bin/sh\necho beta\n")
+	src := memorySource{
+		refs: []ButtonRef{
+			{Name: "@autono/alpha", Kind: "button", Version: "1.0.0"},
+			{Name: "@autono/beta", Kind: "button", Version: "2.0.0"},
+		},
+		bundles: map[string]*Bundle{
+			"@autono/alpha@1.0.0": alpha,
+			"@autono/beta@2.0.0":  beta,
+		},
+	}
+
+	res, lock, err := InstallManifest(src, &manifest.Manifest{SchemaVersion: 1, Dependencies: map[string]string{"@autono/alpha": "latest"}}, nil, InstallOptions{RefreshFloating: true, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
 	got := append([]string{}, res.Installed...)
 	sort.Strings(got)
 	if len(got) != 2 || got[0] != "alpha" || got[1] != "beta" {
-		t.Fatalf("want [alpha beta] (dep pulled), got %v", res.Installed)
+		t.Fatalf("want [alpha beta], got %v", res.Installed)
 	}
-
-	// alpha is stamped with source/source_name/version/content_hash
 	a := installedSpec(t, home, "alpha")
-	if a.Source != "local:test" || a.SourceName != "alpha" || a.Version != "1.0.0" || a.ContentHash == "" {
-		t.Fatalf("alpha not stamped: source=%q source_name=%q version=%q hash=%q", a.Source, a.SourceName, a.Version, a.ContentHash)
+	if a.Version != "1.0.0" {
+		t.Fatalf("alpha version = %q, want 1.0.0", a.Version)
 	}
-	// dep beta installed too
-	if b := installedSpec(t, home, "beta"); b.Version != "2.0.0" {
-		t.Fatalf("beta version: %q", b.Version)
+	data, err := os.ReadFile(filepath.Join(home, "buttons", "alpha", "button.json"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	// code file got the exec bit
+	if strings.Contains(string(data), "source_name") || strings.Contains(string(data), "content_hash") {
+		t.Fatalf("installed button.json should not contain source/content hash metadata: %s", data)
+	}
+	entry := lock.Dependencies["@autono/alpha"]
+	if entry.Requested != "latest" || entry.Version != "1.0.0" || entry.ContentHash == "" || entry.InstalledName != "alpha" || entry.ResolvedAt != now.Format(time.RFC3339) {
+		t.Fatalf("bad alpha lock entry: %+v", entry)
+	}
+	if dep := lock.Dependencies["@autono/beta"]; dep.Version != "2.0.0" || dep.Requested != "latest" {
+		t.Fatalf("bad beta lock entry: %+v", dep)
+	}
 	info, err := os.Stat(filepath.Join(home, "buttons", "alpha", "main.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm()&0100 == 0 {
+	if info.Mode().Perm()&0o100 == 0 {
 		t.Fatalf("main.sh not executable: %v", info.Mode())
 	}
 }
 
-func TestInstallByTag(t *testing.T) {
+func TestInstallManifestHonorsExistingLock(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("BUTTONS_HOME", home)
-	src := t.TempDir()
-	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "one", Runtime: "shell", Version: "1.0.0", Tags: []string{"grp"}})
-	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "two", Runtime: "shell", Version: "1.0.0", Tags: []string{"grp"}})
-	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "three", Runtime: "shell", Version: "1.0.0", Tags: []string{"other"}})
 
-	res, err := InstallSpec(&LocalSource{Root: src}, "tag:grp", "local:test")
+	v1 := sourceBundle(t, "@autono/hello", button.Button{SchemaVersion: 1, Name: "hello", Runtime: "shell", Version: "1.0.0"}, "#!/bin/sh\necho v1\n")
+	v2 := sourceBundle(t, "@autono/hello", button.Button{SchemaVersion: 1, Name: "hello", Runtime: "shell", Version: "1.1.0"}, "#!/bin/sh\necho v2\n")
+	src := memorySource{
+		refs: []ButtonRef{
+			{Name: "@autono/hello", Kind: "button", Version: "1.0.0"},
+			{Name: "@autono/hello", Kind: "button", Version: "1.1.0"},
+		},
+		bundles: map[string]*Bundle{
+			"@autono/hello@1.0.0": v1,
+			"@autono/hello@1.1.0": v2,
+		},
+	}
+	m := &manifest.Manifest{SchemaVersion: 1, Dependencies: map[string]string{"@autono/hello": "latest"}}
+	prior := &manifest.Lockfile{SchemaVersion: 1, Dependencies: map[string]manifest.LockEntry{
+		"@autono/hello": {Kind: "button", Requested: "latest", Version: "1.0.0", ContentHash: "old", InstalledName: "hello", ResolvedAt: "then"},
+	}}
+
+	_, lock, err := InstallManifest(src, m, prior, InstallOptions{})
 	if err != nil {
-		t.Fatalf("install tag: %v", err)
+		t.Fatalf("install honoring lock: %v", err)
 	}
-	got := append([]string{}, res.Installed...)
-	sort.Strings(got)
-	if len(got) != 2 || got[0] != "one" || got[1] != "two" {
-		t.Fatalf("tag:grp should install [one two], got %v", res.Installed)
+	if got := lock.Dependencies["@autono/hello"].Version; got != "1.0.0" {
+		t.Fatalf("install should honor locked version, got %s", got)
 	}
-	if _, err := os.Stat(filepath.Join(home, "buttons", "three")); !os.IsNotExist(err) {
-		t.Fatalf("'three' (tag:other) should NOT be installed")
+
+	_, lock, err = InstallManifest(src, m, prior, InstallOptions{RefreshFloating: true})
+	if err != nil {
+		t.Fatalf("refresh install: %v", err)
+	}
+	if got := lock.Dependencies["@autono/hello"].Version; got != "1.1.0" {
+		t.Fatalf("refresh should resolve latest, got %s", got)
 	}
 }
 
-func TestInstallTagNoMatch(t *testing.T) {
-	t.Setenv("BUTTONS_HOME", t.TempDir())
-	src := t.TempDir()
-	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "x", Runtime: "shell"})
-	if _, err := InstallSpec(&LocalSource{Root: src}, "tag:nope", "local:test"); err == nil {
-		t.Fatal("expected error for tag with no matches")
+func TestResolveExactAndLatest(t *testing.T) {
+	src := memorySource{refs: []ButtonRef{
+		{Name: "@autono/hello", Kind: "button", Version: "1.0.0"},
+		{Name: "@autono/hello", Kind: "button", Version: "1.1.0"},
+	}}
+	ref, err := Resolve(src, "@autono/hello", "")
+	if err != nil || ref.Version != "1.1.0" {
+		t.Fatalf("latest = %+v/%v, want 1.1.0", ref, err)
+	}
+	ref, err = Resolve(src, "@autono/hello", "1.0.0")
+	if err != nil || ref.Version != "1.0.0" {
+		t.Fatalf("exact = %+v/%v, want 1.0.0", ref, err)
+	}
+	if _, err := Resolve(src, "@autono/hello", "9.9.9"); err == nil {
+		t.Fatal("missing exact version should error")
 	}
 }
 
-func TestSplitVersion(t *testing.T) {
-	for _, c := range []struct{ in, name, ver string }{
-		{"deploy", "deploy", ""},
-		{"deploy@1.2.0", "deploy", "1.2.0"},
-		{"@author/x", "@author/x", ""}, // leading @ is not a version sep
-	} {
-		n, v := splitVersion(c.in)
-		if n != c.name || v != c.ver {
-			t.Errorf("splitVersion(%q) = (%q,%q), want (%q,%q)", c.in, n, v, c.name, c.ver)
-		}
-	}
-}
-
-// traversalSource is a Source whose Fetch returns a bundle file that escapes the
-// install dir — exercises the install write-path containment check (#2).
 type traversalSource struct{}
 
-func (traversalSource) Index() ([]ButtonRef, error) { return nil, nil }
-func (traversalSource) Fetch(name, _ string) (*Bundle, error) {
-	bj, _ := json.Marshal(button.Button{SchemaVersion: 1, Name: name, Runtime: "shell"})
+func (traversalSource) Index() ([]ButtonRef, error) {
+	return []ButtonRef{{Name: "@autono/evil", Kind: "button", Version: "1.0.0"}}, nil
+}
+func (traversalSource) Fetch(name, version string) (*Bundle, error) {
+	bj, _ := json.Marshal(button.Button{SchemaVersion: 1, Name: "evil", Runtime: "shell", Version: version})
 	return &Bundle{
-		Name:   name,
-		SHA256: "deadbeef",
-		Files:  map[string][]byte{"button.json": bj, "../escape.sh": []byte("x")},
+		Name:    name,
+		Version: version,
+		SHA256:  "deadbeef",
+		Files:   map[string][]byte{"button.json": bj, "../escape.sh": []byte("x")},
 	}, nil
+}
+
+func TestInstallRejectsTraversalBundle(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	_, _, err := InstallManifest(traversalSource{}, &manifest.Manifest{SchemaVersion: 1, Dependencies: map[string]string{"@autono/evil": "1.0.0"}}, nil, InstallOptions{})
+	if err == nil {
+		t.Fatal("install should reject a bundle file that escapes the button dir")
+	}
+	if _, err := os.Stat(filepath.Join(home, "buttons", "evil")); !os.IsNotExist(err) {
+		t.Fatal("rejected traversal install left a partial button dir behind")
+	}
+}
+
+func writeSourceButton(t *testing.T, root string, b button.Button) {
+	t.Helper()
+	dir := filepath.Join(root, b.Name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.MarshalIndent(&b, "", "  ")
+	if err := os.WriteFile(filepath.Join(dir, "button.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.sh"), []byte("#!/bin/sh\necho hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestFetchRejectsTraversalName(t *testing.T) {
@@ -181,23 +272,11 @@ func TestSafeJoin(t *testing.T) {
 	}
 }
 
-func TestInstallRejectsTraversalBundle(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("BUTTONS_HOME", home)
-	if _, err := install(traversalSource{}, "evil", "", "local:test"); err == nil {
-		t.Fatal("install should reject a bundle file that escapes the button dir")
-	}
-	// a rejected bundle must not leave a partial install behind
-	if _, err := os.Stat(filepath.Join(home, "buttons", "evil")); !os.IsNotExist(err) {
-		t.Fatal("rejected traversal install left a partial button dir behind")
-	}
-}
-
 func TestFetchSkipsSymlinks(t *testing.T) {
 	src := t.TempDir()
 	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "ok", Runtime: "shell", Version: "1.0.0"})
 	secret := filepath.Join(t.TempDir(), "secret.txt")
-	if err := os.WriteFile(secret, []byte("top secret"), 0600); err != nil {
+	if err := os.WriteFile(secret, []byte("top secret"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(secret, filepath.Join(src, "ok", "leak.txt")); err != nil {

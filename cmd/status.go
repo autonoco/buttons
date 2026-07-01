@@ -13,7 +13,7 @@ import (
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show available CLI and button updates",
-	Long: `Show whether the buttons CLI or installed registry buttons have updates.
+	Long: `Show whether the buttons CLI or manifest dependencies have updates.
 
 Like every user-invoked command, status also enters the passive auto-update
 gate before it prints. Use 'buttons update' to force an update immediately.`,
@@ -52,12 +52,18 @@ func printStatus(report *updater.Report) {
 	}
 
 	if len(report.Buttons) == 0 {
-		fmt.Fprintln(os.Stderr, "Buttons: no registry-installed buttons found")
+		fmt.Fprintln(os.Stderr, "Buttons: no manifest dependencies found")
 		return
 	}
 	available := 0
 	for _, b := range report.Buttons {
 		switch {
+		case b.Pinned && b.CurrentVersion == "":
+			fmt.Fprintf(os.Stderr, "Button %s: pinned at %s (not installed; run buttons install)\n", b.PackageName, b.Requested)
+		case b.Pinned && b.LatestVersion != "" && b.CurrentVersion != "" && b.LatestVersion != b.CurrentVersion:
+			fmt.Fprintf(os.Stderr, "Button %s: pinned at %s (latest %s)\n", b.Name, b.CurrentVersion, b.LatestVersion)
+		case b.Pinned:
+			fmt.Fprintf(os.Stderr, "Button %s: pinned at %s\n", b.Name, b.CurrentVersion)
 		case b.Skipped:
 			fmt.Fprintf(os.Stderr, "Button %s: skipped (%s)\n", b.Name, b.SkipReason)
 		case b.Error != "":
