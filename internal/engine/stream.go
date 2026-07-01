@@ -7,7 +7,7 @@
 // timestamp. The sink is optional: passing nil keeps the pre-streaming
 // behavior intact (buffered Stdout / Stderr on Result, no channel).
 //
-// Back-pressure policy
+// # Back-pressure policy
 //
 // The tee emits to the sink via a non-blocking select. If the consumer
 // can't keep up, lines are dropped — the buffered `Result.Stdout` /
@@ -97,12 +97,13 @@ func newLineTee(w io.Writer, sink LineSink, sev Severity) *lineTee {
 // always complete regardless of what happens to the sink), then splits
 // into lines and emits each to the sink.
 func (t *lineTee) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	n, err := t.w.Write(p)
 	if t.sink == nil {
 		return n, err
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.buf = append(t.buf, p[:n]...)
 	for {
 		i := bytes.IndexByte(t.buf, '\n')
@@ -114,6 +115,15 @@ func (t *lineTee) Write(p []byte) (int, error) {
 		t.emit(line)
 	}
 	return n, err
+}
+
+func (t *lineTee) CapturedString() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if s, ok := t.w.(interface{ String() string }); ok {
+		return s.String()
+	}
+	return ""
 }
 
 // Flush emits any trailing partial line (no newline terminator) still

@@ -148,8 +148,8 @@ func Execute(ctx context.Context, btn *button.Button, args, batteries map[string
 		// stream.
 		stdoutTee.Flush()
 		stderrTee.Flush()
-		result.Stdout = stdout.String()
-		result.Stderr = stderr.String()
+		result.Stdout = stdoutTee.CapturedString()
+		result.Stderr = stderrTee.CapturedString()
 
 		if err != nil {
 			var exitErr *exec.ExitError
@@ -175,8 +175,8 @@ func Execute(ctx context.Context, btn *button.Button, args, batteries map[string
 		result.DurationMs = time.Since(start).Milliseconds()
 		stdoutTee.Flush()
 		stderrTee.Flush()
-		result.Stdout = stdout.String()
-		result.Stderr = stderr.String()
+		result.Stdout = stdoutTee.CapturedString()
+		result.Stderr = stderrTee.CapturedString()
 		result.Status = "timeout"
 		result.ExitCode = -1
 		result.ErrorType = "TIMEOUT"

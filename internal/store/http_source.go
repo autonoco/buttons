@@ -10,9 +10,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -218,10 +220,10 @@ func untarGz(data []byte) (map[string][]byte, error) {
 		if hdr.Typeflag != tar.TypeReg {
 			continue // dirs, symlinks, etc.
 		}
-		if !safeArchivePath(hdr.Name) {
+		clean, err := cleanArchivePath(hdr.Name)
+		if err != nil {
 			return nil, fmt.Errorf("unsafe path in artifact: %q", hdr.Name)
 		}
-		clean := path.Clean(hdr.Name)
 		i := strings.IndexByte(clean, '/')
 		if i < 0 {
 			continue // a bare top-level file (no wrapping button dir) — skip
@@ -230,7 +232,8 @@ func untarGz(data []byte) (map[string][]byte, error) {
 		if rel == "" || strings.HasPrefix(rel, "pressed/") {
 			continue // skip the wrapper itself and local run history
 		}
-		if !safeArchivePath(rel) {
+		rel, err = cleanArchivePath(rel)
+		if err != nil {
 			return nil, fmt.Errorf("unsafe path in artifact: %q", hdr.Name)
 		}
 		if base := path.Base(rel); strings.HasPrefix(base, "._") || base == ".DS_Store" {
@@ -252,15 +255,25 @@ func untarGz(data []byte) (map[string][]byte, error) {
 	return files, nil
 }
 
-func safeArchivePath(name string) bool {
-	if name == "" || path.IsAbs(name) {
-		return false
+func cleanArchivePath(name string) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("empty path")
 	}
 	for _, part := range strings.Split(name, "/") {
 		if part == ".." {
-			return false
+			return "", fmt.Errorf("path traversal")
 		}
 	}
 	clean := path.Clean(name)
-	return clean != "." && clean != ".." && !path.IsAbs(clean) && !strings.HasPrefix(clean, "../")
+	if clean == "." || !fs.ValidPath(clean) {
+		return "", fmt.Errorf("invalid path")
+	}
+	local, err := filepath.Localize(clean)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsLocal(local) {
+		return "", fmt.Errorf("non-local path")
+	}
+	return filepath.ToSlash(local), nil
 }

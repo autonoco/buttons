@@ -44,6 +44,12 @@ func ReadInstallState(dir string) (*InstallState, error) {
 }
 
 func HashInstalledDir(dir string) (string, error) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = root.Close() }()
+
 	files := map[string][]byte{}
 	if err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
@@ -52,11 +58,11 @@ func HashInstalledDir(dir string) (string, error) {
 		if path == dir {
 			return nil
 		}
-		rel, err := filepath.Rel(dir, path)
+		relPath, err := filepath.Rel(dir, path)
 		if err != nil {
 			return err
 		}
-		rel = filepath.ToSlash(rel)
+		rel := filepath.ToSlash(relPath)
 		if entry.IsDir() {
 			if rel == "pressed" || strings.HasPrefix(rel, "pressed/") {
 				return filepath.SkipDir
@@ -66,7 +72,10 @@ func HashInstalledDir(dir string) (string, error) {
 		if rel == InstallStateFile {
 			return nil
 		}
-		data, err := os.ReadFile(path) // #nosec G304 -- path comes from WalkDir under dir.
+		if !entry.Type().IsRegular() {
+			return nil
+		}
+		data, err := root.ReadFile(relPath)
 		if err != nil {
 			return err
 		}
