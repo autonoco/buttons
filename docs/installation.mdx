@@ -108,7 +108,7 @@ buttons update
 
 This checks GitHub Releases for the CLI and refreshes floating button dependencies from `.buttons/buttons.json` and `.buttons/buttons-lock.json`.
 
-Normal interactive commands also pass through the passive auto-update gate. Floating button dependencies can refresh before the command runs; CLI binary checks stay throttled so every command does not hit GitHub.
+Normal interactive commands can also update before they run. `buttons-auto-update` refreshes floating button dependencies and defaults on. `cli-auto-update` updates the CLI binary when the throttle allows and defaults off, so every command does not hit GitHub or Homebrew.
 
 You can also update through your original install channel:
 
@@ -122,5 +122,7 @@ You can also update through your original install channel:
 | npm | `npm update -g @autono/buttons` |
 
 <Note>
-If you installed via Homebrew, `buttons update` detects this and asks you to use `brew upgrade` instead.
+If you installed via Homebrew, `buttons update` detects this and asks you to use `brew upgrade` by default.
+To let Buttons update the CLI through Homebrew, run `buttons config set cli-auto-update true`
+or set `BUTTONS_CLI_AUTO_UPDATE=1`.
 </Note>

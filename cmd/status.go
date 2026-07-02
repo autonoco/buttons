@@ -15,9 +15,10 @@ var statusCmd = &cobra.Command{
 	Short: "Show available CLI and button updates",
 	Long: `Show whether the buttons CLI or manifest dependencies have updates.
 
-Like every user-invoked command, status also enters the passive auto-update
-gate before it prints. Floating button dependencies may refresh before status
-reports. Use 'buttons update' to force the full update path immediately.`,
+Like every user-invoked command, status also enters enabled passive update
+paths before it prints. buttons-auto-update may refresh floating button
+dependencies; cli-auto-update may update the CLI binary when the throttle
+allows. Use 'buttons update' to force the full update path immediately.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		report, err := updater.Check(context.Background(), updater.Options{

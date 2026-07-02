@@ -8,16 +8,19 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 )
 
 const releasesAPI = "https://api.github.com/repos/autonoco/buttons/releases/latest"
+const cliAutoUpdateEnv = "BUTTONS_CLI_AUTO_UPDATE"
 
 type ghRelease struct {
 	TagName string    `json:"tag_name"`
@@ -76,6 +79,13 @@ func applyBinary(ctx context.Context, opts Options, report BinaryReport) (bool, 
 	}
 	if isHomebrewManaged(execPath) {
 		report.HomebrewManaged = true
+		if cliAutoUpdateEnabled(opts) {
+			if err := runHomebrewUpgrade(ctx, opts); err != nil {
+				report.Error = err.Error()
+				return false, report
+			}
+			return true, report
+		}
 		report.Error = "this binary is managed by Homebrew; run 'brew upgrade buttons' instead"
 		return false, report
 	}
@@ -284,4 +294,28 @@ func isHomebrewManaged(path string) bool {
 	return strings.Contains(path, "/Cellar/") ||
 		strings.Contains(path, "/opt/homebrew/") ||
 		strings.Contains(path, "/usr/local/Cellar/")
+}
+
+func cliAutoUpdateEnabled(opts Options) bool {
+	if opts.CLIAutoUpdate {
+		return true
+	}
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(cliAutoUpdateEnv)))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+func runHomebrewUpgrade(ctx context.Context, opts Options) error {
+	out := opts.output()
+	fmt.Fprintln(out, "Updating buttons via Homebrew")
+	// #nosec G204 G702 -- command and args are fixed; Homebrew delegation only runs after CLI auto-update opt-in.
+	cmd := exec.CommandContext(ctx, "brew", "upgrade", "buttons")
+	cmd.Stdout = out
+	cmd.Stderr = out
+	if err := cmd.Run(); err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return fmt.Errorf("CLI auto-update is enabled but brew was not found on PATH")
+		}
+		return fmt.Errorf("brew upgrade buttons failed: %w", err)
+	}
+	return nil
 }

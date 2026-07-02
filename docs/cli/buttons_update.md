@@ -15,6 +15,14 @@ The CLI binary is updated from GitHub Releases. Button dependencies are
 refreshed from .buttons/buttons.json and .buttons/buttons-lock.json. Exact
 versions are pins; update moves only dependencies requested as "latest".
 
+Homebrew-managed installs are left to Homebrew by default. To let Buttons update
+the CLI through Homebrew and run passive CLI binary updates when the throttle
+allows, run:
+
+```bash
+buttons config set cli-auto-update true
+```
+
 **Examples:**
 
 ```bash
@@ -43,4 +51,3 @@ buttons update [flags]
 ### SEE ALSO
 
 * [buttons](buttons.md)	 - Deterministic workflow engine for agents
-

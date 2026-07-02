@@ -37,11 +37,13 @@ func maybeRunPassiveUpdate(cmd *cobra.Command) {
 	if err != nil {
 		return
 	}
+	opts.CLIAutoUpdate = st.CLIAutoUpdateEnabled() || force
 	plan := passiveUpdatePlan(st, force, time.Now())
 	if !plan.run {
 		return
 	}
 	opts.SkipBinary = plan.skipBinary
+	opts.SkipContent = plan.skipContent
 	if plan.recordCheck {
 		if err := svc.SetLastUpdateCheckUnix(plan.now.Unix()); err != nil {
 			return
@@ -56,22 +58,43 @@ func maybeRunPassiveUpdate(cmd *cobra.Command) {
 type passiveUpdateDecision struct {
 	run         bool
 	skipBinary  bool
+	skipContent bool
 	recordCheck bool
 	now         time.Time
 }
 
 func passiveUpdatePlan(st *settings.Settings, force bool, now time.Time) passiveUpdateDecision {
-	if force {
-		return passiveUpdateDecision{run: true, recordCheck: true, now: now}
-	}
-	if st == nil || !st.AutoUpdateEnabled() {
+	if st == nil {
 		return passiveUpdateDecision{}
+	}
+	buttonsEnabled := st.ButtonsAutoUpdateEnabled()
+	cliEnabled := st.CLIAutoUpdateEnabled() || force
+	if !buttonsEnabled && !cliEnabled {
+		return passiveUpdateDecision{}
+	}
+	decision := passiveUpdateDecision{
+		run:         true,
+		skipBinary:  !cliEnabled,
+		skipContent: !buttonsEnabled,
+		now:         now,
+	}
+	if !cliEnabled {
+		return decision
+	}
+	if force {
+		decision.recordCheck = true
+		return decision
 	}
 	last := st.LastUpdateCheckUnixOrZero()
 	if last > 0 && now.Sub(time.Unix(last, 0)) < passiveUpdateThrottle {
-		return passiveUpdateDecision{run: true, skipBinary: true, now: now}
+		decision.skipBinary = true
+		if decision.skipContent {
+			decision.run = false
+		}
+		return decision
 	}
-	return passiveUpdateDecision{run: true, recordCheck: true, now: now}
+	decision.recordCheck = true
+	return decision
 }
 
 func shouldSkipPassiveUpdate() bool {

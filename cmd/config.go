@@ -25,8 +25,12 @@ Known keys:
                     an explicit --timeout flag (fallback: 300)
   theme             board TUI theme: default | paper | phosphor | amber
                     (fallback: default — adapts to terminal background)
-  auto-update       true | false; passive update checks before CLI commands
-                    (fallback: true)
+  buttons-auto-update
+                    true | false; refresh floating installed buttons before
+                    CLI commands (fallback: true)
+  cli-auto-update   true | false; update the CLI binary before commands when
+                    the throttle allows it; Homebrew uses brew upgrade
+                    (fallback: false)
 
 Running ` + "`buttons config`" + ` with no subcommand prints the current values.
 
@@ -37,7 +41,8 @@ Examples:
   buttons config
   buttons config set default-timeout 600
   buttons config set theme amber
-  buttons config set auto-update false
+  buttons config set buttons-auto-update false
+  buttons config set cli-auto-update true
   buttons config unset theme`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return showConfig()
@@ -105,7 +110,8 @@ func showConfig() error {
 		if v, ok := st.Theme(); ok {
 			payload[settings.KeyTheme] = v
 		}
-		payload[settings.KeyAutoUpdate] = st.AutoUpdateEnabled()
+		payload[settings.KeyButtonsAutoUpdate] = st.ButtonsAutoUpdateEnabled()
+		payload[settings.KeyCLIAutoUpdate] = st.CLIAutoUpdateEnabled()
 		return config.WriteJSON(payload)
 	}
 
@@ -126,7 +132,8 @@ func showConfig() error {
 	} else {
 		render(settings.KeyTheme, nil, "default (adaptive)")
 	}
-	render(settings.KeyAutoUpdate, st.AutoUpdateEnabled(), "")
+	render(settings.KeyButtonsAutoUpdate, st.ButtonsAutoUpdateEnabled(), "")
+	render(settings.KeyCLIAutoUpdate, st.CLIAutoUpdateEnabled(), "")
 	return nil
 }
 

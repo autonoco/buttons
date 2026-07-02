@@ -108,3 +108,62 @@ func TestApplyBinaryUsesCheckedReleaseSnapshot(t *testing.T) {
 		t.Fatalf("binary mode = %o, want 700", got)
 	}
 }
+
+func TestApplyBinaryHomebrewUsesPackageManagerWhenOptedIn(t *testing.T) {
+	releaseJSON := []byte(`{"tag_name":"v2.0.0","assets":[]}`)
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() == releasesAPI {
+			return testHTTPResponse(http.StatusOK, releaseJSON), nil
+		}
+		return testHTTPResponse(http.StatusNotFound, nil), nil
+	})}
+
+	binDir := filepath.Join(t.TempDir(), "opt", "homebrew", "Cellar", "buttons", "1.0.0", "bin")
+	if err := os.MkdirAll(binDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	execPath := filepath.Join(binDir, "buttons")
+	if err := os.WriteFile(execPath, []byte("old"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	fakeBin := t.TempDir()
+	argvPath := filepath.Join(t.TempDir(), "brew-argv")
+	brewPath := filepath.Join(fakeBin, "brew")
+	brewScript := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" > %q\n", argvPath)
+	if err := os.WriteFile(brewPath, []byte(brewScript), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	result, err := Apply(context.Background(), Options{
+		CurrentVersion: "1.0.0",
+		Client:         client,
+		ExecutablePath: execPath,
+		SkipContent:    true,
+		CLIAutoUpdate:  true,
+	})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if !result.UpdatedBinary {
+		t.Fatalf("UpdatedBinary = false, result = %+v", result)
+	}
+	if result.Binary == nil || !result.Binary.HomebrewManaged {
+		t.Fatalf("HomebrewManaged not reported: %+v", result.Binary)
+	}
+	argv, err := os.ReadFile(argvPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(argv), "upgrade\nbuttons\n"; got != want {
+		t.Fatalf("brew argv = %q, want %q", got, want)
+	}
+}
+
+func TestApplyBinaryHomebrewUsesPackageManagerWithEnvOptIn(t *testing.T) {
+	t.Setenv("BUTTONS_CLI_AUTO_UPDATE", "1")
+	if !cliAutoUpdateEnabled(Options{}) {
+		t.Fatal("env opt-in should enable CLI auto-update")
+	}
+}
