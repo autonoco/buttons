@@ -14,6 +14,7 @@ type Options struct {
 	ExecutablePath string
 	SkipBinary     bool
 	SkipContent    bool
+	CLIAutoUpdate  bool
 }
 
 type Report struct {

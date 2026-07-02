@@ -38,12 +38,14 @@ func TestPassiveUpdateSkipsCIWithoutRegistryProbe(t *testing.T) {
 }
 
 func TestPassiveUpdatePlanRunsContentInsideBinaryThrottle(t *testing.T) {
-	autoUpdate := true
+	buttonsAutoUpdate := true
+	cliAutoUpdate := true
 	now := time.Unix(2000, 0)
 	last := now.Add(-time.Minute).Unix()
 	st := &settings.Settings{
 		Defaults: settings.Defaults{
-			AutoUpdate:          &autoUpdate,
+			ButtonsAutoUpdate:   &buttonsAutoUpdate,
+			CLIAutoUpdate:       &cliAutoUpdate,
 			LastUpdateCheckUnix: &last,
 		},
 	}
@@ -57,5 +59,30 @@ func TestPassiveUpdatePlanRunsContentInsideBinaryThrottle(t *testing.T) {
 	}
 	if plan.recordCheck {
 		t.Fatal("content-only passive update should not refresh binary throttle timestamp")
+	}
+}
+
+func TestPassiveUpdatePlanRunsButtonsWhenCLIAutoUpdateDisabled(t *testing.T) {
+	buttonsAutoUpdate := true
+	cliAutoUpdate := false
+	st := &settings.Settings{
+		Defaults: settings.Defaults{
+			ButtonsAutoUpdate: &buttonsAutoUpdate,
+			CLIAutoUpdate:     &cliAutoUpdate,
+		},
+	}
+
+	plan := passiveUpdatePlan(st, false, time.Unix(2000, 0))
+	if !plan.run {
+		t.Fatal("passive button update should run")
+	}
+	if !plan.skipBinary {
+		t.Fatal("CLI binary update should be skipped")
+	}
+	if plan.skipContent {
+		t.Fatal("button content update should not be skipped")
+	}
+	if plan.recordCheck {
+		t.Fatal("button-only passive update should not refresh CLI throttle timestamp")
 	}
 }

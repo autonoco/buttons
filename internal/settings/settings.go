@@ -35,7 +35,8 @@ type Settings struct {
 type Defaults struct {
 	TimeoutSeconds      *int    `json:"timeout_seconds,omitempty"`
 	Theme               *string `json:"theme,omitempty"`
-	AutoUpdate          *bool   `json:"auto_update,omitempty"`
+	ButtonsAutoUpdate   *bool   `json:"buttons_auto_update,omitempty"`
+	CLIAutoUpdate       *bool   `json:"cli_auto_update,omitempty"`
 	LastUpdateCheckUnix *int64  `json:"last_update_check_unix,omitempty"`
 }
 
@@ -74,9 +75,10 @@ var ErrUnknownKey = errors.New("unknown settings key")
 // Known flat keys. Kept in one place so the CLI, Get, and Set agree
 // on what exists.
 const (
-	KeyDefaultTimeout = "default-timeout"
-	KeyTheme          = "theme"
-	KeyAutoUpdate     = "auto-update"
+	KeyDefaultTimeout    = "default-timeout"
+	KeyTheme             = "theme"
+	KeyButtonsAutoUpdate = "buttons-auto-update"
+	KeyCLIAutoUpdate     = "cli-auto-update"
 )
 
 // validThemes lists accepted theme names. Kept in settings (not tui)
@@ -153,12 +155,18 @@ func (s *Service) Set(key, value string) error {
 		}
 		v := value
 		st.Defaults.Theme = &v
-	case KeyAutoUpdate:
+	case KeyButtonsAutoUpdate:
 		v, err := strconv.ParseBool(value)
 		if err != nil {
 			return fmt.Errorf("%s expects true or false, got %q", key, value)
 		}
-		st.Defaults.AutoUpdate = &v
+		st.Defaults.ButtonsAutoUpdate = &v
+	case KeyCLIAutoUpdate:
+		v, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("%s expects true or false, got %q", key, value)
+		}
+		st.Defaults.CLIAutoUpdate = &v
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownKey, key)
 	}
@@ -176,8 +184,10 @@ func (s *Service) Unset(key string) error {
 		st.Defaults.TimeoutSeconds = nil
 	case KeyTheme:
 		st.Defaults.Theme = nil
-	case KeyAutoUpdate:
-		st.Defaults.AutoUpdate = nil
+	case KeyButtonsAutoUpdate:
+		st.Defaults.ButtonsAutoUpdate = nil
+	case KeyCLIAutoUpdate:
+		st.Defaults.CLIAutoUpdate = nil
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownKey, key)
 	}
@@ -204,13 +214,20 @@ func (st *Settings) Theme() (string, bool) {
 	return *st.Defaults.Theme, true
 }
 
-// AutoUpdateEnabled returns true unless the user explicitly disables the
-// passive update gate.
-func (st *Settings) AutoUpdateEnabled() bool {
-	if st == nil || st.Defaults.AutoUpdate == nil {
+// ButtonsAutoUpdateEnabled returns true unless the user explicitly disables
+// passive updates for installed button content.
+func (st *Settings) ButtonsAutoUpdateEnabled() bool {
+	if st == nil || st.Defaults.ButtonsAutoUpdate == nil {
 		return true
 	}
-	return *st.Defaults.AutoUpdate
+	return *st.Defaults.ButtonsAutoUpdate
+}
+
+func (st *Settings) CLIAutoUpdateEnabled() bool {
+	if st == nil || st.Defaults.CLIAutoUpdate == nil {
+		return false
+	}
+	return *st.Defaults.CLIAutoUpdate
 }
 
 func (st *Settings) LastUpdateCheckUnixOrZero() int64 {

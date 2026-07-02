@@ -23,8 +23,12 @@ Known keys:
                     an explicit --timeout flag (fallback: 300)
   theme             board TUI theme: default | paper | phosphor | amber
                     (fallback: default — adapts to terminal background)
-  auto-update       true | false; passive update checks before CLI commands
-                    (fallback: true)
+  buttons-auto-update
+                    true | false; refresh floating installed buttons before
+                    CLI commands (fallback: true)
+  cli-auto-update   true | false; update the CLI binary before commands when
+                    the throttle allows it; Homebrew uses brew upgrade
+                    (fallback: false)
 ```
 
 Running `buttons config` with no subcommand prints the current values.
@@ -38,7 +42,8 @@ then settings, then default. Env override keeps A/B comparison easy.
 buttons config
 buttons config set default-timeout 600
 buttons config set theme amber
-buttons config set auto-update false
+buttons config set buttons-auto-update false
+buttons config set cli-auto-update true
 buttons config unset theme
 ```
 
@@ -65,4 +70,3 @@ buttons config [flags]
 * [buttons](buttons.md)	 - Deterministic workflow engine for agents
 * [buttons config set](buttons_config_set.md)	 - Set a setting
 * [buttons config unset](buttons_config_unset.md)	 - Clear a setting (revert to built-in default)
-

@@ -70,42 +70,79 @@ func TestService_Set_Theme(t *testing.T) {
 	}
 }
 
-func TestService_AutoUpdateDefaultsOn(t *testing.T) {
+func TestService_ButtonsAutoUpdateDefaultsOn(t *testing.T) {
 	svc := NewService(t.TempDir())
 	st, err := svc.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !st.AutoUpdateEnabled() {
-		t.Fatal("auto-update should default on")
+	if !st.ButtonsAutoUpdateEnabled() {
+		t.Fatal("buttons-auto-update should default on")
 	}
 }
 
-func TestService_SetAutoUpdate(t *testing.T) {
+func TestService_SetButtonsAutoUpdate(t *testing.T) {
 	svc := NewService(t.TempDir())
-	if err := svc.Set(KeyAutoUpdate, "false"); err != nil {
+	if err := svc.Set(KeyButtonsAutoUpdate, "false"); err != nil {
 		t.Fatalf("set false: %v", err)
 	}
 	st, err := svc.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.AutoUpdateEnabled() {
-		t.Fatal("auto-update should be disabled")
+	if st.ButtonsAutoUpdateEnabled() {
+		t.Fatal("buttons-auto-update should be disabled")
 	}
 
-	if err := svc.Set(KeyAutoUpdate, "true"); err != nil {
+	if err := svc.Set(KeyButtonsAutoUpdate, "true"); err != nil {
 		t.Fatalf("set true: %v", err)
 	}
 	st, err = svc.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !st.AutoUpdateEnabled() {
-		t.Fatal("auto-update should be enabled")
+	if !st.ButtonsAutoUpdateEnabled() {
+		t.Fatal("buttons-auto-update should be enabled")
 	}
 
-	if err := svc.Set(KeyAutoUpdate, "maybe"); err == nil {
+	if err := svc.Set(KeyButtonsAutoUpdate, "maybe"); err == nil {
+		t.Fatal("invalid bool should fail")
+	}
+}
+
+func TestService_SetCLIAutoUpdate(t *testing.T) {
+	svc := NewService(t.TempDir())
+	st, err := svc.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.CLIAutoUpdateEnabled() {
+		t.Fatal("cli-auto-update should default off")
+	}
+
+	if err := svc.Set(KeyCLIAutoUpdate, "true"); err != nil {
+		t.Fatalf("set true: %v", err)
+	}
+	st, err = svc.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.CLIAutoUpdateEnabled() {
+		t.Fatal("cli-auto-update should be enabled")
+	}
+
+	if err := svc.Set(KeyCLIAutoUpdate, "false"); err != nil {
+		t.Fatalf("set false: %v", err)
+	}
+	st, err = svc.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.CLIAutoUpdateEnabled() {
+		t.Fatal("cli-auto-update should be disabled")
+	}
+
+	if err := svc.Set(KeyCLIAutoUpdate, "maybe"); err == nil {
 		t.Fatal("invalid bool should fail")
 	}
 }

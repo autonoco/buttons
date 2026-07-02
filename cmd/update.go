@@ -3,9 +3,11 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/autonoco/buttons/internal/config"
+	"github.com/autonoco/buttons/internal/settings"
 	"github.com/autonoco/buttons/internal/updater"
 	"github.com/spf13/cobra"
 )
@@ -24,12 +26,7 @@ Examples:
   buttons update --json`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		result, err := updater.Apply(context.Background(), updater.Options{
-			CurrentVersion: version,
-			RegistryURL:    registryURL(),
-			RegistryKey:    registryKey(),
-			Writer:         os.Stderr,
-		})
+		result, err := updater.Apply(context.Background(), updaterOptions(os.Stderr))
 		if err != nil {
 			if jsonOutput {
 				_ = config.WriteJSONError("UPDATE_ERROR", err.Error())
@@ -43,6 +40,21 @@ Examples:
 		printUpdateResult(result)
 		return nil
 	},
+}
+
+func updaterOptions(writer io.Writer) updater.Options {
+	opts := updater.Options{
+		CurrentVersion: version,
+		RegistryURL:    registryURL(),
+		RegistryKey:    registryKey(),
+		Writer:         writer,
+	}
+	if svc, err := settings.NewServiceFromEnv(); err == nil {
+		if st, err := svc.Load(); err == nil {
+			opts.CLIAutoUpdate = st.CLIAutoUpdateEnabled()
+		}
+	}
+	return opts
 }
 
 func printUpdateResult(result *updater.Result) {
