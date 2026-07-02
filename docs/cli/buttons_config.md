@@ -70,3 +70,4 @@ buttons config [flags]
 * [buttons](buttons.md)	 - Deterministic workflow engine for agents
 * [buttons config set](buttons_config_set.md)	 - Set a setting
 * [buttons config unset](buttons_config_unset.md)	 - Clear a setting (revert to built-in default)
+
