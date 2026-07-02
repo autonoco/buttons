@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/autonoco/buttons/internal/button"
@@ -102,26 +103,60 @@ func CheckContent(ctx context.Context, opts Options) ([]ButtonReport, error) {
 	}
 	src, err := sourceForManifest(ctx, opts)
 	if err != nil {
-		return reportsWithSourceError(m, err), nil
+		return reportsWithSourceError(m, lock, err), nil
 	}
 
-	reports := make([]ButtonReport, 0, len(m.Dependencies))
-	for name, requested := range m.Dependencies {
-		rep := checkOneDependency(ctx, src, name, requested, lock)
-		reports = append(reports, rep)
+	deps := contentDependencies(m, lock)
+	reports := make([]ButtonReport, 0, len(deps))
+	for _, dep := range deps {
+		reports = append(reports, checkOneDependency(ctx, src, dep.name, dep.requested, lock))
 	}
 	return reports, nil
 }
 
-func reportsWithSourceError(m *manifest.Manifest, err error) []ButtonReport {
-	reports := make([]ButtonReport, 0, len(m.Dependencies))
+type contentDependency struct {
+	name      string
+	requested string
+}
+
+func contentDependencies(m *manifest.Manifest, lock *manifest.Lockfile) []contentDependency {
+	deps := make(map[string]string, len(m.Dependencies)+len(lock.Dependencies))
 	for name, requested := range m.Dependencies {
+		deps[name] = requested
+	}
+	for name, entry := range lock.Dependencies {
+		if _, ok := deps[name]; ok {
+			continue
+		}
+		deps[name] = entry.Requested
+	}
+	names := make([]string, 0, len(deps))
+	for name := range deps {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]contentDependency, 0, len(names))
+	for _, name := range names {
+		out = append(out, contentDependency{name: name, requested: deps[name]})
+	}
+	return out
+}
+
+func reportsWithSourceError(m *manifest.Manifest, lock *manifest.Lockfile, err error) []ButtonReport {
+	deps := contentDependencies(m, lock)
+	reports := make([]ButtonReport, 0, len(deps))
+	for _, dep := range deps {
+		entry := lock.Dependencies[dep.name]
+		kind, installedName := effectiveDependencyIdentity(dep.name, entry)
 		reports = append(reports, ButtonReport{
-			Name:        localNameFromPackage(name),
-			PackageName: name,
-			Requested:   requested,
-			Pinned:      !manifest.IsFloating(requested),
-			Error:       err.Error(),
+			Name:           installedName,
+			Kind:           kind,
+			PackageName:    dep.name,
+			Requested:      dep.requested,
+			CurrentVersion: entry.Version,
+			CurrentHash:    entry.ContentHash,
+			Pinned:         !manifest.IsFloating(dep.requested),
+			Error:          err.Error(),
 		})
 	}
 	return reports
@@ -129,16 +164,15 @@ func reportsWithSourceError(m *manifest.Manifest, err error) []ButtonReport {
 
 func checkOneDependency(ctx context.Context, src store.Source, name, requested string, lock *manifest.Lockfile) ButtonReport {
 	entry, locked := lock.Dependencies[name]
+	kind, installedName := effectiveDependencyIdentity(name, entry)
 	rep := ButtonReport{
-		Name:           entry.InstalledName,
+		Name:           installedName,
+		Kind:           kind,
 		PackageName:    name,
 		Requested:      requested,
 		CurrentVersion: entry.Version,
 		CurrentHash:    entry.ContentHash,
 		Pinned:         !manifest.IsFloating(requested),
-	}
-	if rep.Name == "" {
-		rep.Name = localNameFromPackage(name)
 	}
 	if !locked {
 		rep.UpdateAvailable = true
@@ -166,12 +200,27 @@ func checkOneDependency(ctx context.Context, src store.Source, name, requested s
 		rep.Error = err.Error()
 		return rep
 	}
+	if ref.Kind != "" {
+		rep.Kind = ref.Kind
+	}
 	rep.LatestVersion = ref.Version
 	rep.LatestHash = ref.SHA256
 	if manifest.IsFloating(requested) {
 		rep.UpdateAvailable = !locked || contentUpdateAvailable(rep)
 	}
 	return rep
+}
+
+func effectiveDependencyIdentity(packageName string, entry manifest.LockEntry) (kind, installedName string) {
+	kind = entry.Kind
+	if kind == "" {
+		kind = "button"
+	}
+	installedName = entry.InstalledName
+	if installedName == "" {
+		installedName = localNameFromPackage(packageName)
+	}
+	return kind, installedName
 }
 
 func contentUpdateAvailable(rep ButtonReport) bool {
@@ -216,7 +265,14 @@ func locallyModified(entry manifest.LockEntry) (bool, error) {
 	if entry.InstalledName == "" {
 		return false, nil
 	}
-	dir, err := config.ButtonDir(button.Slugify(entry.InstalledName))
+	var dir string
+	var err error
+	switch entry.Kind {
+	case "drawer":
+		dir, err = config.DrawerDir(button.Slugify(entry.InstalledName))
+	default:
+		dir, err = config.ButtonDir(button.Slugify(entry.InstalledName))
+	}
 	if err != nil {
 		return false, err
 	}

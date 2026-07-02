@@ -139,7 +139,7 @@ func (s *HTTPSource) Index() ([]ButtonRef, error) {
 	return refs, nil
 }
 
-// Fetch downloads a button tarball, verifies it against the registry's advertised
+// Fetch downloads a package tarball, verifies it against the registry's advertised
 // content hash, and extracts it into a Bundle. version "" resolves to latest.
 func (s *HTTPSource) Fetch(name, version string) (*Bundle, error) {
 	// Resolve "" → latest. The Worker treats the last index entry for a name as
@@ -156,7 +156,7 @@ func (s *HTTPSource) Fetch(name, version string) (*Bundle, error) {
 			}
 		}
 		if version == "" {
-			return nil, fmt.Errorf("button %q not found in registry", name)
+			return nil, fmt.Errorf("package %q not found in registry", name)
 		}
 	}
 
@@ -171,10 +171,10 @@ func (s *HTTPSource) Fetch(name, version string) (*Bundle, error) {
 	defer func() { _ = resp.Body.Close() }()
 	tarball, err := io.ReadAll(io.LimitReader(resp.Body, maxArtifactBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("button %q: download: %w", name, err)
+		return nil, fmt.Errorf("package %q: download: %w", name, err)
 	}
 	if int64(len(tarball)) > maxArtifactBytes {
-		return nil, fmt.Errorf("button %q: artifact exceeds %d bytes", name, int64(maxArtifactBytes))
+		return nil, fmt.Errorf("package %q: artifact exceeds %d bytes", name, int64(maxArtifactBytes))
 	}
 
 	// Integrity: the bytes must match the registry's advertised tarball hash —
@@ -185,19 +185,23 @@ func (s *HTTPSource) Fetch(name, version string) (*Bundle, error) {
 		want = wantHash
 	}
 	if want != "" && got != want {
-		return nil, fmt.Errorf("button %q@%s: content hash mismatch (registry %s, got %s)", name, version, want, got)
+		return nil, fmt.Errorf("package %q@%s: content hash mismatch (registry %s, got %s)", name, version, want, got)
 	}
 
 	files, err := untarGz(tarball)
 	if err != nil {
-		return nil, fmt.Errorf("button %q: %w", name, err)
+		return nil, fmt.Errorf("package %q: %w", name, err)
 	}
+	kind := "button"
 	if _, ok := files["button.json"]; !ok {
-		return nil, fmt.Errorf("button %q: bundle has no button.json", name)
+		if _, hasDrawer := files["drawer.json"]; !hasDrawer {
+			return nil, fmt.Errorf("package %q: bundle has no button.json or drawer.json", name)
+		}
+		kind = "drawer"
 	}
 	// Bundle.SHA256 is the file-content hash (what install stamps as content_hash),
 	// consistent with LocalSource — distinct from the tarball hash verified above.
-	return &Bundle{Name: name, Version: version, SHA256: hashFiles(files), Files: files}, nil
+	return &Bundle{Name: name, Kind: kind, Version: version, SHA256: hashFiles(files), Files: files}, nil
 }
 
 func sha256hex(b []byte) string {

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/autonoco/buttons/internal/button"
+	"github.com/autonoco/buttons/internal/drawer"
 	"github.com/autonoco/buttons/internal/manifest"
 	"github.com/autonoco/buttons/internal/store"
 )
@@ -64,6 +65,24 @@ func (r *testRegistry) addButton(t *testing.T, pkg, localName, version, body str
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.entries = append(r.entries, registryEntry{Name: pkg, Kind: "button", Version: version, SHA256: sum})
+	r.blobs[pkg+"@"+version] = tb
+}
+
+func (r *testRegistry) addDrawer(t *testing.T, pkg, localName, version string, steps []drawer.Step) {
+	t.Helper()
+	spec := drawer.Drawer{SchemaVersion: drawer.SchemaVersion, Name: localName, Version: version, Steps: steps}
+	data, err := json.MarshalIndent(&spec, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{
+		"drawer.json": append(data, '\n'),
+	}
+	tb := makeRegistryTarball(t, localName, files)
+	sum := sha(tb)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.entries = append(r.entries, registryEntry{Name: pkg, Kind: "drawer", Version: version, SHA256: sum})
 	r.blobs[pkg+"@"+version] = tb
 }
 
@@ -144,6 +163,19 @@ func readInstalledButton(t *testing.T, home, name string) button.Button {
 	return b
 }
 
+func readInstalledDrawer(t *testing.T, home, name string) drawer.Drawer {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(home, "drawers", name, "drawer.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d drawer.Drawer
+	if err := json.Unmarshal(data, &d); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
 func installFromRegistry(t *testing.T, home, url, key string, deps map[string]string) {
 	t.Helper()
 	t.Setenv("BUTTONS_HOME", home)
@@ -198,6 +230,89 @@ func TestApplyContentUpdateFromManifest(t *testing.T) {
 	}
 	if got := lock.Dependencies["@autono/hello"].Version; got != "2" {
 		t.Fatalf("lock version = %q, want 2", got)
+	}
+}
+
+func TestApplyContentUpdateFromDrawerManifest(t *testing.T) {
+	home := t.TempDir()
+	reg := newTestRegistry("rk")
+	reg.addButton(t, "@autono/build", "build", "1", "#!/bin/sh\necho build\n")
+	reg.addDrawer(t, "@autono/deploy-pack", "deploy-pack", "1", []drawer.Step{{ID: "build", Button: "build"}})
+	srv := httptest.NewServer(reg.handler())
+	defer srv.Close()
+
+	installFromRegistry(t, home, srv.URL, "rk", map[string]string{"@autono/deploy-pack": "latest"})
+
+	reg.addDrawer(t, "@autono/deploy-pack", "deploy-pack", "2", []drawer.Step{{ID: "build", Button: "build"}})
+	report, err := Check(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
+	if err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	var drawerReport *ButtonReport
+	for i := range report.Buttons {
+		if report.Buttons[i].PackageName == "@autono/deploy-pack" {
+			drawerReport = &report.Buttons[i]
+			break
+		}
+	}
+	if drawerReport == nil || drawerReport.Kind != "drawer" || !drawerReport.UpdateAvailable {
+		t.Fatalf("expected one drawer content update, got %+v", report.Buttons)
+	}
+
+	result, err := Apply(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if len(result.UpdatedButtons) != 1 || result.UpdatedButtons[0] != "deploy-pack" {
+		t.Fatalf("updated packages = %v, want [deploy-pack]", result.UpdatedButtons)
+	}
+	if got := readInstalledDrawer(t, home, "deploy-pack"); got.Version != "2" {
+		t.Fatalf("installed drawer version = %q, want 2", got.Version)
+	}
+}
+
+func TestApplyContentUpdateFromDrawerMemberLockEntry(t *testing.T) {
+	home := t.TempDir()
+	reg := newTestRegistry("rk")
+	reg.addButton(t, "@autono/build", "build", "1", "#!/bin/sh\necho build v1\n")
+	reg.addDrawer(t, "@autono/deploy-pack", "deploy-pack", "1", []drawer.Step{{ID: "build", Button: "build"}})
+	srv := httptest.NewServer(reg.handler())
+	defer srv.Close()
+
+	installFromRegistry(t, home, srv.URL, "rk", map[string]string{"@autono/deploy-pack": "latest"})
+
+	reg.addButton(t, "@autono/build", "build", "2", "#!/bin/sh\necho build v2\n")
+	reports, err := CheckContent(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
+	if err != nil {
+		t.Fatalf("check content: %v", err)
+	}
+	var buildReport *ButtonReport
+	for i := range reports {
+		if reports[i].PackageName == "@autono/build" {
+			buildReport = &reports[i]
+			break
+		}
+	}
+	if buildReport == nil || buildReport.Kind != "button" || !buildReport.UpdateAvailable {
+		t.Fatalf("expected drawer member button update report, got %+v", reports)
+	}
+
+	result, err := Apply(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if len(result.UpdatedButtons) != 1 || result.UpdatedButtons[0] != "build" {
+		t.Fatalf("updated packages = %v, want [build]", result.UpdatedButtons)
+	}
+	if got := readInstalledButton(t, home, "build"); got.Version != "2" {
+		t.Fatalf("installed member button version = %q, want 2", got.Version)
+	}
+	lock, err := manifest.LoadLockfile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lock.Dependencies["@autono/build"].Version; got != "2" {
+		t.Fatalf("member button lock version = %q, want 2", got)
 	}
 }
 
@@ -259,6 +374,41 @@ func TestApplyContentUpdateSkipsLocalEdits(t *testing.T) {
 	}
 	if string(got) != "#!/bin/sh\necho local\n" {
 		t.Fatalf("local edit was overwritten: %q", string(got))
+	}
+}
+
+func TestApplyContentUpdateSkipsLocalDrawerEdits(t *testing.T) {
+	home := t.TempDir()
+	reg := newTestRegistry("rk")
+	reg.addDrawer(t, "@autono/deploy-pack", "deploy-pack", "1", nil)
+	srv := httptest.NewServer(reg.handler())
+	defer srv.Close()
+
+	installFromRegistry(t, home, srv.URL, "rk", map[string]string{"@autono/deploy-pack": "latest"})
+	path := filepath.Join(home, "drawers", "deploy-pack", "drawer.json")
+	local := readInstalledDrawer(t, home, "deploy-pack")
+	local.Description = "local edit"
+	data, err := json.MarshalIndent(&local, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reg.addDrawer(t, "@autono/deploy-pack", "deploy-pack", "2", nil)
+
+	result, err := Apply(contextWithTestDeadline(t), Options{SkipBinary: true, RegistryURL: srv.URL, RegistryKey: "rk", Client: srv.Client()})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if len(result.UpdatedButtons) != 0 {
+		t.Fatalf("updated drawer packages = %v, want none", result.UpdatedButtons)
+	}
+	if len(result.Buttons) != 1 || !result.Buttons[0].Skipped || result.Buttons[0].Kind != "drawer" {
+		t.Fatalf("expected local drawer edit skip, got %+v", result.Buttons)
+	}
+	if got := readInstalledDrawer(t, home, "deploy-pack"); got.Version != "1" || got.Description != "local edit" {
+		t.Fatalf("local drawer was overwritten: %+v", got)
 	}
 }
 

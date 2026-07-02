@@ -49,7 +49,10 @@ func (p *HTTPPublisher) Publish(b *Bundle) error {
 	}
 	sum := sha256hex(tarball)
 
-	kind := p.Kind
+	kind := b.Kind
+	if kind == "" {
+		kind = p.Kind
+	}
 	if kind == "" {
 		kind = "button"
 	}

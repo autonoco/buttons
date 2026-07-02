@@ -24,6 +24,7 @@ type Drawer struct {
 	SchemaVersion int        `json:"schema_version" jsonschema:"const=1,description=Drawer spec version"`
 	Name          string     `json:"name" jsonschema:"description=Drawer name (kebab-case)"`
 	Description   string     `json:"description,omitempty" jsonschema:"description=Human-readable one-liner"`
+	Version       string     `json:"version,omitempty" jsonschema:"description=Drawer package content version"`
 	Inputs        []InputDef `json:"inputs,omitempty" jsonschema:"description=Top-level inputs supplied at press time"`
 	Steps         []Step     `json:"steps" jsonschema:"description=Ordered list of steps (depth-first execution)"`
 	// OnError points at another drawer that runs when any step in this
@@ -117,10 +118,10 @@ type TriggerAuth struct {
 // agents see a consistent shape across both, plus a Secret flag that
 // drives trace redaction.
 type InputDef struct {
-	Name        string   `json:"name" jsonschema:"description=Input name (referenced as ${inputs.<name>})"`
-	Type        string   `json:"type" jsonschema:"enum=string,enum=int,enum=bool,enum=enum"`
-	Required    bool     `json:"required,omitempty"`
-	Description string   `json:"description,omitempty"`
+	Name        string `json:"name" jsonschema:"description=Input name (referenced as ${inputs.<name>})"`
+	Type        string `json:"type" jsonschema:"enum=string,enum=int,enum=bool,enum=enum"`
+	Required    bool   `json:"required,omitempty"`
+	Description string `json:"description,omitempty"`
 	// Values is the allowed value set for Type == "enum".
 	Values []string `json:"values,omitempty"`
 	// Secret-flagged inputs are redacted from execution traces and
@@ -269,11 +270,11 @@ type ErrorPolicy struct {
 // Backoff describes retry delay shape. Exponential with optional
 // jitter is the only strategy v1 supports; "fixed" reserved.
 type Backoff struct {
-	Strategy  string `json:"strategy" jsonschema:"enum=exponential,enum=fixed"`
-	InitialMs int    `json:"initial_ms,omitempty"`
+	Strategy  string  `json:"strategy" jsonschema:"enum=exponential,enum=fixed"`
+	InitialMs int     `json:"initial_ms,omitempty"`
 	Factor    float64 `json:"factor,omitempty"`
-	MaxMs     int    `json:"max_ms,omitempty"`
-	Jitter    bool   `json:"jitter,omitempty"`
+	MaxMs     int     `json:"max_ms,omitempty"`
+	Jitter    bool    `json:"jitter,omitempty"`
 }
 
 // ErrorHandler points at another drawer to invoke on failure. The

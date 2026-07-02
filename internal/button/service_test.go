@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -165,6 +166,24 @@ func TestService_Create_Duplicate(t *testing.T) {
 	se, ok := err.(*ServiceError)
 	if !ok || se.Code != "VALIDATION_ERROR" {
 		t.Errorf("expected VALIDATION_ERROR, got %v", err)
+	}
+}
+
+func TestService_Create_RejectsExistingDrawerName(t *testing.T) {
+	home := setupTestEnv(t)
+	if err := os.MkdirAll(filepath.Join(home, "drawers", "deploy"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "drawers", "deploy", "drawer.json"), []byte(`{"schema_version":1,"name":"deploy","steps":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := NewService().Create(CreateOpts{Name: "deploy", Code: "echo deploy", TimeoutSeconds: 60})
+	if err == nil {
+		t.Fatal("expected create to reject a name already used by a drawer")
+	}
+	if !strings.Contains(err.Error(), "already exists as a drawer") {
+		t.Fatalf("error = %v, want drawer collision message", err)
 	}
 }
 

@@ -14,12 +14,12 @@ import (
 
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install buttons from .buttons/buttons.json",
-	Long: `Install buttons declared in .buttons/buttons.json.
+	Short: "Install packages from .buttons/buttons.json",
+	Long: `Install packages declared in .buttons/buttons.json.
 
 Use 'buttons add @desk/name' to add a dependency. Use 'buttons install'
-to materialize the dependency manifest into .buttons/buttons/ and refresh
-.buttons/buttons-lock.json.
+to materialize the dependency manifest into .buttons/buttons/ and
+.buttons/drawers/ and refresh .buttons/buttons-lock.json.
 
 Examples:
   buttons install
@@ -43,7 +43,7 @@ Examples:
 		if jsonOutput {
 			return config.WriteJSON(res)
 		}
-		fmt.Fprintf(os.Stderr, "Installed %d button(s): %s\n", len(res.Installed), strings.Join(res.Installed, ", "))
+		fmt.Fprintf(os.Stderr, "Installed %d package item(s): %s\n", len(res.Installed), strings.Join(res.Installed, ", "))
 		printNextHint("buttons list")
 		return nil
 	},

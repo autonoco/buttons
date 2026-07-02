@@ -5,14 +5,14 @@ description: "CLI reference for buttons status"
 
 ## buttons status
 
-Show available CLI and button updates
+Show available CLI and package updates
 
 ### Synopsis
 
 Show whether the buttons CLI or manifest dependencies have updates.
 
 Like every user-invoked command, status also enters enabled passive update
-paths before it prints. buttons-auto-update may refresh floating button
+paths before it prints. buttons-auto-update may refresh floating package
 dependencies; cli-auto-update may update the CLI binary when the throttle
 allows. Use 'buttons update' to force the full update path immediately.
 

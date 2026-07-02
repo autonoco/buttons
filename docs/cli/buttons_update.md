@@ -5,13 +5,13 @@ description: "CLI reference for buttons update"
 
 ## buttons update
 
-Update the CLI and floating button dependencies
+Update the CLI and floating package dependencies
 
 ### Synopsis
 
-Install available updates for the buttons CLI and floating button dependencies.
+Install available updates for the buttons CLI and floating package dependencies.
 
-The CLI binary is updated from GitHub Releases. Button dependencies are
+The CLI binary is updated from GitHub Releases. Package dependencies are
 refreshed from .buttons/buttons.json and .buttons/buttons-lock.json. Exact
 versions are pins; update moves only dependencies requested as "latest".
 

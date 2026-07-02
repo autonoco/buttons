@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/autonoco/buttons/internal/button"
+	"github.com/autonoco/buttons/internal/drawer"
 )
 
 type capturePublisher struct {
@@ -46,6 +48,24 @@ func writeInstalledButton(t *testing.T, home string, b button.Button, body strin
 	}
 	// A run-history file that must NOT be published.
 	if err := os.WriteFile(filepath.Join(dir, "pressed", "run1.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeInstalledDrawer(t *testing.T, home string, d drawer.Drawer) {
+	t.Helper()
+	dir := filepath.Join(home, "drawers", d.Name)
+	if err := os.MkdirAll(filepath.Join(dir, "pressed"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.MarshalIndent(&d, "", "  ")
+	if err := os.WriteFile(filepath.Join(dir, "drawer.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# "+d.Name+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pressed", "run1.json"), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -131,6 +151,89 @@ func TestPublishToRegistryStampsAutomaticVersion(t *testing.T) {
 	}
 	if local.Version != res.Version {
 		t.Fatalf("local button.json version = %q, want %q", local.Version, res.Version)
+	}
+}
+
+func TestPublishToRegistryAutoDetectsDrawerPackage(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	writeInstalledDrawer(t, home, drawer.Drawer{
+		SchemaVersion: drawer.SchemaVersion,
+		Name:          "deploy-pack",
+		Steps:         []drawer.Step{{ID: "build", Button: "build"}},
+	})
+
+	pub := &capturePublisher{}
+	res, err := PublishToRegistry(pub, "@autono/deploy-pack")
+	if err != nil {
+		t.Fatalf("publish drawer to registry: %v", err)
+	}
+	if res.Name != "@autono/deploy-pack" || res.Kind != "drawer" || res.Version != "1" {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+	if pub.bundle == nil || pub.bundle.Kind != "drawer" {
+		t.Fatalf("publisher bundle = %+v, want drawer kind", pub.bundle)
+	}
+	if _, ok := pub.bundle.Files["drawer.json"]; !ok {
+		t.Fatal("published drawer bundle missing drawer.json")
+	}
+	if _, ok := pub.bundle.Files["pressed/run1.json"]; ok {
+		t.Fatal("drawer pressed history must not be published")
+	}
+
+	data, err := os.ReadFile(filepath.Join(home, "drawers", "deploy-pack", "drawer.json"))
+	if err != nil {
+		t.Fatalf("read local drawer.json: %v", err)
+	}
+	var local drawer.Drawer
+	if err := json.Unmarshal(data, &local); err != nil {
+		t.Fatalf("local drawer.json: %v", err)
+	}
+	if local.Version != "1" {
+		t.Fatalf("local drawer version = %q, want 1", local.Version)
+	}
+}
+
+func TestPublishToRegistrySkipsDrawerSymlinks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	writeInstalledDrawer(t, home, drawer.Drawer{
+		SchemaVersion: drawer.SchemaVersion,
+		Name:          "deploy-pack",
+		Steps:         []drawer.Step{{ID: "build", Button: "build"}},
+	})
+	secret := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(secret, []byte("top secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(home, "drawers", "deploy-pack", "leak.txt")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	pub := &capturePublisher{}
+	if _, err := PublishToRegistry(pub, "@autono/deploy-pack"); err != nil {
+		t.Fatalf("publish drawer to registry: %v", err)
+	}
+	if pub.bundle == nil {
+		t.Fatal("publisher did not receive bundle")
+	}
+	if _, leaked := pub.bundle.Files["leak.txt"]; leaked {
+		t.Fatal("drawer publish followed a symlink and leaked an out-of-root file")
+	}
+}
+
+func TestPublishToRegistryRejectsLocalButtonDrawerCollision(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	writeInstalledButton(t, home, button.Button{SchemaVersion: 1, Name: "deploy", Runtime: "shell", Version: "1"}, "#!/bin/sh\necho deploy\n")
+	writeInstalledDrawer(t, home, drawer.Drawer{SchemaVersion: drawer.SchemaVersion, Name: "deploy", Version: "1"})
+
+	_, err := PublishToRegistry(&capturePublisher{}, "@autono/deploy")
+	if err == nil {
+		t.Fatal("publishing a colliding button/drawer name should error")
+	}
+	if !strings.Contains(err.Error(), "found both button and drawer") {
+		t.Fatalf("error = %v, want collision message", err)
 	}
 }
 

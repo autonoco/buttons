@@ -19,6 +19,7 @@ Project-local drawers use the same shape under `.buttons/drawers/<name>/`.
 {
   "schema_version": 1,
   "name": "release-flow",
+  "version": "1",
   "inputs": [
     { "name": "env", "type": "enum", "required": true, "values": ["staging", "prod"] }
   ],
@@ -48,6 +49,7 @@ Project-local drawers use the same shape under `.buttons/drawers/<name>/`.
 | `schema_version` | Drawer spec version. Current version is `1`. |
 | `name` | Drawer name. |
 | `description` | Human-readable one-liner. |
+| `version` | Drawer package content version. New drawers start at `1`; registry publish auto-bumps to the next number when the current immutable version already exists. |
 | `inputs` | Values supplied at drawer press time. |
 | `steps` | Ordered workflow steps. |
 | `output_schema` | Optional JSON Schema for values exposed when called as a sub-drawer. |

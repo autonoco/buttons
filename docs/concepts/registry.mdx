@@ -1,9 +1,9 @@
 ---
 title: "Registry"
-description: "How Buttons resolves, installs, pins, and publishes shared buttons."
+description: "How Buttons resolves, installs, pins, and publishes shared packages."
 ---
 
-A registry is a catalog of installable buttons. It answers: "What packages are available, what immutable versions exist, and what content hash should I install?"
+A registry is a catalog of installable packages. A package can be a button or a drawer. The registry answers: "What packages are available, what kind are they, what immutable versions exist, and what content hash should I install?"
 
 Registry installs use three different files:
 
@@ -12,14 +12,18 @@ Registry installs use three different files:
   buttons.json          # desired dependencies; commit this
   buttons-lock.json     # exact resolved versions/hashes; commit this
   history.json          # local activity log; gitignored
-  buttons/
-    hello/
-      button.json       # runtime/package spec
-      main.sh
-      AGENTS.md
+	  buttons/
+	    hello/
+	      button.json       # runtime/package spec
+	      main.sh
+	      AGENTS.md
+	  drawers/
+	    deploy-pack/
+	      drawer.json       # drawer/package spec
+	      AGENTS.md
 ```
 
-`buttons.json` is the project manifest. `buttons-lock.json` is the repeatable resolution. Installed `button.json` files stay focused on runtime and package metadata; they do not store registry URLs, bearer keys, or the dependency source of truth.
+`buttons.json` is the project manifest. `buttons-lock.json` is the repeatable resolution. Installed `button.json` and `drawer.json` files stay focused on the local package spec; they do not store registry URLs, bearer keys, or the dependency source of truth.
 
 ## Manifest
 
@@ -27,15 +31,16 @@ Registry installs use three different files:
 
 ```json
 {
-  "schema_version": 1,
-  "dependencies": {
-    "@your-desk/hello": "latest",
-    "@your-desk/deploy": "1"
-  }
-}
+	  "schema_version": 1,
+	  "dependencies": {
+	    "@your-desk/hello": "latest",
+	    "@your-desk/deploy-pack": "1"
+	  }
+	}
 ```
 
 Dependency keys must be scoped package names in the form `@desk/name`.
+Names are unique per desk across buttons and drawers. The package `kind` is registry metadata, not part of the name.
 
 | Value | Meaning |
 |---|---|
@@ -91,23 +96,41 @@ Each installed button still has its own runtime spec:
 
 `requires` uses the same version policy as the root manifest: `"latest"` or an exact version. Transitive dependencies are resolved into the lockfile beside root dependencies.
 
+## drawer.json
+
+Each installed drawer has its own workflow/package spec:
+
+```json
+{
+  "schema_version": 1,
+  "name": "deploy-pack",
+  "version": "1",
+  "steps": [
+    { "id": "build", "kind": "button", "button": "build" },
+    { "id": "ship", "kind": "button", "button": "ship" }
+  ]
+}
+```
+
+Installing a drawer writes `.buttons/drawers/<name>/drawer.json` and installs every button referenced by its steps. Step button names are local names; package resolution uses the drawer's desk namespace. For example, `@your-desk/deploy-pack` with step `"button": "build"` installs `@your-desk/build`.
+
 ## Command Flow
 
 Use the registry like a package manager:
 
 ```bash
 buttons add @your-desk/hello
-buttons add @your-desk/deploy@1
+buttons add @your-desk/deploy-pack@1
 buttons install
 buttons status
 buttons update
 ```
 
-- `buttons add @desk/name` writes `.buttons/buttons.json` with `"latest"` and installs immediately.
+- `buttons add @desk/name` writes `.buttons/buttons.json` with `"latest"` and installs immediately. The package can be a button or drawer.
 - `buttons add @desk/name@1` writes an exact pin and installs that immutable version.
 - `buttons install` takes no package argument. It reads `.buttons/buttons.json` and honors `.buttons/buttons-lock.json` for repeatability.
 - `buttons status` reports available CLI and content updates.
-- `buttons update` updates the CLI and floating button dependencies only.
+- `buttons update` updates the CLI and floating package dependencies only.
 
 `buttons install @desk/name` is intentionally invalid. Use `buttons add @desk/name` to add a dependency.
 
@@ -124,15 +147,16 @@ The registry base URL comes from `$BUTTONS_REGISTRY_URL`. This public repo does 
 
 ## Publish Flow
 
-`buttons publish @desk/name` publishes a local button folder to the configured registry:
+`buttons publish @desk/name` publishes a local button or drawer folder to the configured registry:
 
 ```bash
 BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello
+BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/deploy-pack
 ```
 
-The on-disk button is found by its bare local name (`hello`), while `@your-desk/hello` is the registry identity. Published versions are immutable. New buttons start at version `1`; if that version already exists, publish bumps `button.json` to the next number and retries.
+The on-disk package is found by its bare local name (`hello` or `deploy-pack`), while `@your-desk/name` is the registry identity. Publish detects the package kind from `button.json` or `drawer.json`. Published versions are immutable. New buttons and drawers start at version `1`; if that version already exists, publish bumps the local package spec to the next number and retries.
 
-Publishing bundles `button.json`, code files, and `AGENTS.md`. It does not upload `pressed/` run history or battery values.
+Publishing a button bundles `button.json`, code files, and `AGENTS.md`. Publishing a drawer bundles `drawer.json` and `AGENTS.md`. Neither path uploads `pressed/` run history or battery values.
 
 ## Version Example
 
@@ -150,14 +174,14 @@ If the agent had run `buttons add @your-desk/hello@1`, step 7 would leave it pin
 
 A registry is treated as untrusted. Downloads are size-capped, tarball hashes are verified before extraction, file-content hashes are written to the lockfile, and extraction rejects absolute paths, traversal paths, macOS sidecar files, and run history.
 
-Before overwriting an installed button, update compares the current local files with the lockfile/install-state hash. Local edits are skipped, not overwritten.
+Before overwriting an installed package, update compares the current local files with the lockfile/install-state hash. Local edits are skipped, not overwritten.
 
 ## HTTP Contract
 
 A hosted registry implements:
 
 - `GET /v1/meta` — optional registry metadata, including minimum CLI version.
-- `GET /v1/index` — catalog entries `{ name, kind, version, tags, sha256 }`, where `sha256` is the tarball hash. Latest is the last entry for a given name.
+- `GET /v1/index` — catalog entries `{ name, kind, version, tags, sha256 }`, where `kind` is `button` or `drawer` and `sha256` is the tarball hash. Latest is the last entry for a given name.
 - `GET /v1/buttons/<@desk/name>/<version>/download` — download the gzip tarball; should set `X-Content-Sha256`.
 - `POST /v1/buttons/<@desk/name>/<version>` — publish an immutable version with headers `Content-Type: application/gzip`, `X-Content-Sha256`, and `X-Button-Kind`.
 

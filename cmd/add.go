@@ -14,12 +14,13 @@ import (
 
 var addCmd = &cobra.Command{
 	Use:   "add @desk/name[@version]",
-	Short: "Add a button dependency",
-	Long: `Add a registry button dependency to .buttons/buttons.json and install it.
+	Short: "Add a registry package dependency",
+	Long: `Add a registry package dependency to .buttons/buttons.json and install it.
 
 Bare package names are not supported in the MVP. Use scoped names like
-@autono/hello. Omit @version to track latest; include @version to pin
-an exact immutable version.
+@autono/hello. A package can be a button or a drawer; the registry index
+declares its kind. Omit @version to track latest; include @version to pin an
+exact immutable version.
 
 Examples:
   buttons add @your-desk/hello
@@ -43,7 +44,7 @@ Examples:
 		}
 		fmt.Fprintf(os.Stderr, "Added %s@%s\n", name, requested)
 		if len(res.Installed) > 0 {
-			fmt.Fprintf(os.Stderr, "Installed %d button(s): %s\n", len(res.Installed), strings.Join(res.Installed, ", "))
+			fmt.Fprintf(os.Stderr, "Installed %d package item(s): %s\n", len(res.Installed), strings.Join(res.Installed, ", "))
 		}
 		printNextHint("buttons status")
 		return nil

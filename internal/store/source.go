@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/autonoco/buttons/internal/button"
+	"github.com/autonoco/buttons/internal/drawer"
 )
 
 // ButtonRef is a catalog entry — what a Source advertises in its index.
@@ -26,12 +27,13 @@ type ButtonRef struct {
 	SHA256  string   `json:"sha256,omitempty"`
 }
 
-// Bundle is a fetched button's content, ready to write to disk.
+// Bundle is a fetched package's content, ready to write to disk.
 type Bundle struct {
 	Name    string
+	Kind    string
 	Version string
 	SHA256  string            // content hash of Files (provenance pin)
-	Files   map[string][]byte // relative filename -> bytes (button.json, main.*, AGENTS.md)
+	Files   map[string][]byte // relative filename -> bytes (button.json/drawer.json, code, AGENTS.md)
 }
 
 // Source is where buttons are installed/updated from. HTTPSource (the registry,
@@ -85,8 +87,8 @@ func safeJoin(dir, rel string) (string, error) {
 	return dst, nil
 }
 
-// LocalSource installs from a directory laid out like a buttons dir:
-// <Root>/<name>/{button.json, main.*, AGENTS.md}. For dev/testing without a
+// LocalSource installs from a directory laid out like a package dir:
+// <Root>/<name>/{button.json|drawer.json, main.*, AGENTS.md}. For dev/testing without a
 // registry server, and the reference for what an HTTPSource must reproduce.
 type LocalSource struct {
 	Root string
@@ -102,16 +104,30 @@ func (s *LocalSource) Index() ([]ButtonRef, error) {
 		if !e.IsDir() {
 			continue
 		}
+		dir := filepath.Join(s.Root, e.Name())
 		// #nosec G304 -- path is rooted in s.Root + a DirEntry name we just enumerated.
-		data, err := os.ReadFile(filepath.Join(s.Root, e.Name(), "button.json"))
-		if err != nil {
-			continue // not a button folder
+		buttonData, buttonErr := os.ReadFile(filepath.Join(dir, "button.json"))
+		// #nosec G304 -- path is rooted in s.Root + a DirEntry name we just enumerated.
+		drawerData, drawerErr := os.ReadFile(filepath.Join(dir, "drawer.json"))
+		if buttonErr == nil && drawerErr == nil {
+			return nil, fmt.Errorf("ambiguous package %q: found both button.json and drawer.json", e.Name())
 		}
-		var b button.Button
-		if json.Unmarshal(data, &b) != nil {
+		if buttonErr == nil {
+			var b button.Button
+			if json.Unmarshal(buttonData, &b) != nil {
+				continue
+			}
+			refs = append(refs, ButtonRef{Name: b.Name, Kind: "button", Version: b.Version, Tags: b.Tags})
 			continue
 		}
-		refs = append(refs, ButtonRef{Name: b.Name, Kind: "button", Version: b.Version, Tags: b.Tags})
+		if drawerErr != nil {
+			continue
+		}
+		var d drawer.Drawer
+		if json.Unmarshal(drawerData, &d) != nil {
+			continue
+		}
+		refs = append(refs, ButtonRef{Name: d.Name, Kind: "drawer", Version: d.Version})
 	}
 	return refs, nil
 }
@@ -123,7 +139,7 @@ func (s *LocalSource) Fetch(name, version string) (*Bundle, error) {
 	dir := filepath.Join(s.Root, name)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("button %q not found in source: %w", name, err)
+		return nil, fmt.Errorf("package %q not found in source: %w", name, err)
 	}
 	files := map[string][]byte{}
 	for _, e := range entries {
@@ -140,17 +156,27 @@ func (s *LocalSource) Fetch(name, version string) (*Bundle, error) {
 		}
 		files[e.Name()] = data
 	}
-	if _, ok := files["button.json"]; !ok {
-		return nil, fmt.Errorf("button %q has no button.json", name)
+	if data, ok := files["button.json"]; ok {
+		var b button.Button
+		if err := json.Unmarshal(data, &b); err != nil {
+			return nil, fmt.Errorf("button %q: invalid button.json: %w", name, err)
+		}
+		// A LocalSource holds one version per package on disk; honor an explicit pin
+		// by validating it matches rather than silently returning whatever is there.
+		if version != "" && b.Version != version {
+			return nil, fmt.Errorf("button %q version mismatch: requested %q, found %q", name, version, b.Version)
+		}
+		return &Bundle{Name: b.Name, Kind: "button", Version: b.Version, SHA256: hashFiles(files), Files: files}, nil
 	}
-	var b button.Button
-	if err := json.Unmarshal(files["button.json"], &b); err != nil {
-		return nil, fmt.Errorf("button %q: invalid button.json: %w", name, err)
+	if data, ok := files["drawer.json"]; ok {
+		var d drawer.Drawer
+		if err := json.Unmarshal(data, &d); err != nil {
+			return nil, fmt.Errorf("drawer %q: invalid drawer.json: %w", name, err)
+		}
+		if version != "" && d.Version != version {
+			return nil, fmt.Errorf("drawer %q version mismatch: requested %q, found %q", name, version, d.Version)
+		}
+		return &Bundle{Name: d.Name, Kind: "drawer", Version: d.Version, SHA256: hashFiles(files), Files: files}, nil
 	}
-	// A LocalSource holds one version per button on disk; honor an explicit pin
-	// by validating it matches rather than silently returning whatever is there.
-	if version != "" && b.Version != version {
-		return nil, fmt.Errorf("button %q version mismatch: requested %q, found %q", name, version, b.Version)
-	}
-	return &Bundle{Name: b.Name, Version: b.Version, SHA256: hashFiles(files), Files: files}, nil
+	return nil, fmt.Errorf("package %q has no button.json or drawer.json", name)
 }
