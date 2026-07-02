@@ -19,8 +19,9 @@ Homebrew-managed installs are left to Homebrew by default. To let Buttons update
 the CLI through Homebrew and run passive CLI binary updates when the throttle
 allows, run:
 
-```bash
-buttons config set cli-auto-update true
+
+```text
+  buttons config set cli-auto-update true
 ```
 
 **Examples:**
@@ -51,3 +52,4 @@ buttons update [flags]
 ### SEE ALSO
 
 * [buttons](buttons.md)	 - Deterministic workflow engine for agents
+

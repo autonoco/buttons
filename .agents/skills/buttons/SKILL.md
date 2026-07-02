@@ -68,7 +68,7 @@ buttons [command]
 
 ### `buttons add`
 
-Add a button dependency
+Add a registry package dependency
 
 ```
 buttons add
@@ -289,7 +289,7 @@ buttons init [flags]
 
 ### `buttons install`
 
-Install buttons from .buttons/buttons.json
+Install packages from .buttons/buttons.json
 
 ```
 buttons install
@@ -348,15 +348,11 @@ buttons press [flags]
 
 ### `buttons publish`
 
-Publish a local button to the registry
+Publish a local button or drawer to the registry
 
 ```
-buttons publish [flags]
+buttons publish
 ```
-
-| Flag | Type | Description |
-|------|------|-------------|
-| `--kind` | string | registry entry kind: button | drawer |
 
 ### `buttons serve`
 
@@ -390,7 +386,7 @@ buttons smash [flags]
 
 ### `buttons status`
 
-Show available CLI and button updates
+Show available CLI and package updates
 
 ```
 buttons status
@@ -473,7 +469,7 @@ buttons unignore
 
 ### `buttons update`
 
-Update the CLI and floating button dependencies
+Update the CLI and floating package dependencies
 
 ```
 buttons update
