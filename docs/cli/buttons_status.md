@@ -12,7 +12,8 @@ Show available CLI and button updates
 Show whether the buttons CLI or manifest dependencies have updates.
 
 Like every user-invoked command, status also enters the passive auto-update
-gate before it prints. Use 'buttons update' to force an update immediately.
+gate before it prints. Floating button dependencies may refresh before status
+reports. Use 'buttons update' to force the full update path immediately.
 
 ```
 buttons status [flags]
@@ -35,4 +36,3 @@ buttons status [flags]
 ### SEE ALSO
 
 * [buttons](buttons.md)	 - Deterministic workflow engine for agents
-

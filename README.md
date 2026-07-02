@@ -68,7 +68,7 @@ buttons update           # install available CLI/content updates
 buttons update --json    # structured output
 ```
 
-`buttons update` checks GitHub Releases for the CLI and refreshes floating button dependencies from `.buttons/buttons.json` and `.buttons/buttons-lock.json`. Use `buttons status` for a read-only check. Homebrew installs are auto-detected — you'll be told to `brew upgrade buttons` instead. Docker users re-pull the image.
+`buttons update` checks GitHub Releases for the CLI and refreshes floating button dependencies from `.buttons/buttons.json` and `.buttons/buttons-lock.json`. Normal interactive commands also pass through the passive auto-update gate: floating button dependencies can refresh before the command runs, while CLI binary checks stay throttled. Homebrew installs are auto-detected — you'll be told to `brew upgrade buttons` instead. Docker users re-pull the image.
 
 ## Verify the installation
 
