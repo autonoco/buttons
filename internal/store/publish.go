@@ -157,6 +157,9 @@ func loadLocalDrawerBundle(localName, identity, dir string) (*Bundle, error) {
 		if e.IsDir() {
 			continue // skip pressed/ — run history isn't part of the artifact
 		}
+		if e.Type()&os.ModeSymlink != 0 {
+			continue // don't follow symlinks; they can point outside the drawer root
+		}
 		data, err := os.ReadFile(filepath.Join(dir, e.Name())) // #nosec G304 -- dir is config.DrawerDir + enumerated entry.
 		if err != nil {
 			return nil, err

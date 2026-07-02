@@ -194,6 +194,34 @@ func TestPublishToRegistryAutoDetectsDrawerPackage(t *testing.T) {
 	}
 }
 
+func TestPublishToRegistrySkipsDrawerSymlinks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	writeInstalledDrawer(t, home, drawer.Drawer{
+		SchemaVersion: drawer.SchemaVersion,
+		Name:          "deploy-pack",
+		Steps:         []drawer.Step{{ID: "build", Button: "build"}},
+	})
+	secret := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(secret, []byte("top secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(home, "drawers", "deploy-pack", "leak.txt")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	pub := &capturePublisher{}
+	if _, err := PublishToRegistry(pub, "@autono/deploy-pack"); err != nil {
+		t.Fatalf("publish drawer to registry: %v", err)
+	}
+	if pub.bundle == nil {
+		t.Fatal("publisher did not receive bundle")
+	}
+	if _, leaked := pub.bundle.Files["leak.txt"]; leaked {
+		t.Fatal("drawer publish followed a symlink and leaked an out-of-root file")
+	}
+}
+
 func TestPublishToRegistryRejectsLocalButtonDrawerCollision(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("BUTTONS_HOME", home)
