@@ -15,23 +15,26 @@ var (
 
 var publishCmd = &cobra.Command{
 	Use:   "publish <name | @desk/name>",
-	Short: "Publish a local button to the registry",
-	Long: `Publish a button. The button folder
-(button.json + code + AGENTS.md, never its run history) is content-hashed and
-uploaded so others can add and install it.
+	Short: "Publish a local button or drawer to the registry",
+	Long: `Publish a local package. A package can be a button
+(.buttons/buttons/<name>/button.json + code + AGENTS.md) or a drawer
+(.buttons/drawers/<name>/drawer.json + AGENTS.md). Run history under pressed/
+is never published.
 
 Publish uses $BUTTONS_REGISTRY_URL as the registry base URL. This repo does not
 ship a default registry host; the caller must configure the target explicitly.
 
-A registry publish takes a scoped name (@desk/name): the on-disk button is found
-by its bare name, and @desk is its registry namespace. The registry pins
-immutable versions; publish starts at the button's current version and auto-bumps
-to the next number if that version already exists. Auth uses the *write* key
-(REGISTRY_WRITE_KEY battery or $BUTTONS_BAT_REGISTRY_WRITE_KEY) — distinct from
-the read key install uses.
+A registry publish takes a scoped name (@desk/name): the on-disk package is
+found by its bare name, and @desk is its registry namespace. The CLI detects
+whether the local package is a button or drawer from button.json or drawer.json.
+The registry pins immutable versions; publish starts at the package's current
+version and auto-bumps to the next number if that version already exists. Auth
+uses the *write* key (REGISTRY_WRITE_KEY battery or
+$BUTTONS_BAT_REGISTRY_WRITE_KEY) — distinct from the read key install uses.
 
 Examples:
-  BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello`,
+  BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello
+  BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/my-pack`,
 	Args:              exactArgs(1),
 	ValidArgsFunction: completeFirstButtonName,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -101,5 +104,6 @@ func registryWriteKey() string {
 
 func init() {
 	publishCmd.Flags().StringVar(&publishKind, "kind", "button", "registry entry kind: button | drawer")
+	_ = publishCmd.Flags().MarkHidden("kind")
 	rootCmd.AddCommand(publishCmd)
 }

@@ -139,7 +139,7 @@ func (s *HTTPSource) Index() ([]ButtonRef, error) {
 	return refs, nil
 }
 
-// Fetch downloads a button tarball, verifies it against the registry's advertised
+// Fetch downloads a package tarball, verifies it against the registry's advertised
 // content hash, and extracts it into a Bundle. version "" resolves to latest.
 func (s *HTTPSource) Fetch(name, version string) (*Bundle, error) {
 	// Resolve "" → latest. The Worker treats the last index entry for a name as
@@ -156,7 +156,7 @@ func (s *HTTPSource) Fetch(name, version string) (*Bundle, error) {
 			}
 		}
 		if version == "" {
-			return nil, fmt.Errorf("button %q not found in registry", name)
+			return nil, fmt.Errorf("package %q not found in registry", name)
 		}
 	}
 
@@ -192,12 +192,16 @@ func (s *HTTPSource) Fetch(name, version string) (*Bundle, error) {
 	if err != nil {
 		return nil, fmt.Errorf("button %q: %w", name, err)
 	}
+	kind := "button"
 	if _, ok := files["button.json"]; !ok {
-		return nil, fmt.Errorf("button %q: bundle has no button.json", name)
+		if _, hasDrawer := files["drawer.json"]; !hasDrawer {
+			return nil, fmt.Errorf("package %q: bundle has no button.json or drawer.json", name)
+		}
+		kind = "drawer"
 	}
 	// Bundle.SHA256 is the file-content hash (what install stamps as content_hash),
 	// consistent with LocalSource — distinct from the tarball hash verified above.
-	return &Bundle{Name: name, Version: version, SHA256: hashFiles(files), Files: files}, nil
+	return &Bundle{Name: name, Kind: kind, Version: version, SHA256: hashFiles(files), Files: files}, nil
 }
 
 func sha256hex(b []byte) string {

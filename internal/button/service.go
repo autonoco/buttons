@@ -126,6 +126,11 @@ func (s *Service) CreateApp(opts AppOpts) (*Button, error) {
 	if name == "" {
 		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "app name is empty after slugification"}
 	}
+	if exists, err := drawerSpecExists(name); err != nil {
+		return nil, err
+	} else if exists {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: fmt.Sprintf("button already exists as a drawer: %s", name)}
+	}
 	dir, err := config.AppDir(name)
 	if err != nil {
 		return nil, err
@@ -209,6 +214,11 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 	name := Slugify(opts.Name)
 	if name == "" {
 		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "button name is empty after slugification"}
+	}
+	if exists, err := drawerSpecExists(name); err != nil {
+		return nil, err
+	} else if exists {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: fmt.Sprintf("button already exists as a drawer: %s", name)}
 	}
 
 	// Validate sources: file, code, or url (--prompt is a modifier, not a source)
@@ -412,6 +422,21 @@ func (s *Service) Create(opts CreateOpts) (*Button, error) {
 	}
 
 	return btn, nil
+}
+
+func drawerSpecExists(name string) (bool, error) {
+	dir, err := config.DrawerDir(name)
+	if err != nil {
+		return false, err
+	}
+	info, err := os.Stat(filepath.Join(dir, "drawer.json"))
+	if err == nil {
+		return !info.IsDir(), nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 func (s *Service) List() ([]Button, error) {

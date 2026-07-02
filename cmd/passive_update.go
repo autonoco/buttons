@@ -19,7 +19,7 @@ func maybeRunPassiveUpdate(cmd *cobra.Command) {
 	if isUpdateCommand(cmd) || passiveUpdatesDisabledByEnv() {
 		return
 	}
-	if shouldSkipPassiveUpdate() {
+	if shouldSkipPassiveUpdateFunc() {
 		return
 	}
 	opts := updater.Options{
@@ -96,6 +96,8 @@ func passiveUpdatePlan(st *settings.Settings, force bool, now time.Time) passive
 	decision.recordCheck = true
 	return decision
 }
+
+var shouldSkipPassiveUpdateFunc = shouldSkipPassiveUpdate
 
 func shouldSkipPassiveUpdate() bool {
 	if os.Getenv("CI") != "" {

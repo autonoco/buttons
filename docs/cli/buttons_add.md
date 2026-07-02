@@ -5,15 +5,16 @@ description: "CLI reference for buttons add"
 
 ## buttons add
 
-Add a button dependency
+Add a registry package dependency
 
 ### Synopsis
 
-Add a registry button dependency to .buttons/buttons.json and install it.
+Add a registry package dependency to .buttons/buttons.json and install it.
 
 Bare package names are not supported in the MVP. Use scoped names like
-@autono/hello. Omit @version to track latest; include @version to pin
-an exact immutable version.
+@autono/hello. A package can be a button or a drawer; the registry index
+declares its kind. Omit @version to track latest; include @version to pin an
+exact immutable version.
 
 **Examples:**
 

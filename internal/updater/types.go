@@ -36,6 +36,7 @@ type BinaryReport struct {
 
 type ButtonReport struct {
 	Name            string `json:"name"`
+	Kind            string `json:"kind,omitempty"`
 	PackageName     string `json:"package_name"`
 	Requested       string `json:"requested,omitempty"`
 	Pinned          bool   `json:"pinned,omitempty"`

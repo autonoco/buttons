@@ -125,10 +125,13 @@ func writeOTAPublishButton(t *testing.T, home, name, version, body string) {
 		t.Fatal(err)
 	}
 	spec := map[string]any{
-		"schema_version": 1,
-		"name":           name,
-		"runtime":        "shell",
-		"version":        version,
+		"schema_version":  1,
+		"name":            name,
+		"runtime":         "shell",
+		"version":         version,
+		"timeout_seconds": 300,
+		"mcp_enabled":     false,
+		"env":             map[string]string{},
 	}
 	data, err := json.MarshalIndent(spec, "", "  ")
 	if err != nil {
@@ -142,9 +145,45 @@ func writeOTAPublishButton(t *testing.T, home, name, version, body string) {
 	}
 }
 
+func writeOTAPublishDrawer(t *testing.T, home, name, version string, steps []map[string]any) {
+	t.Helper()
+	dir := filepath.Join(home, "drawers", name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	spec := map[string]any{
+		"schema_version": 1,
+		"name":           name,
+		"version":        version,
+		"steps":          steps,
+	}
+	data, err := json.MarshalIndent(spec, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "drawer.json"), append(data, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func readInstalledVersion(t *testing.T, home, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(home, "buttons", name, "button.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &spec); err != nil {
+		t.Fatal(err)
+	}
+	return spec.Version
+}
+
+func readInstalledDrawerVersion(t *testing.T, home, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(home, "drawers", name, "drawer.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,6 +228,23 @@ func readLockVersion(t *testing.T, home, name string) string {
 	return lock.Dependencies[name].Version
 }
 
+func readLockKind(t *testing.T, home, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(home, "buttons-lock.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lock struct {
+		Dependencies map[string]struct {
+			Kind string `json:"kind"`
+		} `json:"dependencies"`
+	}
+	if err := json.Unmarshal(data, &lock); err != nil {
+		t.Fatal(err)
+	}
+	return lock.Dependencies[name].Kind
+}
+
 func readLifecycleEvents(t *testing.T, home string) []struct {
 	Action      string `json:"action"`
 	PackageName string `json:"package_name,omitempty"`
@@ -225,6 +281,106 @@ func publishEnv(url string) []string {
 		"BUTTONS_REGISTRY_URL=" + url,
 		"BUTTONS_BAT_REGISTRY_WRITE_KEY=write-key",
 		"BUTTONS_NO_UPDATE=1",
+	}
+}
+
+func TestAddDrawerPackageInstallsAndUpdatesMemberButtons(t *testing.T) {
+	reg := newOTARegistry("read-key", "write-key")
+	srv := httptest.NewServer(reg.handler())
+	defer srv.Close()
+
+	publisher := newTestEnv(t)
+	agent := newTestEnv(t)
+
+	writeOTAPublishButton(t, publisher.home, "build", "1", "#!/bin/sh\necho build-v1\n")
+	res := publisher.runWithEnv(publishEnv(srv.URL), "publish", "@autono/build", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("publish build v1 failed: stdout=%s stderr=%s", res.Stdout, res.Stderr)
+	}
+	writeOTAPublishButton(t, publisher.home, "ship", "1", "#!/bin/sh\necho ship-v1\n")
+	res = publisher.runWithEnv(publishEnv(srv.URL), "publish", "@autono/ship", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("publish ship v1 failed: stdout=%s stderr=%s", res.Stdout, res.Stderr)
+	}
+
+	writeOTAPublishDrawer(t, publisher.home, "deploy-pack", "1", []map[string]any{
+		{"id": "build", "button": "build"},
+		{"id": "ship", "button": "ship"},
+	})
+	res = publisher.runWithEnv(publishEnv(srv.URL), "publish", "@autono/deploy-pack", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("publish drawer failed: stdout=%s stderr=%s", res.Stdout, res.Stderr)
+	}
+
+	res = agent.runWithEnv(registryEnv(srv.URL), "add", "@autono/deploy-pack", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("add drawer package failed: stdout=%s stderr=%s", res.Stdout, res.Stderr)
+	}
+	if got := readManifestDependency(t, agent.home, "@autono/deploy-pack"); got != "latest" {
+		t.Fatalf("manifest drawer dependency = %q, want latest", got)
+	}
+	if got := readInstalledDrawerVersion(t, agent.home, "deploy-pack"); got != "1" {
+		t.Fatalf("installed drawer version = %q, want 1", got)
+	}
+	if got := readInstalledVersion(t, agent.home, "build"); got != "1" {
+		t.Fatalf("installed member button version = %q, want 1", got)
+	}
+	if got := readInstalledVersion(t, agent.home, "ship"); got != "1" {
+		t.Fatalf("installed second member button version = %q, want 1", got)
+	}
+	if got := readLockKind(t, agent.home, "@autono/deploy-pack"); got != "drawer" {
+		t.Fatalf("drawer lock kind = %q, want drawer", got)
+	}
+	if got := readLockKind(t, agent.home, "@autono/build"); got != "button" {
+		t.Fatalf("member lock kind = %q, want button", got)
+	}
+	if got := readLockKind(t, agent.home, "@autono/ship"); got != "button" {
+		t.Fatalf("second member lock kind = %q, want button", got)
+	}
+
+	press := agent.runWithEnv(registryEnv(srv.URL), "drawer", "deploy-pack", "press", "--json")
+	if press.ExitCode != 0 {
+		t.Fatalf("drawer press failed: stdout=%s stderr=%s", press.Stdout, press.Stderr)
+	}
+	pressJSON := parseJSON(t, press.Stdout)
+	if !pressJSON.OK || !jsonContains(t, pressJSON.Data, `"status": "ok"`) {
+		t.Fatalf("drawer press did not succeed: stdout=%s stderr=%s", press.Stdout, press.Stderr)
+	}
+
+	writeOTAPublishButton(t, publisher.home, "build", "2", "#!/bin/sh\necho build-v2\n")
+	res = publisher.runWithEnv(publishEnv(srv.URL), "publish", "@autono/build", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("publish build v2 failed: stdout=%s stderr=%s", res.Stdout, res.Stderr)
+	}
+
+	status := agent.runWithEnv(registryEnv(srv.URL), "status", "--json")
+	if status.ExitCode != 0 {
+		t.Fatalf("status failed: stdout=%s stderr=%s", status.Stdout, status.Stderr)
+	}
+	statusJSON := parseJSON(t, status.Stdout)
+	if !statusJSON.OK {
+		t.Fatalf("status returned error: %+v", statusJSON.Error)
+	}
+	if !jsonContains(t, statusJSON.Data, `"package_name": "@autono/build"`) || !jsonContains(t, statusJSON.Data, `"update_available": true`) {
+		t.Fatalf("status did not report the member button update: %s", statusJSON.Data)
+	}
+
+	update := agent.runWithEnv(registryEnv(srv.URL), "update", "--json")
+	if update.ExitCode != 0 {
+		t.Fatalf("update failed: stdout=%s stderr=%s", update.Stdout, update.Stderr)
+	}
+	if got := readInstalledVersion(t, agent.home, "build"); got != "2" {
+		t.Fatalf("updated member button version = %q, want 2", got)
+	}
+	if got := readLockVersion(t, agent.home, "@autono/build"); got != "2" {
+		t.Fatalf("updated member lock version = %q, want 2", got)
+	}
+	body, err := os.ReadFile(filepath.Join(agent.home, "buttons", "build", "main.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "#!/bin/sh\necho build-v2\n" {
+		t.Fatalf("installed member content was not refreshed: %q", string(body))
 	}
 }
 

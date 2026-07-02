@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/settings"
@@ -14,12 +15,18 @@ import (
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Update the CLI and floating button dependencies",
-	Long: `Install available updates for the buttons CLI and floating button dependencies.
+	Short: "Update the CLI and floating package dependencies",
+	Long: `Install available updates for the buttons CLI and floating package dependencies.
 
-The CLI binary is updated from GitHub Releases. Button dependencies are
+The CLI binary is updated from GitHub Releases. Package dependencies are
 refreshed from .buttons/buttons.json and .buttons/buttons-lock.json. Exact
 versions are pins; update moves only dependencies requested as "latest".
+
+Homebrew-managed installs are left to Homebrew by default. To let Buttons update
+the CLI through Homebrew and run passive CLI binary updates when the throttle
+allows, run:
+
+  buttons config set cli-auto-update true
 
 Examples:
   buttons update
@@ -77,26 +84,27 @@ func printUpdateResult(result *updater.Result) {
 	}
 	updated := 0
 	for _, b := range result.Buttons {
+		label := packageKindLabel(b.Kind)
 		switch {
 		case b.Updated:
 			updated++
-			fmt.Fprintf(os.Stderr, "Updated %s to %s\n", b.Name, b.LatestVersion)
+			fmt.Fprintf(os.Stderr, "Updated %s %s to %s\n", strings.ToLower(label), b.Name, b.LatestVersion)
 		case b.Pinned && b.CurrentVersion == "":
-			fmt.Fprintf(os.Stderr, "Button %s pinned at %s (not installed; run buttons install)\n", b.PackageName, b.Requested)
+			fmt.Fprintf(os.Stderr, "%s %s pinned at %s (not installed; run buttons install)\n", label, b.PackageName, b.Requested)
 		case b.Pinned && b.LatestVersion != "" && b.CurrentVersion != "" && b.LatestVersion != b.CurrentVersion:
-			fmt.Fprintf(os.Stderr, "Button %s pinned at %s (latest %s)\n", b.Name, b.CurrentVersion, b.LatestVersion)
+			fmt.Fprintf(os.Stderr, "%s %s pinned at %s (latest %s)\n", label, b.Name, b.CurrentVersion, b.LatestVersion)
 		case b.Pinned:
-			fmt.Fprintf(os.Stderr, "Button %s pinned at %s\n", b.Name, b.CurrentVersion)
+			fmt.Fprintf(os.Stderr, "%s %s pinned at %s\n", label, b.Name, b.CurrentVersion)
 		case b.Skipped:
-			fmt.Fprintf(os.Stderr, "Button %s skipped: %s\n", b.Name, b.SkipReason)
+			fmt.Fprintf(os.Stderr, "%s %s skipped: %s\n", label, b.Name, b.SkipReason)
 		case b.Error != "":
-			fmt.Fprintf(os.Stderr, "Button %s skipped: %s\n", b.Name, b.Error)
+			fmt.Fprintf(os.Stderr, "%s %s skipped: %s\n", label, b.Name, b.Error)
 		case b.UpdateAvailable:
-			fmt.Fprintf(os.Stderr, "Button update available: %s %s -> %s\n", b.Name, b.CurrentVersion, b.LatestVersion)
+			fmt.Fprintf(os.Stderr, "%s update available: %s %s -> %s\n", label, b.Name, b.CurrentVersion, b.LatestVersion)
 		}
 	}
 	if updated == 0 {
-		fmt.Fprintln(os.Stderr, "Installed buttons already up to date.")
+		fmt.Fprintln(os.Stderr, "Installed packages already up to date.")
 	}
 }
 

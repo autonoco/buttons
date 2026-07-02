@@ -89,6 +89,25 @@ func TestService_DuplicateCreate_Errors(t *testing.T) {
 	}
 }
 
+func TestService_Create_RejectsExistingButtonName(t *testing.T) {
+	home := newTestHome(t)
+	btnDir := filepath.Join(home, "buttons", "deploy")
+	if err := os.MkdirAll(btnDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(btnDir, "button.json"), []byte(`{"schema_version":2,"name":"deploy","runtime":"shell","env":{},"timeout_seconds":60}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := NewService().Create("deploy", "", nil)
+	if err == nil {
+		t.Fatal("expected drawer create to reject a name already used by a button")
+	}
+	if !strings.Contains(err.Error(), "already exists as a button") {
+		t.Fatalf("error = %v, want button collision message", err)
+	}
+}
+
 func TestService_Remove(t *testing.T) {
 	newTestHome(t)
 	svc := NewService()

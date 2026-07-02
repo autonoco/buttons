@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/autonoco/buttons/internal/button"
+	"github.com/autonoco/buttons/internal/drawer"
 	"github.com/autonoco/buttons/internal/manifest"
 )
 
@@ -23,6 +24,17 @@ func sourceBundle(t *testing.T, ref string, b button.Button, body string) *Bundl
 	files["button.json"] = data
 	files["main.sh"] = []byte(body)
 	return &Bundle{Name: ref, Version: b.Version, SHA256: hashFiles(files), Files: files}
+}
+
+func drawerBundle(t *testing.T, ref string, d drawer.Drawer) *Bundle {
+	t.Helper()
+	files := map[string][]byte{}
+	data, err := json.MarshalIndent(&d, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files["drawer.json"] = data
+	return &Bundle{Name: ref, Kind: "drawer", Version: d.Version, SHA256: hashFiles(files), Files: files}
 }
 
 type memorySource struct {
@@ -60,6 +72,19 @@ func installedSpec(t *testing.T, home, name string) button.Button {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func installedDrawer(t *testing.T, home, name string) drawer.Drawer {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(home, "drawers", name, "drawer.json"))
+	if err != nil {
+		t.Fatalf("drawer %q not installed: %v", name, err)
+	}
+	var d drawer.Drawer
+	if err := json.Unmarshal(data, &d); err != nil {
+		t.Fatal(err)
+	}
+	return d
 }
 
 func TestInstallManifestWithDepsWritesLock(t *testing.T) {
@@ -124,6 +149,96 @@ func TestInstallManifestWithDepsWritesLock(t *testing.T) {
 	}
 	if info.Mode().Perm()&0o100 == 0 {
 		t.Fatalf("main.sh not executable: %v", info.Mode())
+	}
+}
+
+func TestInstallManifestInstallsDrawerPackageAndMemberButtons(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+
+	pack := drawerBundle(t, "@autono/deploy-pack", drawer.Drawer{
+		SchemaVersion: drawer.SchemaVersion,
+		Name:          "deploy-pack",
+		Version:       "1",
+		Steps: []drawer.Step{
+			{ID: "build", Kind: "button", Button: "build"},
+			{ID: "ship", Button: "ship"},
+		},
+	})
+	build := sourceBundle(t, "@autono/build", button.Button{
+		SchemaVersion: 1,
+		Name:          "build",
+		Runtime:       "shell",
+		Version:       "4",
+	}, "#!/bin/sh\necho build\n")
+	ship := sourceBundle(t, "@autono/ship", button.Button{
+		SchemaVersion: 1,
+		Name:          "ship",
+		Runtime:       "shell",
+		Version:       "2",
+		Requires:      map[string]string{"@autono/base": "latest"},
+	}, "#!/bin/sh\necho ship\n")
+	base := sourceBundle(t, "@autono/base", button.Button{
+		SchemaVersion: 1,
+		Name:          "base",
+		Runtime:       "shell",
+		Version:       "3",
+	}, "#!/bin/sh\necho base\n")
+	src := memorySource{
+		refs: []ButtonRef{
+			{Name: "@autono/deploy-pack", Kind: "drawer", Version: "1"},
+			{Name: "@autono/build", Kind: "button", Version: "4"},
+			{Name: "@autono/ship", Kind: "button", Version: "2"},
+			{Name: "@autono/base", Kind: "button", Version: "3"},
+		},
+		bundles: map[string]*Bundle{
+			"@autono/deploy-pack@1": pack,
+			"@autono/build@4":       build,
+			"@autono/ship@2":        ship,
+			"@autono/base@3":        base,
+		},
+	}
+
+	res, lock, err := InstallManifest(src, &manifest.Manifest{SchemaVersion: 1, Dependencies: map[string]string{"@autono/deploy-pack": "latest"}}, nil, InstallOptions{RefreshFloating: true, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatalf("install drawer package: %v", err)
+	}
+	got := append([]string{}, res.Installed...)
+	sort.Strings(got)
+	want := []string{"base", "build", "deploy-pack", "ship"}
+	if len(got) != len(want) {
+		t.Fatalf("installed = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("installed = %v, want %v", got, want)
+		}
+	}
+
+	if d := installedDrawer(t, home, "deploy-pack"); d.Version != "1" || len(d.Steps) != 2 {
+		t.Fatalf("installed drawer = %+v", d)
+	}
+	if installedSpec(t, home, "build").Version != "4" {
+		t.Fatal("build button was not installed at version 4")
+	}
+	if installedSpec(t, home, "ship").Version != "2" {
+		t.Fatal("ship button was not installed at version 2")
+	}
+	if installedSpec(t, home, "base").Version != "3" {
+		t.Fatal("transitive base button was not installed at version 3")
+	}
+
+	for name, wantKind := range map[string]string{
+		"@autono/deploy-pack": "drawer",
+		"@autono/build":       "button",
+		"@autono/ship":        "button",
+		"@autono/base":        "button",
+	} {
+		entry := lock.Dependencies[name]
+		if entry.Kind != wantKind || entry.Version == "" || entry.ContentHash == "" || entry.ResolvedAt != now.Format(time.RFC3339) {
+			t.Fatalf("bad lock entry for %s: %+v", name, entry)
+		}
 	}
 }
 

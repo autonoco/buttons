@@ -381,6 +381,10 @@
     "updated_at": {
       "format": "date-time",
       "type": "string"
+    },
+    "version": {
+      "description": "Drawer package content version",
+      "type": "string"
     }
   },
   "required": [

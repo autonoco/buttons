@@ -9,6 +9,7 @@ import (
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
+	"github.com/autonoco/buttons/internal/drawer"
 )
 
 // Publisher accepts a button Bundle for distribution — the write-side mirror of
@@ -21,6 +22,7 @@ type Publisher interface {
 // PublishResult reports what a publish produced.
 type PublishResult struct {
 	Name    string `json:"name"`
+	Kind    string `json:"kind"`
 	Version string `json:"version,omitempty"`
 	SHA256  string `json:"sha256"`
 	Files   int    `json:"files"`
@@ -38,7 +40,7 @@ func Publish(dst Publisher, name string) (*PublishResult, error) {
 	if err := dst.Publish(bundle); err != nil {
 		return nil, err
 	}
-	return &PublishResult{Name: bundle.Name, Version: bundle.Version, SHA256: bundle.SHA256, Files: len(bundle.Files)}, nil
+	return &PublishResult{Name: bundle.Name, Kind: bundle.Kind, Version: bundle.Version, SHA256: bundle.SHA256, Files: len(bundle.Files)}, nil
 }
 
 // PublishToRegistry publishes a local button to the hosted registry under a
@@ -75,20 +77,42 @@ func PublishToRegistry(dst Publisher, ref string) (*PublishResult, error) {
 			version = next
 			continue
 		}
-		return &PublishResult{Name: bundle.Name, Version: bundle.Version, SHA256: bundle.SHA256, Files: len(bundle.Files)}, nil
+		return &PublishResult{Name: bundle.Name, Kind: bundle.Kind, Version: bundle.Version, SHA256: bundle.SHA256, Files: len(bundle.Files)}, nil
 	}
 	return nil, fmt.Errorf("registry publish could not find an unused version after 1000 attempts")
 }
 
-// loadLocalBundle reads a local button folder into a Bundle. localName locates
-// the on-disk folder (slugified); identity, when non-empty, overrides the
-// stamped Bundle.Name with the registry id (@desk/name) — for a LocalSource it
-// stays empty so the button keeps its own name.
+// loadLocalBundle reads a local button or drawer folder into a Bundle. localName
+// locates the on-disk folder (slugified); identity, when non-empty, overrides
+// the stamped Bundle.Name with the registry id (@desk/name) — for a LocalSource
+// it stays empty so the package keeps its own local name.
 func loadLocalBundle(localName, identity string) (*Bundle, error) {
-	dir, err := config.ButtonDir(button.Slugify(localName))
+	slug := button.Slugify(localName)
+	btnDir, err := config.ButtonDir(slug)
 	if err != nil {
 		return nil, err
 	}
+	drawerDir, err := config.DrawerDir(slug)
+	if err != nil {
+		return nil, err
+	}
+	buttonSpec := filepath.Join(btnDir, "button.json")
+	drawerSpec := filepath.Join(drawerDir, "drawer.json")
+	buttonExists := fileExists(buttonSpec)
+	drawerExists := fileExists(drawerSpec)
+	switch {
+	case buttonExists && drawerExists:
+		return nil, fmt.Errorf("ambiguous package %q: found both button and drawer. Rename one.", slug)
+	case buttonExists:
+		return loadLocalButtonBundle(slug, identity, btnDir)
+	case drawerExists:
+		return loadLocalDrawerBundle(slug, identity, drawerDir)
+	default:
+		return nil, fmt.Errorf("package %q not found: expected button.json or drawer.json", localName)
+	}
+}
+
+func loadLocalButtonBundle(localName, identity, dir string) (*Bundle, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("button %q not found: %w", localName, err)
@@ -119,10 +143,54 @@ func loadLocalBundle(localName, identity string) (*Bundle, error) {
 	if identity != "" {
 		name = identity
 	}
-	return &Bundle{Name: name, Version: spec.Version, SHA256: hashFiles(files), Files: files}, nil
+	return &Bundle{Name: name, Kind: "button", Version: spec.Version, SHA256: hashFiles(files), Files: files}, nil
+}
+
+func loadLocalDrawerBundle(localName, identity, dir string) (*Bundle, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("drawer %q not found: %w", localName, err)
+	}
+
+	files := map[string][]byte{}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue // skip pressed/ — run history isn't part of the artifact
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name())) // #nosec G304 -- dir is config.DrawerDir + enumerated entry.
+		if err != nil {
+			return nil, err
+		}
+		files[e.Name()] = data
+	}
+	specData, ok := files["drawer.json"]
+	if !ok {
+		return nil, fmt.Errorf("drawer %q has no drawer.json", localName)
+	}
+	var spec drawer.Drawer
+	if err := json.Unmarshal(specData, &spec); err != nil {
+		return nil, fmt.Errorf("drawer %q: invalid drawer.json: %w", localName, err)
+	}
+
+	name := spec.Name
+	if identity != "" {
+		name = identity
+	}
+	return &Bundle{Name: name, Kind: "drawer", Version: spec.Version, SHA256: hashFiles(files), Files: files}, nil
 }
 
 func stampLocalBundleVersion(localName string, bundle *Bundle, version string) error {
+	switch bundle.Kind {
+	case "", "button":
+		return stampLocalButtonBundleVersion(localName, bundle, version)
+	case "drawer":
+		return stampLocalDrawerBundleVersion(localName, bundle, version)
+	default:
+		return fmt.Errorf("unsupported package kind %q", bundle.Kind)
+	}
+}
+
+func stampLocalButtonBundleVersion(localName string, bundle *Bundle, version string) error {
 	specData, ok := bundle.Files["button.json"]
 	if !ok {
 		return fmt.Errorf("button %q has no button.json", localName)
@@ -150,6 +218,40 @@ func stampLocalBundleVersion(localName string, bundle *Bundle, version string) e
 		return fmt.Errorf("write %q button.json: %w", localName, err)
 	}
 	return nil
+}
+
+func stampLocalDrawerBundleVersion(localName string, bundle *Bundle, version string) error {
+	specData, ok := bundle.Files["drawer.json"]
+	if !ok {
+		return fmt.Errorf("drawer %q has no drawer.json", localName)
+	}
+	var spec drawer.Drawer
+	if err := json.Unmarshal(specData, &spec); err != nil {
+		return fmt.Errorf("drawer %q: invalid drawer.json: %w", localName, err)
+	}
+	spec.Version = version
+	data, err := json.MarshalIndent(&spec, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal %q drawer.json: %w", localName, err)
+	}
+
+	bundle.Version = version
+	bundle.Files["drawer.json"] = data
+	bundle.SHA256 = hashFiles(bundle.Files)
+
+	dir, err := config.DrawerDir(button.Slugify(localName))
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "drawer.json"), data, 0o600); err != nil {
+		return fmt.Errorf("write %q drawer.json: %w", localName, err)
+	}
+	return nil
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // splitScoped parses a registry identity @desk/name into its parts, rejecting

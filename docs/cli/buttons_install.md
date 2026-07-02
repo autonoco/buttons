@@ -5,15 +5,15 @@ description: "CLI reference for buttons install"
 
 ## buttons install
 
-Install buttons from .buttons/buttons.json
+Install packages from .buttons/buttons.json
 
 ### Synopsis
 
-Install buttons declared in .buttons/buttons.json.
+Install packages declared in .buttons/buttons.json.
 
 Use 'buttons add @desk/name' to add a dependency. Use 'buttons install'
-to materialize the dependency manifest into .buttons/buttons/ and refresh
-.buttons/buttons-lock.json.
+to materialize the dependency manifest into .buttons/buttons/ and
+.buttons/drawers/ and refresh .buttons/buttons-lock.json.
 
 **Examples:**
 

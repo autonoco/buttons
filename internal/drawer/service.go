@@ -42,6 +42,11 @@ func (s *Service) Create(name string, description string, inputs []InputDef) (*D
 	if slug == "" {
 		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: "drawer name is empty after slugification"}
 	}
+	if exists, err := buttonSpecExists(slug); err != nil {
+		return nil, err
+	} else if exists {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: fmt.Sprintf("drawer already exists as a button: %s", slug)}
+	}
 
 	dir, err := config.DrawerDir(slug)
 	if err != nil {
@@ -75,6 +80,7 @@ func (s *Service) Create(name string, description string, inputs []InputDef) (*D
 		SchemaVersion: SchemaVersion,
 		Name:          slug,
 		Description:   description,
+		Version:       button.InitialContentVersion,
 		Inputs:        inputs,
 		Steps:         []Step{},
 		CreatedAt:     now,
@@ -86,6 +92,21 @@ func (s *Service) Create(name string, description string, inputs []InputDef) (*D
 		return nil, err
 	}
 	return d, nil
+}
+
+func buttonSpecExists(name string) (bool, error) {
+	dir, err := config.ButtonDir(name)
+	if err != nil {
+		return false, err
+	}
+	info, err := os.Stat(filepath.Join(dir, "button.json"))
+	if err == nil {
+		return !info.IsDir(), nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 // Get returns the drawer by name. NOT_FOUND on missing.
