@@ -147,16 +147,9 @@ func reportsWithSourceError(m *manifest.Manifest, lock *manifest.Lockfile, err e
 	reports := make([]ButtonReport, 0, len(deps))
 	for _, dep := range deps {
 		entry := lock.Dependencies[dep.name]
-		kind := entry.Kind
-		if kind == "" {
-			kind = "button"
-		}
-		name := entry.InstalledName
-		if name == "" {
-			name = localNameFromPackage(dep.name)
-		}
+		kind, installedName := effectiveDependencyIdentity(dep.name, entry)
 		reports = append(reports, ButtonReport{
-			Name:           name,
+			Name:           installedName,
 			Kind:           kind,
 			PackageName:    dep.name,
 			Requested:      dep.requested,
@@ -171,20 +164,15 @@ func reportsWithSourceError(m *manifest.Manifest, lock *manifest.Lockfile, err e
 
 func checkOneDependency(ctx context.Context, src store.Source, name, requested string, lock *manifest.Lockfile) ButtonReport {
 	entry, locked := lock.Dependencies[name]
+	kind, installedName := effectiveDependencyIdentity(name, entry)
 	rep := ButtonReport{
-		Name:           entry.InstalledName,
-		Kind:           entry.Kind,
+		Name:           installedName,
+		Kind:           kind,
 		PackageName:    name,
 		Requested:      requested,
 		CurrentVersion: entry.Version,
 		CurrentHash:    entry.ContentHash,
 		Pinned:         !manifest.IsFloating(requested),
-	}
-	if rep.Name == "" {
-		rep.Name = localNameFromPackage(name)
-	}
-	if rep.Kind == "" {
-		rep.Kind = "button"
 	}
 	if !locked {
 		rep.UpdateAvailable = true
@@ -221,6 +209,18 @@ func checkOneDependency(ctx context.Context, src store.Source, name, requested s
 		rep.UpdateAvailable = !locked || contentUpdateAvailable(rep)
 	}
 	return rep
+}
+
+func effectiveDependencyIdentity(packageName string, entry manifest.LockEntry) (kind, installedName string) {
+	kind = entry.Kind
+	if kind == "" {
+		kind = "button"
+	}
+	installedName = entry.InstalledName
+	if installedName == "" {
+		installedName = localNameFromPackage(packageName)
+	}
+	return kind, installedName
 }
 
 func contentUpdateAvailable(rep ButtonReport) bool {

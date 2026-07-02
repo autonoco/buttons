@@ -77,7 +77,7 @@ func printStatus(report *updater.Report) {
 		}
 	}
 	if available == 0 {
-		fmt.Fprintln(os.Stderr, "Buttons: up to date")
+		fmt.Fprintln(os.Stderr, "Installed packages already up to date.")
 	}
 }
 

@@ -106,22 +106,25 @@ func (s *LocalSource) Index() ([]ButtonRef, error) {
 		}
 		dir := filepath.Join(s.Root, e.Name())
 		// #nosec G304 -- path is rooted in s.Root + a DirEntry name we just enumerated.
-		data, err := os.ReadFile(filepath.Join(dir, "button.json"))
-		if err == nil {
+		buttonData, buttonErr := os.ReadFile(filepath.Join(dir, "button.json"))
+		// #nosec G304 -- path is rooted in s.Root + a DirEntry name we just enumerated.
+		drawerData, drawerErr := os.ReadFile(filepath.Join(dir, "drawer.json"))
+		if buttonErr == nil && drawerErr == nil {
+			return nil, fmt.Errorf("ambiguous package %q: found both button.json and drawer.json", e.Name())
+		}
+		if buttonErr == nil {
 			var b button.Button
-			if json.Unmarshal(data, &b) != nil {
+			if json.Unmarshal(buttonData, &b) != nil {
 				continue
 			}
 			refs = append(refs, ButtonRef{Name: b.Name, Kind: "button", Version: b.Version, Tags: b.Tags})
 			continue
 		}
-		// #nosec G304 -- path is rooted in s.Root + a DirEntry name we just enumerated.
-		data, err = os.ReadFile(filepath.Join(dir, "drawer.json"))
-		if err != nil {
+		if drawerErr != nil {
 			continue
 		}
 		var d drawer.Drawer
-		if json.Unmarshal(data, &d) != nil {
+		if json.Unmarshal(drawerData, &d) != nil {
 			continue
 		}
 		refs = append(refs, ButtonRef{Name: d.Name, Kind: "drawer", Version: d.Version})
@@ -136,7 +139,7 @@ func (s *LocalSource) Fetch(name, version string) (*Bundle, error) {
 	dir := filepath.Join(s.Root, name)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("button %q not found in source: %w", name, err)
+		return nil, fmt.Errorf("package %q not found in source: %w", name, err)
 	}
 	files := map[string][]byte{}
 	for _, e := range entries {

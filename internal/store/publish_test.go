@@ -55,17 +55,17 @@ func writeInstalledButton(t *testing.T, home string, b button.Button, body strin
 func writeInstalledDrawer(t *testing.T, home string, d drawer.Drawer) {
 	t.Helper()
 	dir := filepath.Join(home, "drawers", d.Name)
-	if err := os.MkdirAll(filepath.Join(dir, "pressed"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "pressed"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := json.MarshalIndent(&d, "", "  ")
-	if err := os.WriteFile(filepath.Join(dir, "drawer.json"), data, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "drawer.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# "+d.Name+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "pressed", "run1.json"), []byte("{}"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "pressed", "run1.json"), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

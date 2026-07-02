@@ -171,10 +171,10 @@ func (s *HTTPSource) Fetch(name, version string) (*Bundle, error) {
 	defer func() { _ = resp.Body.Close() }()
 	tarball, err := io.ReadAll(io.LimitReader(resp.Body, maxArtifactBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("button %q: download: %w", name, err)
+		return nil, fmt.Errorf("package %q: download: %w", name, err)
 	}
 	if int64(len(tarball)) > maxArtifactBytes {
-		return nil, fmt.Errorf("button %q: artifact exceeds %d bytes", name, int64(maxArtifactBytes))
+		return nil, fmt.Errorf("package %q: artifact exceeds %d bytes", name, int64(maxArtifactBytes))
 	}
 
 	// Integrity: the bytes must match the registry's advertised tarball hash —
@@ -185,12 +185,12 @@ func (s *HTTPSource) Fetch(name, version string) (*Bundle, error) {
 		want = wantHash
 	}
 	if want != "" && got != want {
-		return nil, fmt.Errorf("button %q@%s: content hash mismatch (registry %s, got %s)", name, version, want, got)
+		return nil, fmt.Errorf("package %q@%s: content hash mismatch (registry %s, got %s)", name, version, want, got)
 	}
 
 	files, err := untarGz(tarball)
 	if err != nil {
-		return nil, fmt.Errorf("button %q: %w", name, err)
+		return nil, fmt.Errorf("package %q: %w", name, err)
 	}
 	kind := "button"
 	if _, ok := files["button.json"]; !ok {

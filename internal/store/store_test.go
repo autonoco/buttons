@@ -166,6 +166,8 @@ func TestInstallManifestInstallsDrawerPackageAndMemberButtons(t *testing.T) {
 			{ID: "ship", Button: "ship"},
 		},
 	})
+	pack.Files["helper.sh"] = []byte("#!/bin/sh\necho helper\n")
+	pack.SHA256 = hashFiles(pack.Files)
 	build := sourceBundle(t, "@autono/build", button.Button{
 		SchemaVersion: 1,
 		Name:          "build",
@@ -218,6 +220,20 @@ func TestInstallManifestInstallsDrawerPackageAndMemberButtons(t *testing.T) {
 
 	if d := installedDrawer(t, home, "deploy-pack"); d.Version != "1" || len(d.Steps) != 2 {
 		t.Fatalf("installed drawer = %+v", d)
+	}
+	drawerInfo, err := os.Stat(filepath.Join(home, "drawers", "deploy-pack", "drawer.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if drawerInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("drawer.json mode = %v, want 0600", drawerInfo.Mode().Perm())
+	}
+	helperInfo, err := os.Stat(filepath.Join(home, "drawers", "deploy-pack", "helper.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if helperInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("helper.sh mode = %v, want 0700", helperInfo.Mode().Perm())
 	}
 	if installedSpec(t, home, "build").Version != "4" {
 		t.Fatal("build button was not installed at version 4")
@@ -366,6 +382,20 @@ func TestFetchVersionMismatch(t *testing.T) {
 	}
 	if _, err := ls.Fetch("pin", ""); err != nil {
 		t.Errorf("Fetch with empty version (latest) should succeed: %v", err)
+	}
+}
+
+func TestIndexRejectsAmbiguousPackageSpec(t *testing.T) {
+	src := t.TempDir()
+	writeSourceButton(t, src, button.Button{SchemaVersion: 1, Name: "ambiguous", Runtime: "shell", Version: "1"})
+	data, _ := json.MarshalIndent(&drawer.Drawer{SchemaVersion: drawer.SchemaVersion, Name: "ambiguous", Version: "1"}, "", "  ")
+	if err := os.WriteFile(filepath.Join(src, "ambiguous", "drawer.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := (&LocalSource{Root: src}).Index()
+	if err == nil || !strings.Contains(err.Error(), "ambiguous package") {
+		t.Fatalf("Index error = %v, want ambiguous package", err)
 	}
 }
 

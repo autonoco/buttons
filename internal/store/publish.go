@@ -102,7 +102,7 @@ func loadLocalBundle(localName, identity string) (*Bundle, error) {
 	drawerExists := fileExists(drawerSpec)
 	switch {
 	case buttonExists && drawerExists:
-		return nil, fmt.Errorf("ambiguous package %q: found both button and drawer. Rename one.", slug)
+		return nil, fmt.Errorf("ambiguous package %q: found both button and drawer; rename one", slug)
 	case buttonExists:
 		return loadLocalButtonBundle(slug, identity, btnDir)
 	case drawerExists:

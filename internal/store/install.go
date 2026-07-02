@@ -295,10 +295,14 @@ func writeDrawerBundle(spec *drawer.Drawer, bundle *Bundle) error {
 	}
 	for rel, data := range bundle.Files {
 		dst := dsts[rel]
+		mode := os.FileMode(0o700)
+		if filepath.Ext(rel) == ".json" {
+			mode = 0o600
+		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
 			return fmt.Errorf("create parent for %s: %w", rel, err)
 		}
-		if err := os.WriteFile(dst, data, 0o600); err != nil {
+		if err := os.WriteFile(dst, data, mode); err != nil {
 			return fmt.Errorf("write %s: %w", rel, err)
 		}
 	}
