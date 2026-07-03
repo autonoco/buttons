@@ -45,6 +45,10 @@ func fakeBroker(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/v1/agents/register", func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		if enrolledPub == nil { // device not bound yet — the signal Setup auto-enrolls on
+			http.Error(w, `{"error":{"code":"UNKNOWN_DEVICE","message":"device not enrolled"}}`, http.StatusUnauthorized)
+			return
+		}
 		msg := "buttons-agent-register\n" + body["slug"] + "\n" + body["tunnel_id"] + "\n" + body["nonce"]
 		sig, err := base64.StdEncoding.DecodeString(body["signature"])
 		if err != nil || !ed25519.Verify(enrolledPub, []byte(msg), sig) {
@@ -111,4 +115,39 @@ func TestEnrollRejectsBadToken(t *testing.T) {
 
 func agentClientFor(srv *httptest.Server) *Client {
 	return &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+}
+
+func TestSetupAutoEnrollsThenReRegisters(t *testing.T) {
+	t.Setenv("BUTTONS_HOME", t.TempDir())
+	srv := fakeBroker(t)
+	defer srv.Close()
+	c, _ := LoadOrCreate()
+	id, _ := c.Identity()
+	client := agentClientFor(srv)
+
+	// First run: device unbound → Setup auto-enrolls with the token, then registers.
+	res, err := client.Setup(context.Background(), id, "test-enroll-token", "test/arch", RegisterParams{Slug: "cindy", TunnelID: "t1"})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if res.Slug != "cindy" || res.Status != "created" {
+		t.Fatalf("unexpected: %+v", res)
+	}
+
+	// Re-run: already enrolled → registers again with NO token needed.
+	if _, err := client.Setup(context.Background(), id, "", "test/arch", RegisterParams{Slug: "cindy", TunnelID: "t2"}); err != nil {
+		t.Fatalf("Setup re-run: %v", err)
+	}
+}
+
+func TestSetupWithoutTokenWhenUnboundIsNotEnrolled(t *testing.T) {
+	t.Setenv("BUTTONS_HOME", t.TempDir())
+	srv := fakeBroker(t)
+	defer srv.Close()
+	c, _ := LoadOrCreate()
+	id, _ := c.Identity()
+	_, err := agentClientFor(srv).Setup(context.Background(), id, "", "test/arch", RegisterParams{Slug: "x", TunnelID: "t"})
+	if !IsNotEnrolled(err) {
+		t.Fatalf("expected IsNotEnrolled, got %v", err)
+	}
 }
