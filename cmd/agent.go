@@ -87,15 +87,6 @@ re-run — it re-points to the current tunnel.
 		if !slugRe.MatchString(slug) {
 			return agentConfigError("slug must be one DNS label: lowercase letters, digits and hyphens, starting alphanumeric (max 63 chars)")
 		}
-		tunnel := agentSetupTunnel
-		if tunnel == "" {
-			if wc, err := webhook.LoadConfig(); err == nil && wc != nil {
-				tunnel = wc.TunnelID
-			}
-		}
-		if tunnel == "" {
-			return agentConfigError("no tunnel id: pass --tunnel <id> (or configure a named tunnel with `buttons webhook setup`)")
-		}
 		c, err := agent.LoadOrCreate()
 		if err != nil {
 			return agentRuntimeError("AGENT_KEY_ERROR", err)
@@ -103,6 +94,18 @@ re-run — it re-points to the current tunnel.
 		id, err := c.Identity()
 		if err != nil {
 			return agentRuntimeError("AGENT_KEY_ERROR", err)
+		}
+
+		// Tunnel: --tunnel > the named webhook tunnel > this agent's stored tunnel > empty.
+		// Empty is fine — the broker creates one and hands back a run-token.
+		tunnel := agentSetupTunnel
+		if tunnel == "" {
+			if wc, err := webhook.LoadConfig(); err == nil && wc != nil {
+				tunnel = wc.TunnelID
+			}
+		}
+		if tunnel == "" {
+			tunnel = c.TunnelID
 		}
 
 		token := enrollToken()
@@ -120,8 +123,15 @@ re-run — it re-points to the current tunnel.
 			return agentRuntimeError("SETUP_ERROR", err)
 		}
 
-		// Persist the slug locally so `status` and re-runs know it.
+		// Persist slug + tunnel so `status` and re-runs reuse them. The run-token is
+		// kept only when the broker just created the tunnel.
 		c.Slug = res.Slug
+		if res.TunnelID != "" {
+			c.TunnelID = res.TunnelID
+		}
+		if res.TunnelToken != "" {
+			c.TunnelToken = res.TunnelToken
+		}
 		if err := agent.SaveConfig(c); err != nil {
 			return agentRuntimeError("AGENT_KEY_ERROR", err)
 		}
@@ -135,6 +145,9 @@ re-run — it re-points to the current tunnel.
 		fmt.Fprintf(os.Stderr, "  wake:    %s\n", res.URLs.Wake)
 		if res.URLs.Deploy != nil {
 			fmt.Fprintf(os.Stderr, "  deploy:  %s\n", *res.URLs.Deploy)
+		}
+		if res.TunnelToken != "" {
+			fmt.Fprintln(os.Stderr, "  (tunnel provisioned — run-token saved to agent.json)")
 		}
 		return nil
 	},
