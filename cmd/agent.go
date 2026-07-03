@@ -105,12 +105,15 @@ re-run — it re-points to the current tunnel.
 			return agentRuntimeError("AGENT_KEY_ERROR", err)
 		}
 
-		res, err := (&agent.Client{BaseURL: reg}).Setup(cmd.Context(), id, enrollToken(), runtime.GOOS+"/"+runtime.GOARCH, agent.RegisterParams{
+		token := enrollToken()
+		res, err := (&agent.Client{BaseURL: reg}).Setup(cmd.Context(), id, token, runtime.GOOS+"/"+runtime.GOARCH, agent.RegisterParams{
 			Slug:      slug,
 			TunnelID:  tunnel,
 			Principal: agentSetupPrincipal,
 		})
-		if agent.IsNotEnrolled(err) {
+		if agent.IsNotEnrolled(err) && token == "" {
+			// Only the no-token case gets the setup hint; a not-enrolled error DESPITE a
+			// supplied token is a real failure → fall through to SETUP_ERROR.
 			return agentConfigError("device not enrolled and no ENROLL_TOKEN set: run `buttons batteries set ENROLL_TOKEN <token>` (or set $BUTTONS_BAT_ENROLL_TOKEN)")
 		}
 		if err != nil {

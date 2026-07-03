@@ -201,10 +201,14 @@ type BrokerError struct {
 }
 
 func (e *BrokerError) Error() string {
-	if e.Code != "" {
+	switch {
+	case e.Code != "":
 		return fmt.Sprintf("%s: %d %s (%s)", e.What, e.Status, e.Message, e.Code)
+	case e.Message != "": // non-JSON body kept as raw detail
+		return fmt.Sprintf("%s: %d %s", e.What, e.Status, e.Message)
+	default:
+		return fmt.Sprintf("%s: %d", e.What, e.Status)
 	}
-	return fmt.Sprintf("%s: %d", e.What, e.Status)
 }
 
 // IsNotEnrolled reports whether err is the broker's UNKNOWN_DEVICE response.
@@ -223,7 +227,11 @@ func brokerError(what string, resp *http.Response) error {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	_ = json.Unmarshal(data, &env)
+	if json.Unmarshal(data, &env) != nil || env.Error.Message == "" {
+		// Not our JSON envelope (e.g. a proxy / load-balancer error page): keep the raw
+		// body so the error still carries useful detail instead of just a status code.
+		return &BrokerError{What: what, Status: resp.StatusCode, Message: strings.TrimSpace(string(data))}
+	}
 	return &BrokerError{What: what, Status: resp.StatusCode, Code: env.Error.Code, Message: env.Error.Message}
 }
 

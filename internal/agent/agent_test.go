@@ -7,8 +7,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -115,6 +117,14 @@ func TestEnrollRejectsBadToken(t *testing.T) {
 
 func agentClientFor(srv *httptest.Server) *Client {
 	return &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+}
+
+func TestBrokerErrorKeepsRawNonJSONBody(t *testing.T) {
+	resp := &http.Response{StatusCode: http.StatusBadGateway, Body: io.NopCloser(strings.NewReader("502 Bad Gateway (nginx)"))}
+	err := brokerError("register", resp)
+	if !strings.Contains(err.Error(), "502 Bad Gateway (nginx)") {
+		t.Fatalf("raw body dropped from non-JSON error: %q", err.Error())
+	}
 }
 
 func TestSetupAutoEnrollsThenReRegisters(t *testing.T) {
