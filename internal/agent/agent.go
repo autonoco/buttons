@@ -18,6 +18,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -190,7 +191,33 @@ func (c *Client) do(ctx context.Context, method, p, bearer string, body any) (*h
 	return resp, nil
 }
 
-// brokerError decodes the {"error":{code,message}} envelope into a useful error.
+// BrokerError is a decoded {"error":{code,message}} response — carries the code
+// so callers can branch (e.g. "device not enrolled").
+type BrokerError struct {
+	What    string
+	Status  int
+	Code    string
+	Message string
+}
+
+func (e *BrokerError) Error() string {
+	switch {
+	case e.Code != "":
+		return fmt.Sprintf("%s: %d %s (%s)", e.What, e.Status, e.Message, e.Code)
+	case e.Message != "": // non-JSON body kept as raw detail
+		return fmt.Sprintf("%s: %d %s", e.What, e.Status, e.Message)
+	default:
+		return fmt.Sprintf("%s: %d", e.What, e.Status)
+	}
+}
+
+// IsNotEnrolled reports whether err is the broker's UNKNOWN_DEVICE response.
+func IsNotEnrolled(err error) bool {
+	var be *BrokerError
+	return errors.As(err, &be) && be.Code == "UNKNOWN_DEVICE"
+}
+
+// brokerError decodes the {"error":{code,message}} envelope into a *BrokerError.
 func brokerError(what string, resp *http.Response) error {
 	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -200,10 +227,12 @@ func brokerError(what string, resp *http.Response) error {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if json.Unmarshal(data, &env) == nil && env.Error.Message != "" {
-		return fmt.Errorf("%s: %d %s (%s)", what, resp.StatusCode, env.Error.Message, env.Error.Code)
+	if json.Unmarshal(data, &env) != nil || env.Error.Message == "" {
+		// Not our JSON envelope (e.g. a proxy / load-balancer error page): keep the raw
+		// body so the error still carries useful detail instead of just a status code.
+		return &BrokerError{What: what, Status: resp.StatusCode, Message: strings.TrimSpace(string(data))}
 	}
-	return fmt.Errorf("%s: %d", what, resp.StatusCode)
+	return &BrokerError{What: what, Status: resp.StatusCode, Code: env.Error.Code, Message: env.Error.Message}
 }
 
 // EnrollResult is the device→owner binding the broker returns.
@@ -315,4 +344,22 @@ func (c *Client) Register(ctx context.Context, id *Identity, p RegisterParams) (
 		return nil, fmt.Errorf("register: decode: %w", err)
 	}
 	return &out, nil
+}
+
+// Setup is the one idempotent call behind `buttons agent setup`: register, and if
+// the device isn't bound yet, enroll with the one-time token and register again.
+// An already-registered device just re-points. Returns the not-enrolled BrokerError
+// (IsNotEnrolled) when the device is unbound and no enroll token was supplied.
+func (c *Client) Setup(ctx context.Context, id *Identity, enrollToken, hostKind string, p RegisterParams) (*RegisterResult, error) {
+	res, err := c.Register(ctx, id, p)
+	if !IsNotEnrolled(err) {
+		return res, err // registered, or a non-enrollment failure
+	}
+	if enrollToken == "" {
+		return nil, err // unbound + no token — let the caller surface a helpful message
+	}
+	if _, eerr := c.Enroll(ctx, enrollToken, hostKind, id); eerr != nil {
+		return nil, eerr
+	}
+	return c.Register(ctx, id, p)
 }
