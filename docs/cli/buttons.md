@@ -27,6 +27,7 @@ buttons [flags]
 ### SEE ALSO
 
 * [buttons add](buttons_add.md)	 - Add a registry package dependency
+* [buttons agent](buttons_agent.md)	 - Register this workspace's device identity with the registry
 * [buttons batteries](buttons_batteries.md)	 - Manage environment variables and secrets
 * [buttons board](buttons_board.md)	 - Open the button board in a new terminal window
 * [buttons config](buttons_config.md)	 - Read and write per-user settings

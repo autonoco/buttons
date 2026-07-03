@@ -74,6 +74,45 @@ Add a registry package dependency
 buttons add
 ```
 
+### `buttons agent`
+
+Register this workspace's device identity with the registry
+
+```
+buttons agent [command]
+```
+
+#### `buttons agent enroll`
+
+Generate this device's key and bind it to its owner with a one-time token
+
+```
+buttons agent enroll
+```
+
+#### `buttons agent register`
+
+Register this workspace under a slug and print its URLs
+
+```
+buttons agent register [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--agent-id` | string | optional persona id |
+| `--principal` | string | optional principal this workspace serves |
+| `--slug` | string | the workspace slug to claim (one DNS label) |
+| `--tunnel` | string | tunnel id backing this workspace (defaults to the named webhook tunnel) |
+
+#### `buttons agent status`
+
+Show this device's identity (no secrets)
+
+```
+buttons agent status
+```
+
 ### `buttons batteries`
 
 Manage environment variables and secrets
