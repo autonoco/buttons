@@ -38,8 +38,10 @@ const ConfigSchemaVersion = 1
 // in once the workspace has registered.
 type Config struct {
 	SchemaVersion int    `json:"schema_version"`
-	DeviceSeed    string `json:"device_seed"`    // base64 Ed25519 seed (32 bytes)
-	Slug          string `json:"slug,omitempty"` // set once registered
+	DeviceSeed    string `json:"device_seed"`            // base64 Ed25519 seed (32 bytes)
+	Slug          string `json:"slug,omitempty"`         // set once registered
+	TunnelID      string `json:"tunnel_id,omitempty"`    // the agent's tunnel (broker-created or supplied)
+	TunnelToken   string `json:"tunnel_token,omitempty"` // run-token when the broker created the tunnel
 }
 
 // Identity is the key material derived from a Config's seed.
@@ -302,12 +304,14 @@ type URLs struct {
 
 // RegisterResult is the broker's response — the slug's URLs come from here.
 type RegisterResult struct {
-	OK      bool   `json:"ok"`
-	Slug    string `json:"slug"`
-	Status  string `json:"status"`
-	OwnerID string `json:"owner_id"`
-	URLs    URLs   `json:"urls"`
-	DNS     string `json:"dns"`
+	OK          bool   `json:"ok"`
+	Slug        string `json:"slug"`
+	Status      string `json:"status"`
+	OwnerID     string `json:"owner_id"`
+	URLs        URLs   `json:"urls"`
+	DNS         string `json:"dns"`
+	TunnelID    string `json:"tunnel_id"`    // the resolved tunnel (broker-created when none supplied)
+	TunnelToken string `json:"tunnel_token"` // run-token, present only when the broker just created it
 }
 
 // Register fetches a fresh nonce, signs it into the registration message, and

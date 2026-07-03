@@ -58,11 +58,16 @@ func fakeBroker(t *testing.T) *httptest.Server {
 			return
 		}
 		base := "https://" + body["slug"] + ".example.test"
+		tunnelID := body["tunnel_id"]
+		token := "" // broker returns a run-token only when it created the tunnel (empty request)
+		if tunnelID == "" {
+			tunnelID, token = "tun-"+body["slug"], "token-"+body["slug"]
+		}
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"ok": true, "slug": body["slug"], "status": "created", "owner_id": "org_test",
 			"urls": map[string]any{"webhook": base + "/hooks", "tunnel": base, "wake": base + "/wake", "deploy": nil},
-			"dns":  "written",
+			"dns":  "written", "tunnel_id": tunnelID, "tunnel_token": token,
 		})
 	})
 
@@ -159,5 +164,21 @@ func TestSetupWithoutTokenWhenUnboundIsNotEnrolled(t *testing.T) {
 	_, err := agentClientFor(srv).Setup(context.Background(), id, "", "test/arch", RegisterParams{Slug: "x", TunnelID: "t"})
 	if !IsNotEnrolled(err) {
 		t.Fatalf("expected IsNotEnrolled, got %v", err)
+	}
+}
+
+func TestSetupWithNoTunnelGetsBrokerCreatedTunnel(t *testing.T) {
+	t.Setenv("BUTTONS_HOME", t.TempDir())
+	srv := fakeBroker(t)
+	defer srv.Close()
+	c, _ := LoadOrCreate()
+	id, _ := c.Identity()
+	// empty TunnelID → broker creates one and hands back the id + run-token
+	res, err := agentClientFor(srv).Setup(context.Background(), id, "test-enroll-token", "test/arch", RegisterParams{Slug: "cindy", TunnelID: ""})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if res.TunnelID != "tun-cindy" || res.TunnelToken != "token-cindy" {
+		t.Fatalf("broker-created tunnel not returned: %+v", res)
 	}
 }
