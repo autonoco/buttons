@@ -22,19 +22,19 @@ func fakeBroker(t *testing.T) *httptest.Server {
 
 	mux.HandleFunc("/v1/devices/enroll", func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-enroll-token" {
-			http.Error(w, `{"error":{"code":"UNAUTHORIZED","message":"bad token"}}`, 401)
+			http.Error(w, `{"error":{"code":"UNAUTHORIZED","message":"bad token"}}`, http.StatusUnauthorized)
 			return
 		}
 		var body struct{ Pubkey string }
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		pub, err := base64.StdEncoding.DecodeString(body.Pubkey)
 		if err != nil || len(pub) != ed25519.PublicKeySize {
-			http.Error(w, `{"error":{"code":"INVALID","message":"pubkey"}}`, 400)
+			http.Error(w, `{"error":{"code":"INVALID","message":"pubkey"}}`, http.StatusBadRequest)
 			return
 		}
 		enrolledPub = pub
 		sum := sha256.Sum256(pub)
-		w.WriteHeader(201)
+		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{"device_id": hex.EncodeToString(sum[:]), "owner_id": "org_test"})
 	})
 
@@ -48,11 +48,11 @@ func fakeBroker(t *testing.T) *httptest.Server {
 		msg := "buttons-agent-register\n" + body["slug"] + "\n" + body["tunnel_id"] + "\n" + body["nonce"]
 		sig, err := base64.StdEncoding.DecodeString(body["signature"])
 		if err != nil || !ed25519.Verify(enrolledPub, []byte(msg), sig) {
-			http.Error(w, `{"error":{"code":"BAD_SIGNATURE","message":"bad sig"}}`, 401)
+			http.Error(w, `{"error":{"code":"BAD_SIGNATURE","message":"bad sig"}}`, http.StatusUnauthorized)
 			return
 		}
 		base := "https://" + body["slug"] + ".example.test"
-		w.WriteHeader(201)
+		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"ok": true, "slug": body["slug"], "status": "created", "owner_id": "org_test",
 			"urls": map[string]any{"webhook": base + "/hooks", "tunnel": base, "wake": base + "/wake", "deploy": nil},

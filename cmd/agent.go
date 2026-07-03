@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"runtime"
 
 	"github.com/autonoco/buttons/internal/agent"
@@ -10,6 +11,10 @@ import (
 	"github.com/autonoco/buttons/internal/webhook"
 	"github.com/spf13/cobra"
 )
+
+// slugRe mirrors the broker's hostname-label rule: one DNS label, so an invalid
+// slug is rejected locally with a clear message instead of a round-trip + 400.
+var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
 var (
 	agentRegisterSlug      string
@@ -114,6 +119,9 @@ registry. Requires an enrolled device (run "buttons agent enroll" first).
 		}
 		if agentRegisterSlug == "" {
 			return agentConfigError("--slug is required")
+		}
+		if !slugRe.MatchString(agentRegisterSlug) {
+			return agentConfigError("--slug must be one DNS label: lowercase letters, digits and hyphens, starting alphanumeric (max 63 chars)")
 		}
 		c, err := agent.LoadConfig()
 		if err != nil {
