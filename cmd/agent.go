@@ -75,8 +75,10 @@ generates the device key on first use, enrolls with the ENROLL_TOKEN battery if
 the device isn't bound yet, then registers the slug and prints its URLs. Safe to
 re-run — it re-points to the current tunnel.
 
---tunnel defaults to the tunnel id from a configured named webhook tunnel
-(buttons webhook setup) when present.`,
+--tunnel is optional. When omitted, the tunnel is taken from a configured named
+webhook tunnel (buttons webhook setup), then this agent's previously provisioned
+tunnel; if there's still none, the broker provisions one and returns its
+run-token (saved to agent.json).`,
 	Args: exactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		slug := args[0]
@@ -137,6 +139,7 @@ re-run — it re-points to the current tunnel.
 		}
 
 		if jsonOutput {
+			res.TunnelToken = "" // secret — saved to agent.json above, never emitted
 			return config.WriteJSON(res)
 		}
 		fmt.Fprintf(os.Stderr, "Agent %s is set up (%s)\n", res.Slug, res.Status)
