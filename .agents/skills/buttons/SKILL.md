@@ -74,6 +74,35 @@ Add a registry package dependency
 buttons add
 ```
 
+### `buttons agent`
+
+Set up this agent's identity and public URL
+
+```
+buttons agent [command]
+```
+
+#### `buttons agent setup`
+
+Register this agent under a slug and print its URLs (enrolls on first run)
+
+```
+buttons agent setup [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--principal` | string | optional principal this agent serves |
+| `--tunnel` | string | tunnel id backing this agent (defaults to the named webhook tunnel) |
+
+#### `buttons agent status`
+
+Show this device's identity (no secrets)
+
+```
+buttons agent status
+```
+
 ### `buttons batteries`
 
 Manage environment variables and secrets
