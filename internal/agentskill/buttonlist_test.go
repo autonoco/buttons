@@ -1,6 +1,7 @@
 package agentskill
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,6 +33,30 @@ func TestRenderButtonList(t *testing.T) {
 	}
 	if !strings.Contains(got, "- `buttons press bare`") || strings.Contains(got, "bare` —") {
 		t.Errorf("bare button should render without an em-dash:\n%s", got)
+	}
+}
+
+func TestRenderButtonListCapsAndOverflows(t *testing.T) {
+	// Caller passes most-pressed-first; the first ButtonListCap render in full,
+	// the rest collapse to a comma-separated name line.
+	entries := make([]ButtonEntry, 0, ButtonListCap+2)
+	for i := 0; i < ButtonListCap; i++ {
+		entries = append(entries, ButtonEntry{Name: fmt.Sprintf("hot%02d", i), Description: "d"})
+	}
+	entries = append(entries, ButtonEntry{Name: "cold1", Description: "unused"}, ButtonEntry{Name: "cold2", Description: "unused"})
+
+	got := RenderButtonList(entries)
+	if !strings.Contains(got, "- `buttons press hot00` — d") {
+		t.Errorf("top button should render in full:\n%s", got)
+	}
+	if strings.Contains(got, "- `buttons press cold1`") {
+		t.Errorf("overflow button should not get a full press line:\n%s", got)
+	}
+	if !strings.Contains(got, "Plus 2 more: cold1, cold2 — run `buttons list`") {
+		t.Errorf("expected overflow summary line:\n%s", got)
+	}
+	if strings.Contains(got, "unused") {
+		t.Errorf("overflow descriptions should be dropped:\n%s", got)
 	}
 }
 
