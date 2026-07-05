@@ -143,6 +143,10 @@ func ensureButtonsDir(buttonsDir string) error {
 //
 //	doesn't stop an accidental `git add -A`.
 //
+// agent.json     — device identity: the Ed25519 private seed and the
+//
+//	tunnel run-token. Same 0600-but-still-git-addable risk as batteries.
+//
 // webhook.json   — Cloudflare tunnel config (hostname + tunnel id).
 //
 //	Not secret per se, but machine-specific.
@@ -161,6 +165,8 @@ func ensureButtonsDir(buttonsDir string) error {
 func defaultButtonsGitignore() string {
 	return `# Files that hold secrets — never commit.
 batteries.json
+# Device identity — holds the Ed25519 private seed and tunnel run-token.
+agent.json
 # Machine-specific tunnel / listener config.
 webhook.json
 # Run history (per-machine, may contain sensitive args).
@@ -181,6 +187,7 @@ history.json
 // coverage retroactively.
 var secretPatterns = []string{
 	"batteries.json",
+	"agent.json",
 	"webhook.json",
 	"history.json",
 }

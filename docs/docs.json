@@ -29,6 +29,7 @@
               "concepts/buttons",
               "concepts/drawers",
               "concepts/registry",
+              "concepts/agent-identity",
               "concepts/triggers",
               "concepts/history"
             ]
@@ -98,7 +99,8 @@
             "pages": [
               "ai/mcp-server",
               "ai/llms-txt",
-              "ai/skill-md"
+              "ai/skill-md",
+              "ai/agent-instructions"
             ]
           }
         ]
@@ -110,6 +112,8 @@
             "group": "Changelog",
             "public": true,
             "pages": [
+              "changelog/2026-07-05",
+              "changelog/2026-06-27",
               "changelog/2026-04-20",
               "changelog/2026-04-19",
               "changelog/2026-04-18",
@@ -178,6 +182,16 @@
               "cli/buttons_import_code",
               "cli/buttons_import_url",
               "cli/buttons_import_mcp"
+            ]
+          },
+          {
+            "group": "Agent identity",
+            "public": true,
+            "expanded": false,
+            "pages": [
+              "cli/buttons_agent",
+              "cli/buttons_agent_setup",
+              "cli/buttons_agent_status"
             ]
           },
           {

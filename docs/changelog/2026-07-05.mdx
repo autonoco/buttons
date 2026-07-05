@@ -1,0 +1,28 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-07-05" description="Agent identity, over-the-air updates, and drawer packages">
+## Agent identity, over-the-air updates, and drawer packages
+
+Workspaces get a signed device identity and a stable public URL, installed buttons update themselves over the air, and drawers become first-class registry packages.
+
+### New features
+
+- **`buttons agent` — device identity + public URL** — give a workspace a durable, signature-proven identity. `buttons agent setup <slug>` generates an on-device Ed25519 keypair (private seed never leaves the machine, stored `0600` in `agent.json`), consumes a one-time `ENROLL_TOKEN` to enroll with `$BUTTONS_REGISTRY_URL`, registers a slug, and prints the webhook/tunnel URLs. When no tunnel is configured the broker provisions one. `buttons agent status` shows the device id and slug, never a secret. See [Agent identity](/concepts/agent-identity).
+
+- **Drawer registry packages** — drawers publish and install like buttons. Installing a drawer package also installs every button its steps reference, resolved into the lockfile. See the [registry concept](/concepts/registry).
+
+- **Over-the-air button updates** — installed buttons update themselves. `buttons update` refreshes floating package dependencies alongside the CLI binary, and a passive check runs on every command so a workspace stays current without a manual step. Local edits are compared against the lockfile hash and never overwritten.
+
+- **Simple content versions** — published buttons and drawers use plain incrementing version numbers starting at `1`; registry versions are immutable, and publish auto-bumps to the next number if one already exists.
+
+### Updates
+
+- **Ranked, capped `AGENTS.md` button list** — the auto-maintained project button list now refreshes on `create`, `delete`, `add`, and `import` (not just create), orders buttons most-pressed-first, and caps the detailed list at 20 with the rest collapsed to a names line. `agent.json` is now gitignored by default so the device private key is never committed. See [Agent instructions](/ai/agent-instructions).
+
+- **Shell completions via Homebrew** — installing Buttons through the Homebrew tap installs shell completions automatically.
+
+- **Opt-in package-manager CLI updates** — `buttons update` can defer to the package manager that installed the binary (e.g. Homebrew) instead of self-replacing.
+</Update>

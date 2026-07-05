@@ -5,3 +5,6 @@
 # Draft content
 drafts/
 *.draft.mdx
+
+# Internal implementation plans — not public documentation.
+superpowers/

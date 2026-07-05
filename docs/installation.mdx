@@ -19,7 +19,7 @@ The script detects your OS and architecture, downloads the matching archive from
 ### Pin a version
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh | BUTTONS_VERSION=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh | BUTTONS_VERSION=v0.128.0 sh
 ```
 
 ### Custom install directory
@@ -43,7 +43,7 @@ Most agent deployments bake the binary into their own image via multi-stage copy
 FROM python:3.12-slim AS agent
 # your agent setup...
 
-COPY --from=ghcr.io/autonoco/buttons:v0.1.0 /usr/local/bin/buttons /usr/local/bin/buttons
+COPY --from=ghcr.io/autonoco/buttons:v0.128.0 /usr/local/bin/buttons /usr/local/bin/buttons
 ```
 
 The image is Alpine-based with `/bin/sh`, so shell buttons work out of the box. Add `python3` or `nodejs` via `apk add` in derived images when those runtimes are needed.

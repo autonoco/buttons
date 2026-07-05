@@ -29,12 +29,12 @@ Pass variables before `sh` to control the install:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh \
-  | BUTTONS_VERSION=v0.1.0 BUTTONS_INSTALL_DIR=$HOME/.local/bin sh
+  | BUTTONS_VERSION=v0.128.0 BUTTONS_INSTALL_DIR=$HOME/.local/bin sh
 ```
 
 | Variable | Default | Description |
 |---|---|---|
-| `BUTTONS_VERSION` | `latest` | Pin to a specific release tag (e.g. `v0.1.0`). `latest` resolves the newest release via the GitHub API. |
+| `BUTTONS_VERSION` | `latest` | Pin to a specific release tag (e.g. `v0.128.0`). `latest` resolves the newest release via the GitHub API. |
 | `BUTTONS_INSTALL_DIR` | `/usr/local/bin` | Directory to install the `buttons` binary. |
 | `GITHUB_TOKEN` | _(none)_ | GitHub token sent as `Authorization: Bearer`. Required while the repo is private (`contents:read` scope); optional afterward to avoid API rate limits. |
 
@@ -70,7 +70,7 @@ For reproducible agent deployments, always pin a version:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/autonoco/buttons/main/install.sh \
-  | BUTTONS_VERSION=v0.1.0 sh
+  | BUTTONS_VERSION=v0.128.0 sh
 ```
 
 This prevents unintended upgrades when you rebuild your image or re-provision a machine.

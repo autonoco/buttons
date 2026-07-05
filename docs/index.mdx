@@ -97,7 +97,7 @@ Every command is auto-generated from the Cobra command tree. Flags, examples, an
 Buttons ships as a static binary and a multi-arch Docker image. Bake it into your agent container with one line:
 
 ```dockerfile
-COPY --from=ghcr.io/autonoco/buttons:v0.1.0 /usr/local/bin/buttons /usr/local/bin/buttons
+COPY --from=ghcr.io/autonoco/buttons:v0.128.0 /usr/local/bin/buttons /usr/local/bin/buttons
 ```
 
 Your agent calls `buttons press <name> --json` as a subprocess and gets structured output. No SDK, no library import, no runtime dependency.

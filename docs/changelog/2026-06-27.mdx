@@ -1,0 +1,36 @@
+---
+title: "Changelog"
+description: "New features and improvements to Buttons."
+---
+
+<Update label="2026-06-27" description="REST API, MCP server, triggers, parallel execution, imports, and the registry">
+## REST API, MCP server, triggers, parallel execution, imports, and the registry
+
+Buttons grows from a local CLI into a distributable runtime: an HTTP API and an MCP server expose buttons to other processes and agents, triggers run them on a schedule or on file changes, and a package registry lets you install and publish buttons and drawers.
+
+### New features
+
+- **`buttons serve` — REST API** — expose your buttons over HTTP. Presses run through the same engine as the CLI, with graceful shutdown, a press-timeout ceiling, and a concurrency cap. HTTP-source buttons are gated out of the REST press path by default. See the [REST API guide](/deployment/rest-api).
+
+- **`buttons mcp` — stdio MCP server** — a Model Context Protocol server exposing meta-tools (`buttons_list`, `buttons_press`, `buttons_inspect`) so an agent discovers and runs your buttons as native tools instead of shelling out. Buttons opt in per-button with `mcp_enabled`. See the [MCP guide](/buttons/mcp).
+
+- **`buttons trigger` — cron / watch / webhook** — run a button or drawer automatically on a cron schedule, when a file or directory changes, or from an incoming webhook. Manage triggers with `buttons trigger add`, `list`, and `rm`. See the [triggers concept](/concepts/triggers).
+
+- **`buttons smash` — parallel button execution** — press many buttons concurrently with a bounded worker pool and one structured result set. See the [smash CLI reference](/cli/buttons_smash).
+
+- **Parallel drawer steps** — `--mode parallel` runs a drawer's independent steps concurrently, respecting the data-flow graph between them.
+
+- **`buttons import` — skill / code / url adapters** — create buttons from existing sources: `import code <file>` wraps a script, `import skill <dir>` makes a button per script in an AgentSkills skill, and `import url <url>` builds a button from a fetched HTTP spec. See the [import CLI reference](/cli/buttons_import).
+
+- **Package registry** — install and publish buttons and drawers as versioned packages. `buttons install <name | tag:x>` pulls from a configured source; `buttons publish @desk/name` pushes a local button or drawer. Content is fetched over an HTTP source with size caps and tarball-hash verification. See the [registry concept](/concepts/registry).
+
+- **Package schema — version, tags, provenance** — `button.json` gains optional `version`, `tags`, `requires`, `requires_batteries`, and content-hash fields so a button is a versioned, pinnable, dependency-aware unit.
+
+- **App-kind buttons** — `buttons create --app <git-url|path>` clones or copies an application into `apps/` alongside a `button.json` with a `serve` block, for buttons that run a long-lived server instead of a one-shot script.
+
+- **Auto-maintained `AGENTS.md` button list** — `buttons create` keeps a `## Buttons in this project` list current in the repo-root `AGENTS.md`, and adds OpenClaw and Hermes as `init --agent` targets. See [Agent instructions](/ai/agent-instructions).
+
+### Updates
+
+- **Board press CTA** — the TUI board restyles the press call-to-action as a bordered chip.
+</Update>
