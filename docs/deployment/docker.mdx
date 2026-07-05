@@ -9,7 +9,7 @@ Buttons publishes a multi-arch Docker image to GitHub Container Registry. Use it
 
 ```
 ghcr.io/autonoco/buttons:latest
-ghcr.io/autonoco/buttons:v0.1.0   # pinned version
+ghcr.io/autonoco/buttons:v0.128.0   # pinned version
 ```
 
 - **Base:** Alpine Linux 3.20 (with `ca-certificates` + `tzdata`) — ~12 MB
@@ -24,7 +24,7 @@ ghcr.io/autonoco/buttons:v0.1.0   # pinned version
 The most common pattern for agent deployments. Copy just the binary into your own image — no Alpine overhead:
 
 ```dockerfile
-FROM ghcr.io/autonoco/buttons:v0.1.0 AS buttons
+FROM ghcr.io/autonoco/buttons:v0.128.0 AS buttons
 
 FROM python:3.12-slim AS agent
 
@@ -73,19 +73,19 @@ Shell buttons work in the base image. For Python or Node buttons, extend the ima
 <CodeGroup>
 
 ```dockerfile Python
-FROM ghcr.io/autonoco/buttons:v0.1.0
+FROM ghcr.io/autonoco/buttons:v0.128.0
 
 RUN apk add --no-cache python3 py3-pip
 ```
 
 ```dockerfile Node
-FROM ghcr.io/autonoco/buttons:v0.1.0
+FROM ghcr.io/autonoco/buttons:v0.128.0
 
 RUN apk add --no-cache nodejs npm
 ```
 
 ```dockerfile Python + Node
-FROM ghcr.io/autonoco/buttons:v0.1.0
+FROM ghcr.io/autonoco/buttons:v0.128.0
 
 RUN apk add --no-cache python3 py3-pip nodejs npm
 ```

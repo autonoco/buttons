@@ -44,6 +44,7 @@ Each button gets its own subdirectory with a spec file, optional code file, agen
 │       ├── AGENTS.md
 │       └── ...               # cloned/copied app source (no main.*)
 ├── batteries.json            # secret/env values; gitignored
+├── agent.json                # device identity: Ed25519 seed + tunnel token; gitignored
 ├── webhook.json              # Cloudflare tunnel config; gitignored
 ├── idempotency/              # lazy; cached successful press results; gitignored
 └── queues/                   # lazy; file-lock semaphore state; gitignored
@@ -115,6 +116,8 @@ Present on every button (and drawer). For [prompt buttons](/buttons/prompt), it 
 
 Units created before the rename may have a singular `AGENT.md`; it is still read as a legacy fallback, but every write uses `AGENTS.md`.
 
+This per-unit file is distinct from two project-level files with the same name: the `.buttons/AGENTS.md` folder reference written by `buttons init`, and the **repo-root `AGENTS.md`**, where the CLI maintains a press-ranked list of the project's buttons between `<!-- BUTTONS:LIST -->` markers (refreshed on `create`/`delete`/`add`/`import`). See [Agent instructions](/ai/agent-instructions).
+
 ## pressed/
 
 One JSON file per run, named by UTC timestamp. Each file records the input arguments, exit code, stdout, stderr (each truncated to 1 MB), duration, and status. The directory is capped at 100 runs — the oldest are pruned — and is gitignored because run traces may contain press-time argument values.
@@ -140,6 +143,10 @@ Lazily created the first time you run `buttons create --app <git-url|path>`. The
 Batteries are key/value pairs injected into button presses as `BUTTONS_BAT_<KEY>`. Keys must match `[A-Z][A-Z0-9_]*`.
 
 Project-local batteries live at `.buttons/batteries.json`. Global batteries live at `~/.buttons/batteries.json`. Local values override global values on key collision.
+
+## agent.json
+
+Created by `buttons agent setup`. Holds the workspace's Ed25519 device seed (the private key, base64), the registered slug, and the backing tunnel id and run-token, written `0600`. Because it contains the private seed, it is machine-local and **must never be committed** — `buttons init` gitignores it. See [Agent identity](/concepts/agent-identity).
 
 ## webhook.json
 

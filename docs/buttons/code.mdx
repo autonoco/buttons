@@ -111,6 +111,32 @@ process.env.BUTTONS_ARG_BUCKET       # node
 
 This prevents shell injection regardless of what the caller passes at press time.
 
+## Reporting progress
+
+Long-running buttons can stream progress while they run. Before executing your script, the engine sets `$BUTTONS_PROGRESS_PATH` to a per-press file. Append one JSON object per line (JSONL) to it, and `buttons tail -f` follows those events live in another terminal.
+
+```bash
+#!/bin/sh
+set -eu
+
+# $BUTTONS_PROGRESS_PATH is set by the engine on every press.
+say() { printf '{"message":"%s"}\n' "$1" >> "$BUTTONS_PROGRESS_PATH"; }
+
+say "cloning repo"
+git clone "$BUTTONS_ARG_REPO" work
+say "installing deps"
+( cd work && npm install )
+say "done"
+```
+
+Follow it while it runs:
+
+```bash
+buttons tail deploy -f
+```
+
+Progress events are advisory and separate from the result — the final structured output still goes to stdout when the press finishes. A script that never writes to `$BUTTONS_PROGRESS_PATH` simply produces no progress to follow. See the [tail CLI reference](/cli/buttons_tail).
+
 ## Where the code lives
 
 After `buttons create`, the button folder contains:

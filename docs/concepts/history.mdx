@@ -93,6 +93,22 @@ Do not commit:
 
 Registry dependencies are pinned in `.buttons/buttons-lock.json`, not inside each installed `button.json`. Committing the manifest and lockfile lets a teammate materialize the same versions with `buttons install`. `history.json` stays local — it is each machine's own audit trail.
 
+## Press failures & replay
+
+`history.json` above tracks dependency **lifecycle** events. A target's **run** history is separate: one JSON file per press under `buttons/<name>/pressed/` (and `drawers/<name>/pressed/`), each recording the args, exit code, output, and status. There is no dead-letter queue — a failed press is just a run record with a non-`ok` status.
+
+That makes triage a short loop an agent runs entirely from the CLI:
+
+1. **Spot failures** — `buttons summary --json` aggregates recent failures across the workspace under `recent_failures`.
+2. **Drill in** — `buttons history <name>` (or `buttons drawer <name> --json`) shows that target's recent runs, including the exact args each was pressed with.
+3. **Replay** — once the cause is fixed, re-press with those same args:
+
+```bash
+buttons press deploy --arg env=staging --arg version=v1.4.2
+```
+
+Because the args live in the run record, replay is just reading them back and pressing again — no queue to drain, no separate replay command. See [buttons summary](/cli/buttons_summary) and [buttons history](/cli/buttons_history).
+
 ## Related
 
 - [Registry](/concepts/registry)

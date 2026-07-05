@@ -68,7 +68,7 @@ The Buttons skill is auto-generated from the Cobra command tree via `go run ./in
 
 The skill auto-updates through two mechanisms:
 
-1. **In the repo** — the [docs-sync workflow](/.github/workflows/docs-sync.yml) regenerates `SKILL.md` whenever CLI code changes on main and opens a PR with updates
+1. **In the repo** — the [docs-sync workflow](https://github.com/autonoco/buttons/blob/main/.github/workflows/docs-sync.yml) regenerates `SKILL.md` whenever CLI code changes on main and opens a PR with updates
 2. **On Mintlify** — the hosted skill file updates whenever the docs deploy
 
 You never have to manually maintain the skill content. Change a command or flag in `cmd/*.go`, and the skill updates automatically.

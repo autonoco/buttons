@@ -145,6 +145,8 @@ Hosted-registry requests are bearer-authed (`Authorization: Bearer <key>`). Read
 
 The registry base URL comes from `$BUTTONS_REGISTRY_URL`. This public repo does not bake in a real registry host.
 
+Bearer keys authorize *what* an operation may do; the workspace's [agent identity](/concepts/agent-identity) proves *which device* is acting. Enroll a device once with `buttons agent setup` before publishing to a hosted registry.
+
 ## Publish Flow
 
 `buttons publish @desk/name` publishes a local button or drawer folder to the configured registry:

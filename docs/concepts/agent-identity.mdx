@@ -1,0 +1,82 @@
+---
+title: "Agent identity"
+description: "Give an agent workspace a signed device identity and a stable public URL for registry enrollment and webhooks."
+---
+
+`buttons agent` gives a workspace a durable, cryptographically-provable identity and a stable public URL. It's how a machine enrolls with a hosted registry and how a drawer gets a webhook address the outside world can reach.
+
+Identity is **proven by signature, not asserted**: the device holds an Ed25519 keypair, and the registry verifies requests against the public key it saw at enrollment.
+
+## The device keypair
+
+On first use, Buttons generates an Ed25519 keypair and stores it in `agent.json` in the active [data directory](/concepts/folder-structure) (`~/.buttons/agent.json`, or `.buttons/agent.json` in a project), written `0600`.
+
+- The **private seed never leaves the machine** — only signatures and the public key are sent.
+- `agent.json` also holds the registered `slug`, the backing tunnel id, and (if the broker provisioned one) a tunnel run-token.
+- Because it holds the private seed and run-token, `agent.json` is **machine-local and must never be committed**. `buttons init` adds it to `.buttons/.gitignore` automatically.
+
+<Warning>
+Treat `agent.json` like a private key — it is one. Never commit it, copy it between machines, or paste its contents anywhere. To move identity to a new machine, run `buttons agent setup` there to enroll a fresh device.
+</Warning>
+
+## Registry target and enrollment token
+
+Two environment inputs drive setup — this public repo bakes in no registry host:
+
+| Input | Purpose |
+|---|---|
+| `$BUTTONS_REGISTRY_URL` | Base URL of the registry the agent enrolls with. Required. |
+| `ENROLL_TOKEN` battery (or `$BUTTONS_BAT_ENROLL_TOKEN`) | One-time enrollment token, consumed the first time a device binds. |
+
+Set the token as a [battery](/cli/buttons_batteries) so it's stored once:
+
+```bash
+buttons batteries set ENROLL_TOKEN <token>
+```
+
+## `buttons agent setup <slug>`
+
+One idempotent command sets everything up. It generates the device key on first use, enrolls with the `ENROLL_TOKEN` if the device isn't bound yet, registers the `slug`, and prints the resulting URLs. Safe to re-run — it re-points to the current tunnel.
+
+```bash
+export BUTTONS_REGISTRY_URL=https://registry.example
+buttons agent setup my-desk
+# Agent my-desk is set up (active)
+#   webhook: https://my-desk.example/webhook
+#   tunnel:  https://my-desk.example
+#   wake:    https://my-desk.example/wake
+```
+
+The `slug` must be a single DNS label: lowercase letters, digits, and hyphens, starting alphanumeric, max 63 characters.
+
+**Choosing the tunnel** — `--tunnel` is optional. When omitted, the tunnel is resolved in order:
+
+1. the tunnel from a configured named [webhook](/buttons/webhook) setup (`buttons webhook setup`), then
+2. this agent's previously provisioned tunnel (stored in `agent.json`), then
+3. if there's still none, the broker provisions one and returns a run-token, which is saved to `agent.json`.
+
+`--principal` optionally records the principal this agent serves.
+
+## `buttons agent status`
+
+Shows the device's identity — never any secret:
+
+```bash
+buttons agent status
+# device 9f2c… 
+# slug   my-desk
+```
+
+Before setup it reports `not set up`. In `--json` mode it returns `{ "enrolled": false }` or `{ "enrolled": true, "device_id": "…", "slug": "…" }`.
+
+## How it relates to the registry
+
+Agent identity is the trust anchor under the [registry](/concepts/registry). The registry authorizes reads and writes with the `REGISTRY_KEY` / `REGISTRY_WRITE_KEY` batteries (bearer keys), while the agent's Ed25519 signature proves *which device* is acting — the two are complementary. Enroll once with `buttons agent setup`, then `buttons add` / `buttons install` / `buttons publish` against `$BUTTONS_REGISTRY_URL`.
+
+## Related
+
+- [Registry](/concepts/registry) — install and publish shared packages
+- [Webhooks](/buttons/webhook) — the tunnel and public URL a drawer is reached at
+- [buttons agent](/cli/buttons_agent) — CLI reference
+- [buttons agent setup](/cli/buttons_agent_setup)
+- [buttons agent status](/cli/buttons_agent_status)

@@ -88,6 +88,8 @@ echo "Deploying to $BUTTONS_ARG_REGION"
 
 Values are never interpolated directly into the script body. This prevents shell injection regardless of what string is passed.
 
+Beyond your declared args, the engine sets one more variable on every press: `BUTTONS_PROGRESS_PATH`, a file your script can append JSONL progress events to and follow live with `buttons tail -f`. See [reporting progress](/buttons/code#reporting-progress).
+
 ## How arguments reach HTTP buttons
 
 For [HTTP buttons](/buttons/http-api), argument values are substituted into `{{name}}` placeholders in the URL, headers, and body. The substitution is context-aware — path segments, query parameters, JSON bodies, and form bodies each encode values differently. See [URL and body templates](/concepts/templates) for details.
