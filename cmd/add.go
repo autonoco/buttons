@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/manifest"
 	"github.com/autonoco/buttons/internal/store"
@@ -35,16 +36,25 @@ Examples:
 			}
 			return err
 		}
+		agentsMdAction := updateProjectAgentsMD(button.NewService())
+
 		if jsonOutput {
-			return config.WriteJSON(map[string]any{
+			out := map[string]any{
 				"name":      name,
 				"requested": requested,
 				"installed": res.Installed,
-			})
+			}
+			if agentsMdAction != "" {
+				out["agents_md"] = agentsMdAction
+			}
+			return config.WriteJSON(out)
 		}
 		fmt.Fprintf(os.Stderr, "Added %s@%s\n", name, requested)
 		if len(res.Installed) > 0 {
 			fmt.Fprintf(os.Stderr, "Installed %d package item(s): %s\n", len(res.Installed), strings.Join(res.Installed, ", "))
+		}
+		if agentsMdAction != "" {
+			fmt.Fprintf(os.Stderr, "  AGENTS.md button list %s\n", agentsMdAction)
 		}
 		printNextHint("buttons status")
 		return nil

@@ -194,6 +194,33 @@ func ListAll(limit int) ([]Run, error) {
 	return allRuns, nil
 }
 
+// PressCount returns how many run records are retained for a button — a cheap
+// popularity proxy used to order the AGENTS.md button list most-pressed-first.
+// It counts pressed/*.json files without unmarshalling them. Missing dir or any
+// read error counts as 0 so ranking never fails a command.
+//
+// ponytail: saturates at maxRunsPerButton (prune cap) — good enough to surface
+// the hottest buttons; add a persisted lifetime counter if exact totals matter.
+func PressCount(buttonName string) int {
+	svc := button.NewService()
+	pressedDir, err := svc.PressedDir(buttonName)
+	if err != nil {
+		return 0
+	}
+	entries, err := os.ReadDir(pressedDir)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		n++
+	}
+	return n
+}
+
 func truncate(s string) string {
 	if len(s) <= maxOutputBytes {
 		return s

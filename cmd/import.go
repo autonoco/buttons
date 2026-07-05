@@ -105,7 +105,13 @@ func runImport(plan *importer.Plan) error {
 		}
 	}
 
-	res := importer.Apply(button.NewService(), plan)
+	svc := button.NewService()
+	res := importer.Apply(svc, plan)
+
+	var agentsMdAction string
+	if len(res.Created) > 0 {
+		agentsMdAction = updateProjectAgentsMD(svc)
+	}
 
 	if jsonOutput {
 		return config.WriteJSON(res)
@@ -114,6 +120,9 @@ func runImport(plan *importer.Plan) error {
 		fmt.Fprintf(os.Stderr, "  ✗ %s: %s\n", name, e)
 	}
 	fmt.Fprintf(os.Stderr, "Imported %d button(s): %s\n", len(res.Created), strings.Join(res.Created, ", "))
+	if agentsMdAction != "" {
+		fmt.Fprintf(os.Stderr, "  AGENTS.md button list %s\n", agentsMdAction)
+	}
 	if len(res.Created) > 0 {
 		printNextHint("buttons press %s", res.Created[0])
 	}

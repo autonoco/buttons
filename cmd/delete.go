@@ -56,11 +56,20 @@ Examples:
 			return handleServiceError(err)
 		}
 
+		agentsMdAction := updateProjectAgentsMD(svc)
+
 		if jsonOutput {
-			return config.WriteJSON(map[string]any{"name": name, "deleted": true})
+			out := map[string]any{"name": name, "deleted": true}
+			if agentsMdAction != "" {
+				out["agents_md"] = agentsMdAction
+			}
+			return config.WriteJSON(out)
 		}
 
 		fmt.Fprintf(os.Stderr, "Deleted button: %s\n", name)
+		if agentsMdAction != "" {
+			fmt.Fprintf(os.Stderr, "  AGENTS.md button list %s\n", agentsMdAction)
+		}
 		printNextHint("buttons list")
 		return nil
 	},

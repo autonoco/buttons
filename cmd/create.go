@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/autonoco/buttons/internal/agentskill"
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
+	"github.com/autonoco/buttons/internal/history"
 	"github.com/autonoco/buttons/internal/settings"
 	"github.com/spf13/cobra"
 )
@@ -278,9 +280,9 @@ func init() {
 }
 
 // updateProjectAgentsMD keeps AGENTS.md's project button list current after a
-// project-local create inside a git repo. Best-effort: returns the action
-// ("created"/"updated"/"appended") or "" when skipped or on error — a docs
-// refresh must never fail the create.
+// mutation (create/delete/add/import) to project-local buttons inside a git
+// repo. Best-effort: returns the action ("created"/"updated"/"appended") or ""
+// when skipped or on error — a docs refresh must never fail the command.
 func updateProjectAgentsMD(svc *button.Service) string {
 	if !config.IsProjectLocal() {
 		return ""
@@ -297,9 +299,29 @@ func updateProjectAgentsMD(svc *button.Service) string {
 	if err != nil {
 		return ""
 	}
-	entries := make([]agentskill.ButtonEntry, 0, len(list))
+	// Rank most-pressed-first so RenderButtonList's cap keeps the hottest
+	// buttons detailed; ties break alphabetically to keep AGENTS.md diffs
+	// stable across refreshes.
+	type ranked struct {
+		entry   agentskill.ButtonEntry
+		presses int
+	}
+	ranks := make([]ranked, 0, len(list))
 	for _, b := range list {
-		entries = append(entries, agentskill.ButtonEntry{Name: b.Name, Description: b.Description})
+		ranks = append(ranks, ranked{
+			entry:   agentskill.ButtonEntry{Name: b.Name, Description: b.Description},
+			presses: history.PressCount(b.Name),
+		})
+	}
+	sort.SliceStable(ranks, func(i, j int) bool {
+		if ranks[i].presses != ranks[j].presses {
+			return ranks[i].presses > ranks[j].presses
+		}
+		return ranks[i].entry.Name < ranks[j].entry.Name
+	})
+	entries := make([]agentskill.ButtonEntry, len(ranks))
+	for i, r := range ranks {
+		entries[i] = r.entry
 	}
 	res, err := agentskill.WriteButtonList(projectRoot, entries)
 	if err != nil {
