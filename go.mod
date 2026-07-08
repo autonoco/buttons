@@ -7,7 +7,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.5
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/x/ansi v0.11.7
-	github.com/google/cel-go v0.28.1
+	github.com/google/cel-go v0.29.1
 	github.com/mattn/go-isatty v0.0.22
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
