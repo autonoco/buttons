@@ -21,7 +21,7 @@ env:
   # HTTP/2 infinite loop) and GO-2026-4971 (net) fixed in 1.26.3, plus
   # GO-2026-5037 (crypto/x509) and GO-2026-5039 (net/textproto) fixed
   # in 1.26.4.
-  GO_VERSION: "1.26.4"
+  GO_VERSION: "1.26.5"
 
 jobs:
   test:
