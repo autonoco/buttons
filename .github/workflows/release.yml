@@ -29,7 +29,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           # Keep in sync with GO_VERSION in ci.yml.
-          go-version: "1.26.4"
+          go-version: "1.26.5"
           cache: true
 
       # QEMU + Buildx let us build the linux/arm64 image from an amd64
