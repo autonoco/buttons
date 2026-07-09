@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"strings"
 
 	"github.com/autonoco/buttons/internal/agent"
 	"github.com/autonoco/buttons/internal/config"
@@ -65,6 +66,32 @@ func agentRuntimeError(code string, err error) error {
 		return errSilent
 	}
 	return err
+}
+
+// persistWebhookConfig points the named webhook config at a tunnel the broker
+// just provisioned, so `buttons webhook listen` serves the agent's URL without
+// a separate `buttons webhook setup`. A config bound to a different tunnel is
+// someone else's setup and is left untouched. Reports whether it wrote.
+func persistWebhookConfig(res *agent.RegisterResult) (bool, error) {
+	host := strings.TrimPrefix(res.URLs.Tunnel, "https://")
+	if host == "" {
+		return false, nil
+	}
+	wc, err := webhook.LoadConfig()
+	if err != nil {
+		return false, err
+	}
+	if wc != nil && wc.TunnelID != res.TunnelID {
+		return false, nil
+	}
+	if wc == nil {
+		wc = &webhook.Config{}
+	}
+	wc.Mode = webhook.ModeNamed
+	wc.Hostname = host
+	wc.TunnelID = res.TunnelID
+	wc.TunnelToken = res.TunnelToken
+	return true, webhook.SaveConfig(wc)
 }
 
 var agentSetupCmd = &cobra.Command{
@@ -138,6 +165,17 @@ run-token (saved to agent.json).`,
 			return agentRuntimeError("AGENT_KEY_ERROR", err)
 		}
 
+		// A fresh run-token means the broker just provisioned this tunnel — persist
+		// it as the named webhook config so `buttons webhook listen` works next.
+		webhookReady := false
+		if res.TunnelToken != "" {
+			wrote, err := persistWebhookConfig(res)
+			if err != nil {
+				return agentRuntimeError("SETUP_ERROR", err)
+			}
+			webhookReady = wrote
+		}
+
 		if jsonOutput {
 			res.TunnelToken = "" // secret — saved to agent.json above, never emitted
 			return config.WriteJSON(res)
@@ -151,6 +189,9 @@ run-token (saved to agent.json).`,
 		}
 		if res.TunnelToken != "" {
 			fmt.Fprintln(os.Stderr, "  (tunnel provisioned — run-token saved to agent.json)")
+		}
+		if webhookReady {
+			fmt.Fprintf(os.Stderr, "  webhook config saved — `buttons webhook listen` serves %s\n", res.URLs.Tunnel)
 		}
 		return nil
 	},
