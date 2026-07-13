@@ -98,6 +98,222 @@
       ],
       "type": "object"
     },
+    "FlowCompletion": {
+      "additionalProperties": false,
+      "properties": {
+        "requires_proof": {
+          "type": "boolean"
+        },
+        "requires_summary": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "FlowDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "initial_stage": {
+          "description": "Stage id assigned to new tasks",
+          "type": "string"
+        },
+        "limits": {
+          "$ref": "#/$defs/FlowLimits",
+          "description": "Definition-wide execution limits"
+        },
+        "manager": {
+          "$ref": "#/$defs/FlowManager",
+          "description": "Default manager binding and supervision prompt"
+        },
+        "stages": {
+          "description": "Ordered board stages",
+          "items": {
+            "$ref": "#/$defs/FlowStage"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "initial_stage",
+        "manager",
+        "stages"
+      ],
+      "type": "object"
+    },
+    "FlowLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_active_tasks": {
+          "type": "integer"
+        },
+        "max_attempts_per_stage": {
+          "type": "integer"
+        },
+        "max_runtime_seconds": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "FlowManager": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "description": "Logical activation.manager/activation.worker or pinned agent:tenant:name reference",
+          "type": "string"
+        },
+        "heartbeat_seconds": {
+          "description": "Manager supervision heartbeat in seconds",
+          "type": "integer"
+        },
+        "system_prompt": {
+          "description": "Manager system prompt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "type": "object"
+    },
+    "FlowRetry": {
+      "additionalProperties": false,
+      "properties": {
+        "backoff": {
+          "enum": [
+            "fixed",
+            "exponential"
+          ],
+          "type": "string"
+        },
+        "initial_seconds": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "FlowSessionPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "manager": {
+          "enum": [
+            "new_attempt",
+            "continue_stage",
+            "continue_task"
+          ],
+          "type": "string"
+        },
+        "worker": {
+          "enum": [
+            "new_attempt",
+            "continue_stage",
+            "continue_task"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "FlowStage": {
+      "additionalProperties": false,
+      "properties": {
+        "completion": {
+          "$ref": "#/$defs/FlowCompletion"
+        },
+        "concurrency": {
+          "type": "integer"
+        },
+        "id": {
+          "description": "Stable stage id",
+          "type": "string"
+        },
+        "manager": {
+          "$ref": "#/$defs/FlowManager"
+        },
+        "retry": {
+          "$ref": "#/$defs/FlowRetry"
+        },
+        "session_policy": {
+          "$ref": "#/$defs/FlowSessionPolicy"
+        },
+        "system_prompt": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": "integer"
+        },
+        "title": {
+          "description": "Human-readable stage title",
+          "type": "string"
+        },
+        "transitions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "triggers": {
+          "items": {
+            "$ref": "#/$defs/FlowStageTrigger"
+          },
+          "type": "array"
+        },
+        "worker": {
+          "$ref": "#/$defs/FlowWorker"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "type": "object"
+    },
+    "FlowStageTrigger": {
+      "additionalProperties": false,
+      "properties": {
+        "cron": {
+          "type": "string"
+        },
+        "event_type": {
+          "type": "string"
+        },
+        "every_seconds": {
+          "type": "integer"
+        },
+        "hook_id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "heartbeat",
+            "cron",
+            "event",
+            "webhook"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "FlowWorker": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "description": "Logical activation.worker or pinned agent:tenant:name reference",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "type": "object"
+    },
     "InputDef": {
       "additionalProperties": false,
       "properties": {
@@ -324,6 +540,79 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Buttons drawer: a typed workflow chaining buttons with ${ref} references between steps.",
+  "oneOf": [
+    {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "drawer_kind"
+            ]
+          },
+          {
+            "required": [
+              "flow"
+            ]
+          }
+        ]
+      },
+      "properties": {
+        "schema_version": {
+          "const": 1
+        }
+      },
+      "required": [
+        "schema_version",
+        "name",
+        "steps"
+      ],
+      "title": "Legacy action drawer (schema v1)"
+    },
+    {
+      "not": {
+        "required": [
+          "flow"
+        ]
+      },
+      "properties": {
+        "drawer_kind": {
+          "const": "action"
+        },
+        "schema_version": {
+          "const": 2
+        }
+      },
+      "required": [
+        "schema_version",
+        "name",
+        "drawer_kind",
+        "steps"
+      ],
+      "title": "Action drawer (schema v2)"
+    },
+    {
+      "not": {
+        "required": [
+          "steps"
+        ]
+      },
+      "properties": {
+        "drawer_kind": {
+          "const": "flow"
+        },
+        "schema_version": {
+          "const": 2
+        }
+      },
+      "required": [
+        "schema_version",
+        "name",
+        "drawer_kind",
+        "flow"
+      ],
+      "title": "Flow drawer (schema v2)"
+    }
+  ],
   "properties": {
     "created_at": {
       "format": "date-time",
@@ -332,6 +621,18 @@
     "description": {
       "description": "Human-readable one-liner",
       "type": "string"
+    },
+    "drawer_kind": {
+      "description": "Execution model (required for schema v2)",
+      "enum": [
+        "action",
+        "flow"
+      ],
+      "type": "string"
+    },
+    "flow": {
+      "$ref": "#/$defs/FlowDefinition",
+      "description": "Proactive board definition (flow drawers only)"
     },
     "inputs": {
       "description": "Top-level inputs supplied at press time",
@@ -360,12 +661,15 @@
       "type": "object"
     },
     "schema_version": {
-      "const": 1,
       "description": "Drawer spec version",
+      "enum": [
+        "1",
+        "2"
+      ],
       "type": "integer"
     },
     "steps": {
-      "description": "Ordered list of steps (depth-first execution)",
+      "description": "Ordered action steps (action drawers only)",
       "items": {
         "$ref": "#/$defs/Step"
       },
@@ -390,7 +694,6 @@
   "required": [
     "schema_version",
     "name",
-    "steps",
     "created_at",
     "updated_at"
   ],

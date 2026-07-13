@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -234,6 +235,21 @@ func fetchDrawerInstallable(src Source, name, version string) (*Bundle, *drawer.
 		return nil, nil, fmt.Errorf("drawer %q: invalid drawer.json: %w", name, err)
 	}
 	spec.Version = bundle.Version
+	if spec.DrawerKind == drawer.DrawerKindFlow {
+		normalized, err := drawer.NormalizeFlowDefinition(&spec)
+		if err != nil {
+			return nil, nil, fmt.Errorf("drawer %q: %w", name, err)
+		}
+		published, ok := bundle.Files["flow-definition.json"]
+		if !ok {
+			return nil, nil, fmt.Errorf("drawer %q: flow bundle has no flow-definition.json", name)
+		}
+		if !bytes.Equal(published, normalized) {
+			return nil, nil, fmt.Errorf("drawer %q: flow-definition.json does not match drawer.json", name)
+		}
+		bundle.FlowDefinition = normalized
+		bundle.FlowDefinitionSHA256 = sha256hex(normalized)
+	}
 	stamped, err := json.MarshalIndent(&spec, "", "  ")
 	if err != nil {
 		return nil, nil, err

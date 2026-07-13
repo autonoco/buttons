@@ -21,11 +21,12 @@ type Publisher interface {
 
 // PublishResult reports what a publish produced.
 type PublishResult struct {
-	Name    string `json:"name"`
-	Kind    string `json:"kind"`
-	Version string `json:"version,omitempty"`
-	SHA256  string `json:"sha256"`
-	Files   int    `json:"files"`
+	Name                 string `json:"name"`
+	Kind                 string `json:"kind"`
+	Version              string `json:"version,omitempty"`
+	SHA256               string `json:"sha256"`
+	Files                int    `json:"files"`
+	FlowDefinitionSHA256 string `json:"flow_definition_sha256,omitempty"`
 }
 
 // Publish reads an installed/local button and hands it to dst. It's the inverse
@@ -40,7 +41,7 @@ func Publish(dst Publisher, name string) (*PublishResult, error) {
 	if err := dst.Publish(bundle); err != nil {
 		return nil, err
 	}
-	return &PublishResult{Name: bundle.Name, Kind: bundle.Kind, Version: bundle.Version, SHA256: bundle.SHA256, Files: len(bundle.Files)}, nil
+	return publishResult(bundle), nil
 }
 
 // PublishToRegistry publishes a local button to the hosted registry under a
@@ -77,9 +78,20 @@ func PublishToRegistry(dst Publisher, ref string) (*PublishResult, error) {
 			version = next
 			continue
 		}
-		return &PublishResult{Name: bundle.Name, Kind: bundle.Kind, Version: bundle.Version, SHA256: bundle.SHA256, Files: len(bundle.Files)}, nil
+		return publishResult(bundle), nil
 	}
 	return nil, fmt.Errorf("registry publish could not find an unused version after 1000 attempts")
+}
+
+func publishResult(bundle *Bundle) *PublishResult {
+	return &PublishResult{
+		Name:                 bundle.Name,
+		Kind:                 bundle.Kind,
+		Version:              bundle.Version,
+		SHA256:               bundle.SHA256,
+		Files:                len(bundle.Files),
+		FlowDefinitionSHA256: bundle.FlowDefinitionSHA256,
+	}
 }
 
 // loadLocalBundle reads a local button or drawer folder into a Bundle. localName
@@ -174,12 +186,30 @@ func loadLocalDrawerBundle(localName, identity, dir string) (*Bundle, error) {
 	if err := json.Unmarshal(specData, &spec); err != nil {
 		return nil, fmt.Errorf("drawer %q: invalid drawer.json: %w", localName, err)
 	}
+	var normalized []byte
+	var normalizedHash string
+	if spec.DrawerKind == drawer.DrawerKindFlow {
+		normalized, err = drawer.NormalizeFlowDefinition(&spec)
+		if err != nil {
+			return nil, fmt.Errorf("drawer %q: %w", localName, err)
+		}
+		files["flow-definition.json"] = normalized
+		normalizedHash = sha256hex(normalized)
+	}
 
 	name := spec.Name
 	if identity != "" {
 		name = identity
 	}
-	return &Bundle{Name: name, Kind: "drawer", Version: spec.Version, SHA256: hashFiles(files), Files: files}, nil
+	return &Bundle{
+		Name:                 name,
+		Kind:                 "drawer",
+		Version:              spec.Version,
+		SHA256:               hashFiles(files),
+		Files:                files,
+		FlowDefinition:       normalized,
+		FlowDefinitionSHA256: normalizedHash,
+	}, nil
 }
 
 func stampLocalBundleVersion(localName string, bundle *Bundle, version string) error {
@@ -240,6 +270,19 @@ func stampLocalDrawerBundleVersion(localName string, bundle *Bundle, version str
 
 	bundle.Version = version
 	bundle.Files["drawer.json"] = data
+	if spec.DrawerKind == drawer.DrawerKindFlow {
+		normalized, err := drawer.NormalizeFlowDefinition(&spec)
+		if err != nil {
+			return fmt.Errorf("normalize %q flow definition: %w", localName, err)
+		}
+		bundle.Files["flow-definition.json"] = normalized
+		bundle.FlowDefinition = normalized
+		bundle.FlowDefinitionSHA256 = sha256hex(normalized)
+	} else {
+		delete(bundle.Files, "flow-definition.json")
+		bundle.FlowDefinition = nil
+		bundle.FlowDefinitionSHA256 = ""
+	}
 	bundle.SHA256 = hashFiles(bundle.Files)
 
 	dir, err := config.DrawerDir(button.Slugify(localName))

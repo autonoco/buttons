@@ -20,7 +20,7 @@ import (
 
 // drawer uses NAME-before-verb syntax for per-drawer operations:
 //
-//	buttons drawer create NAME                         (verb-first: creates a new drawer)
+//	buttons drawer create NAME [--kind action|flow]    (verb-first: creates a new drawer)
 //	buttons drawer list                                (verb-first: lists all drawers)
 //	buttons drawer NAME add BUTTON [BUTTON...]         (name-first: append buttons)
 //	buttons drawer NAME connect BUTTON to BUTTON       (auto-match output→args)
@@ -44,12 +44,13 @@ var drawerCmd = &cobra.Command{
 ${ref} references between steps.
 
 Usage:
-  buttons drawer create NAME
+  buttons drawer create NAME [--kind action|flow]
   buttons drawer list
   buttons drawer NAME add BUTTON [BUTTON ...]         append button step(s)
   buttons drawer NAME add drawer/OTHER                append a sub-drawer step
   buttons drawer NAME add for_each:BUTTON             append a per-item loop wrapping BUTTON
   buttons drawer NAME add wait:DURATION               append a time-based pause (e.g. wait:30s)
+  buttons drawer NAME stage add ID --title TITLE      append a stage to a flow drawer
   buttons drawer NAME connect A to B                  auto-match output → args by name+type
   buttons drawer NAME connect A.output.x to B.args.y  explicit field path
   buttons drawer NAME set STEP.args.FIELD=value       literal or ${ref} into a step arg
@@ -125,6 +126,8 @@ Typical authoring flow:
 		switch verb {
 		case "add":
 			return drawerAdd(name, vargs)
+		case "stage":
+			return drawerStage(name, vargs)
 		case "connect":
 			return drawerConnect(name, vargs)
 		case "set":
@@ -156,11 +159,27 @@ func init() {
 
 func drawerCreate(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: buttons drawer create NAME")
+		return fmt.Errorf("usage: buttons drawer create NAME [--kind action|flow]")
 	}
 	name := args[0]
+	kind := drawer.DrawerKindAction
+	for i := 1; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--kind":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--kind needs a value")
+			}
+			kind = args[i+1]
+			i++
+		case strings.HasPrefix(a, "--kind="):
+			kind = strings.TrimPrefix(a, "--kind=")
+		default:
+			return fmt.Errorf("unknown drawer create argument %q", a)
+		}
+	}
 	svc := drawer.NewService()
-	d, err := svc.Create(name, "", nil)
+	d, err := svc.CreateWithKind(name, "", nil, kind)
 	if err != nil {
 		return handleDrawerError(err)
 	}
@@ -168,7 +187,55 @@ func drawerCreate(args []string) error {
 		return config.WriteJSON(d)
 	}
 	fmt.Fprintf(os.Stderr, "Created drawer: %s\n", d.Name)
-	printNextHint("buttons drawer %s add BUTTON [BUTTON...]", d.Name)
+	if d.DrawerKind == drawer.DrawerKindFlow {
+		printNextHint("buttons drawer %s stage add STAGE --title TITLE", d.Name)
+	} else {
+		printNextHint("buttons drawer %s add BUTTON [BUTTON...]", d.Name)
+	}
+	return nil
+}
+
+func drawerStage(name string, args []string) error {
+	if len(args) < 2 || args[0] != "add" {
+		return fmt.Errorf("usage: buttons drawer %s stage add ID [--title TITLE] [--system-prompt PROMPT]", name)
+	}
+	stageID := args[1]
+	title := ""
+	systemPrompt := ""
+	for i := 2; i < len(args); i++ {
+		a := args[i]
+		var value string
+		switch {
+		case a == "--title" || a == "--system-prompt":
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s needs a value", a)
+			}
+			value = args[i+1]
+			i++
+		case strings.HasPrefix(a, "--title="):
+			title = strings.TrimPrefix(a, "--title=")
+			continue
+		case strings.HasPrefix(a, "--system-prompt="):
+			systemPrompt = strings.TrimPrefix(a, "--system-prompt=")
+			continue
+		default:
+			return fmt.Errorf("unknown stage add argument %q", a)
+		}
+		if a == "--title" {
+			title = value
+		} else {
+			systemPrompt = value
+		}
+	}
+	d, err := drawer.NewService().AddFlowStage(name, stageID, title, systemPrompt)
+	if err != nil {
+		return handleDrawerError(err)
+	}
+	if jsonOutput {
+		return config.WriteJSON(d)
+	}
+	fmt.Fprintf(os.Stderr, "Added stage %s to flow drawer %s\n", stageID, name)
+	printNextHint("buttons drawer %s set flow.initial_stage=%s", name, stageID)
 	return nil
 }
 
@@ -405,6 +472,12 @@ func drawerPress(name string, args []string) error {
 	if err != nil {
 		return handleDrawerError(err)
 	}
+	if d.DrawerKind == drawer.DrawerKindFlow {
+		return handleDrawerError(&drawer.ServiceError{
+			Code:    "FLOW_RUNTIME_REQUIRED",
+			Message: fmt.Sprintf("flow drawer %q is activated and run by a Buttons Flow runtime; it cannot be pressed as an action drawer", name),
+		})
+	}
 
 	// Split --webhook-body <value> out of args before parseKV sees it.
 	// Accepts three forms so agents can pick what's ergonomic:
@@ -512,6 +585,18 @@ func drawerSet(name string, vargs []string) error {
 		var value any
 		if err := json.Unmarshal([]byte(rawValue), &value); err != nil {
 			value = rawValue
+		}
+
+		if strings.HasPrefix(target, "flow.") {
+			path := strings.TrimPrefix(target, "flow.")
+			if path == "" {
+				return fmt.Errorf("empty flow path in %q", target)
+			}
+			if _, err := svc.SetFlowField(name, path, value); err != nil {
+				return handleDrawerError(err)
+			}
+			applied = append(applied, target)
+			continue
 		}
 
 		parts := strings.SplitN(target, ".", 2)
@@ -1050,6 +1135,12 @@ func drawerShowSummary(name string) error {
 	for _, s := range d.Steps {
 		topology = append(topology, s.ID)
 	}
+	if d.DrawerKind == drawer.DrawerKindFlow && d.Flow != nil {
+		topology = make([]string, 0, len(d.Flow.Stages))
+		for _, stage := range d.Flow.Stages {
+			topology = append(topology, stage.ID)
+		}
+	}
 
 	// Webhook trigger surfacing: if this drawer has one, compute the
 	// full public URL so agents see exactly what to paste into the
@@ -1057,14 +1148,18 @@ func drawerShowSummary(name string) error {
 	triggersOut := summarizeDrawerTriggers(d)
 
 	snapshot := map[string]any{
-		"name":        d.Name,
-		"description": d.Description,
-		"inputs":      d.Inputs,
-		"steps":       d.Steps,
-		"topology":    strings.Join(topology, " → "),
-		"validation":  report,
-		"recent_runs": summarizeDrawerRuns(runs),
-		"triggers":    triggersOut,
+		"schema_version": d.SchemaVersion,
+		"name":           d.Name,
+		"version":        d.Version,
+		"drawer_kind":    d.DrawerKind,
+		"description":    d.Description,
+		"inputs":         d.Inputs,
+		"steps":          d.Steps,
+		"flow":           d.Flow,
+		"topology":       strings.Join(topology, " → "),
+		"validation":     report,
+		"recent_runs":    summarizeDrawerRuns(runs),
+		"triggers":       triggersOut,
 	}
 
 	if jsonOutput {

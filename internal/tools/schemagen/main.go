@@ -51,6 +51,7 @@ func run() error {
 	for k, v := range root {
 		doc[k] = v
 	}
+	doc["oneOf"] = drawerVariants()
 	if len(gen.defs) > 0 {
 		doc["$defs"] = gen.defs
 	}
@@ -76,6 +77,45 @@ func run() error {
 		fmt.Printf("wrote %s\n", p)
 	}
 	return nil
+}
+
+// drawerVariants makes the on-disk compatibility rule explicit. Schema v1 is
+// the legacy action shape; schema v2 is discriminated by drawer_kind and must
+// contain exactly one execution model.
+func drawerVariants() []any {
+	return []any{
+		map[string]any{
+			"title": "Legacy action drawer (schema v1)",
+			"properties": map[string]any{
+				"schema_version": map[string]any{"const": 1},
+			},
+			"required": []string{"schema_version", "name", "steps"},
+			"not": map[string]any{
+				"anyOf": []any{
+					map[string]any{"required": []string{"drawer_kind"}},
+					map[string]any{"required": []string{"flow"}},
+				},
+			},
+		},
+		map[string]any{
+			"title": "Action drawer (schema v2)",
+			"properties": map[string]any{
+				"schema_version": map[string]any{"const": 2},
+				"drawer_kind":    map[string]any{"const": "action"},
+			},
+			"required": []string{"schema_version", "name", "drawer_kind", "steps"},
+			"not":      map[string]any{"required": []string{"flow"}},
+		},
+		map[string]any{
+			"title": "Flow drawer (schema v2)",
+			"properties": map[string]any{
+				"schema_version": map[string]any{"const": 2},
+				"drawer_kind":    map[string]any{"const": "flow"},
+			},
+			"required": []string{"schema_version", "name", "drawer_kind", "flow"},
+			"not":      map[string]any{"required": []string{"steps"}},
+		},
+	}
 }
 
 // generator walks a Go type graph once and produces JSON Schema.

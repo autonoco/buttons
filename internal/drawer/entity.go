@@ -13,20 +13,27 @@ import (
 	"time"
 )
 
-// SchemaVersion is the current drawer.json schema version. Bump when
-// making breaking changes; additive changes (new optional fields)
-// don't require a bump.
-const SchemaVersion = 1
+// SchemaVersion is the current drawer.json schema version. Version 2
+// introduces a discriminated action/flow union while readers continue
+// to accept schema-v1 action drawers unchanged.
+const SchemaVersion = 2
+
+const (
+	DrawerKindAction = "action"
+	DrawerKindFlow   = "flow"
+)
 
 // Drawer is the top-level spec stored at
 // ~/.buttons/drawers/<name>/drawer.json.
 type Drawer struct {
-	SchemaVersion int        `json:"schema_version" jsonschema:"const=1,description=Drawer spec version"`
-	Name          string     `json:"name" jsonschema:"description=Drawer name (kebab-case)"`
-	Description   string     `json:"description,omitempty" jsonschema:"description=Human-readable one-liner"`
-	Version       string     `json:"version,omitempty" jsonschema:"description=Drawer package content version"`
-	Inputs        []InputDef `json:"inputs,omitempty" jsonschema:"description=Top-level inputs supplied at press time"`
-	Steps         []Step     `json:"steps" jsonschema:"description=Ordered list of steps (depth-first execution)"`
+	SchemaVersion int             `json:"schema_version" jsonschema:"enum=1,enum=2,description=Drawer spec version"`
+	Name          string          `json:"name" jsonschema:"description=Drawer name (kebab-case)"`
+	DrawerKind    string          `json:"drawer_kind,omitempty" jsonschema:"enum=action,enum=flow,description=Execution model (required for schema v2)"`
+	Description   string          `json:"description,omitempty" jsonschema:"description=Human-readable one-liner"`
+	Version       string          `json:"version,omitempty" jsonschema:"description=Drawer package content version"`
+	Inputs        []InputDef      `json:"inputs,omitempty" jsonschema:"description=Top-level inputs supplied at press time"`
+	Steps         []Step          `json:"steps,omitempty" jsonschema:"description=Ordered action steps (action drawers only)"`
+	Flow          *FlowDefinition `json:"flow,omitempty" jsonschema:"description=Proactive board definition (flow drawers only)"`
 	// OnError points at another drawer that runs when any step in this
 	// drawer fails. Reserved in the schema now so adding it later
 	// doesn't require a schema bump; the v1 executor ignores it.
@@ -57,6 +64,92 @@ type Drawer struct {
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// MarshalJSON keeps the discriminated variants exact on disk: action drawers
+// always carry a steps array (including an empty one), while flow drawers never
+// serialize the action-only field.
+func (d Drawer) MarshalJSON() ([]byte, error) {
+	type rawDrawer Drawer
+	raw, err := json.Marshal(rawDrawer(d))
+	if err != nil {
+		return nil, err
+	}
+	var object map[string]any
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return nil, err
+	}
+	if d.DrawerKind == DrawerKindFlow {
+		delete(object, "steps")
+	} else if _, exists := object["steps"]; !exists {
+		object["steps"] = []Step{}
+	}
+	return json.Marshal(object)
+}
+
+// FlowDefinition is the runtime-neutral, immutable board policy carried by a
+// flow-type Drawer. Runtime and tenant bindings are deliberately resolved at
+// activation time by the platform rather than embedded in the package.
+type FlowDefinition struct {
+	InitialStage string      `json:"initial_stage" jsonschema:"description=Stage id assigned to new tasks"`
+	Manager      FlowManager `json:"manager" jsonschema:"description=Default manager binding and supervision prompt"`
+	Limits       *FlowLimits `json:"limits,omitempty" jsonschema:"description=Definition-wide execution limits"`
+	Stages       []FlowStage `json:"stages" jsonschema:"description=Ordered board stages"`
+}
+
+type FlowManager struct {
+	Agent            string `json:"agent" jsonschema:"description=Logical activation.manager/activation.worker or pinned agent:tenant:name reference"`
+	SystemPrompt     string `json:"system_prompt,omitempty" jsonschema:"description=Manager system prompt"`
+	HeartbeatSeconds int    `json:"heartbeat_seconds,omitempty" jsonschema:"description=Manager supervision heartbeat in seconds"`
+}
+
+type FlowWorker struct {
+	Agent string `json:"agent" jsonschema:"description=Logical activation.worker or pinned agent:tenant:name reference"`
+}
+
+type FlowLimits struct {
+	MaxActiveTasks      int `json:"max_active_tasks,omitempty"`
+	MaxRuntimeSeconds   int `json:"max_runtime_seconds,omitempty"`
+	MaxAttemptsPerStage int `json:"max_attempts_per_stage,omitempty"`
+}
+
+type FlowStage struct {
+	ID             string             `json:"id" jsonschema:"description=Stable stage id"`
+	Title          string             `json:"title" jsonschema:"description=Human-readable stage title"`
+	SystemPrompt   string             `json:"system_prompt,omitempty"`
+	Manager        *FlowManager       `json:"manager,omitempty"`
+	Worker         *FlowWorker        `json:"worker,omitempty"`
+	SessionPolicy  *FlowSessionPolicy `json:"session_policy,omitempty"`
+	Triggers       []FlowStageTrigger `json:"triggers,omitempty"`
+	Transitions    []string           `json:"transitions,omitempty"`
+	Completion     *FlowCompletion    `json:"completion,omitempty"`
+	Retry          *FlowRetry         `json:"retry,omitempty"`
+	TimeoutSeconds int                `json:"timeout_seconds,omitempty"`
+	Concurrency    int                `json:"concurrency,omitempty"`
+}
+
+type FlowSessionPolicy struct {
+	Manager string `json:"manager,omitempty" jsonschema:"enum=new_attempt,enum=continue_stage,enum=continue_task"`
+	Worker  string `json:"worker,omitempty" jsonschema:"enum=new_attempt,enum=continue_stage,enum=continue_task"`
+}
+
+type FlowStageTrigger struct {
+	Kind         string `json:"kind" jsonschema:"enum=heartbeat,enum=cron,enum=event,enum=webhook"`
+	EverySeconds int    `json:"every_seconds,omitempty"`
+	Cron         string `json:"cron,omitempty"`
+	EventType    string `json:"event_type,omitempty"`
+	HookID       string `json:"hook_id,omitempty"`
+}
+
+type FlowCompletion struct {
+	RequiresSummary bool `json:"requires_summary,omitempty"`
+	RequiresProof   bool `json:"requires_proof,omitempty"`
+}
+
+type FlowRetry struct {
+	Limit          int    `json:"limit,omitempty"`
+	Backoff        string `json:"backoff,omitempty" jsonschema:"enum=fixed,enum=exponential"`
+	InitialSeconds int    `json:"initial_seconds,omitempty"`
 }
 
 // Trigger is one automatic invocation source for a drawer. The only

@@ -1,9 +1,11 @@
 ---
 title: "Drawers"
-description: "Typed workflows that chain buttons together."
+description: "Reusable action graphs and proactive flows."
 ---
 
-A drawer is a workflow made of buttons and workflow steps. Use a drawer when an action has multiple steps, needs output from an earlier step, or should be triggered as a unit.
+A Drawer is a reusable package. An action Drawer chains buttons and steps; a
+flow Drawer defines a proactive board whose stages are supervised by a bound
+manager and runtime.
 
 ```bash
 buttons drawer create release-flow
@@ -12,12 +14,21 @@ buttons drawer release-flow connect build to publish
 buttons drawer release-flow press env=prod
 ```
 
+```bash
+buttons drawer create software-delivery --kind flow
+buttons drawer software-delivery stage add intake --title "Intake"
+buttons drawer software-delivery set flow.initial_stage=intake
+buttons drawer software-delivery set flow.manager.agent=activation.manager
+```
+
 ## Mental model
 
 | Concept | Meaning |
 | --- | --- |
-| Drawer | A reusable workflow. |
+| Drawer | A reusable action or flow package. |
+| Kind | `action` for pressable step graphs; `flow` for activated proactive boards. |
 | Step | A button, sub-drawer, loop, switch, aggregate, or wait. |
+| Stage | A column and policy boundary in a flow Drawer. |
 | Input | A value supplied when the drawer is pressed. |
 | Output | JSON produced by a step and made available to later steps. |
 | Ref | A `${...}` expression that reads inputs, step outputs, env, or webhook URLs. |
@@ -29,8 +40,9 @@ Drawers live under `.buttons/drawers/<name>/` and record their own run history u
 Buttons are the units of work. Drawers compose them.
 
 ```text
-button -> one action
-drawer -> many actions wired together
+button        -> one action
+action drawer -> many actions wired together
+flow drawer   -> stages and supervision policy
 ```
 
 ## Related

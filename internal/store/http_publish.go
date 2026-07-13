@@ -68,6 +68,14 @@ func (p *HTTPPublisher) Publish(b *Bundle) error {
 	req.Header.Set("Content-Type", "application/gzip")
 	req.Header.Set("X-Content-Sha256", sum) // server verifies bytes against this
 	req.Header.Set("X-Button-Kind", kind)
+	if len(b.FlowDefinition) > 0 {
+		definitionHash := sha256hex(b.FlowDefinition)
+		if b.FlowDefinitionSHA256 != "" && b.FlowDefinitionSHA256 != definitionHash {
+			return fmt.Errorf("flow definition hash mismatch for %s", b.Name)
+		}
+		req.Header.Set("X-Drawer-Kind", "flow")
+		req.Header.Set("X-Flow-Definition-Sha256", definitionHash)
+	}
 	req.ContentLength = int64(len(tarball))
 
 	resp, err := p.httpClient().Do(req)

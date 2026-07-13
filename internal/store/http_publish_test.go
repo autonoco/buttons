@@ -177,6 +177,50 @@ func TestHTTPPublisherRequiresNameAndVersion(t *testing.T) {
 	}
 }
 
+func TestHTTPPublisherSendsFlowDefinitionMetadata(t *testing.T) {
+	definition := []byte(`{"schema_version":2,"name":"software-delivery","drawer_kind":"flow"}`)
+	var drawerKind, definitionHash string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		drawerKind = r.Header.Get("X-Drawer-Kind")
+		definitionHash = r.Header.Get("X-Flow-Definition-Sha256")
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	bundle := &Bundle{
+		Name:                 "@autono/software-delivery",
+		Kind:                 "drawer",
+		Version:              "1",
+		Files:                map[string][]byte{"drawer.json": []byte(`{"schema_version":2}`), "flow-definition.json": definition},
+		FlowDefinition:       definition,
+		FlowDefinitionSHA256: sha256hex(definition),
+	}
+	if err := (&HTTPPublisher{BaseURL: srv.URL}).Publish(bundle); err != nil {
+		t.Fatalf("publish flow bundle: %v", err)
+	}
+	if drawerKind != "flow" {
+		t.Fatalf("X-Drawer-Kind = %q, want flow", drawerKind)
+	}
+	if definitionHash != sha256hex(definition) {
+		t.Fatalf("X-Flow-Definition-Sha256 = %q, want %q", definitionHash, sha256hex(definition))
+	}
+}
+
+func TestHTTPPublisherRejectsMismatchedFlowDefinitionHash(t *testing.T) {
+	bundle := &Bundle{
+		Name:                 "@autono/software-delivery",
+		Kind:                 "drawer",
+		Version:              "1",
+		Files:                map[string][]byte{"drawer.json": []byte(`{"schema_version":2}`)},
+		FlowDefinition:       []byte(`{"drawer_kind":"flow"}`),
+		FlowDefinitionSHA256: "wrong",
+	}
+	err := (&HTTPPublisher{BaseURL: "http://unused.invalid"}).Publish(bundle)
+	if err == nil || !strings.Contains(err.Error(), "flow definition hash mismatch") {
+		t.Fatalf("Publish() error = %v, want flow definition hash mismatch", err)
+	}
+}
+
 // TestTarGzUntarGzRoundTrip pins the artifact contract: tarGz wraps, untarGz
 // strips, content survives. This is what makes publish → install lossless.
 func TestTarGzUntarGzRoundTrip(t *testing.T) {
