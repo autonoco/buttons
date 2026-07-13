@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/drawer"
+	"github.com/autonoco/buttons/internal/manifest"
 )
 
 type capturePublisher struct {
@@ -191,6 +193,158 @@ func TestPublishToRegistryAutoDetectsDrawerPackage(t *testing.T) {
 	}
 	if local.Version != "1" {
 		t.Fatalf("local drawer version = %q, want 1", local.Version)
+	}
+}
+
+func TestPublishNonFlowDrawerRemovesStaleFlowDefinition(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	writeInstalledDrawer(t, home, drawer.Drawer{
+		SchemaVersion: drawer.SchemaVersion,
+		Name:          "deploy-pack",
+		DrawerKind:    drawer.DrawerKindAction,
+		Steps:         []drawer.Step{{ID: "build", Button: "build"}},
+	})
+	staleDefinition := filepath.Join(home, "drawers", "deploy-pack", "flow-definition.json")
+	if err := os.WriteFile(staleDefinition, []byte(`{"drawer_kind":"flow","name":"stale"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	pub := &capturePublisher{}
+	if _, err := Publish(pub, "deploy-pack"); err != nil {
+		t.Fatalf("publish non-flow drawer: %v", err)
+	}
+	if _, ok := pub.bundle.Files["flow-definition.json"]; ok {
+		t.Fatal("non-flow drawer publish retained stale flow-definition.json")
+	}
+	if len(pub.bundle.FlowDefinition) != 0 || pub.bundle.FlowDefinitionSHA256 != "" {
+		t.Fatalf("non-flow drawer retained normalized flow metadata: %+v", pub.bundle)
+	}
+}
+
+func TestPublishToRegistryAddsNormalizedFlowDefinition(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	flow := &drawer.FlowDefinition{
+		InitialStage: "intake",
+		Manager:      drawer.FlowManager{Agent: "activation.manager", HeartbeatSeconds: 300},
+		Stages: []drawer.FlowStage{
+			{ID: "intake", Title: "Intake", Transitions: []string{"done"}},
+			{ID: "done", Title: "Done"},
+		},
+	}
+	writeInstalledDrawer(t, home, drawer.Drawer{
+		SchemaVersion: drawer.SchemaVersion,
+		Name:          "software-delivery",
+		DrawerKind:    drawer.DrawerKindFlow,
+		Description:   "Move a ticket through delivery.",
+		Version:       "1",
+		Flow:          flow,
+	})
+
+	pub := &capturePublisher{}
+	res, err := PublishToRegistry(pub, "@autono/software-delivery")
+	if err != nil {
+		t.Fatalf("publish flow drawer: %v", err)
+	}
+	if pub.bundle == nil {
+		t.Fatal("publisher did not receive bundle")
+	}
+	normalized, ok := pub.bundle.Files["flow-definition.json"]
+	if !ok {
+		t.Fatalf("bundle files = %v; want flow-definition.json", pub.bundle.Files)
+	}
+	if string(pub.bundle.FlowDefinition) != string(normalized) {
+		t.Fatalf("bundle FlowDefinition does not match published normalized file")
+	}
+	if pub.bundle.FlowDefinitionSHA256 == "" {
+		t.Fatal("flow definition hash is empty")
+	}
+	if res.FlowDefinitionSHA256 != pub.bundle.FlowDefinitionSHA256 {
+		t.Fatalf("publish result flow hash = %q, want %q", res.FlowDefinitionSHA256, pub.bundle.FlowDefinitionSHA256)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(normalized, &got); err != nil {
+		t.Fatalf("normalized definition is invalid JSON: %v", err)
+	}
+	if got["schema_version"] != float64(2) || got["name"] != "software-delivery" || got["drawer_kind"] != "flow" || got["version"] != "1" {
+		t.Fatalf("normalized identity = %#v", got)
+	}
+	for _, excluded := range []string{"steps", "created_at", "updated_at"} {
+		if _, exists := got[excluded]; exists {
+			t.Errorf("normalized definition must exclude %s", excluded)
+		}
+	}
+	gotFlow, err := json.Marshal(got["flow"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFlow, err := json.Marshal(flow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotFlow) != string(wantFlow) {
+		t.Fatalf("flow changed during normalization:\n got %s\nwant %s", gotFlow, wantFlow)
+	}
+}
+
+func TestFlowDrawerPublishInstallRoundTripPreservesDefinition(t *testing.T) {
+	authorHome := t.TempDir()
+	t.Setenv("BUTTONS_HOME", authorHome)
+	svc := drawer.NewService()
+	if _, err := svc.CreateWithKind("software-delivery", "Move a ticket through delivery.", nil, drawer.DrawerKindFlow); err != nil {
+		t.Fatal(err)
+	}
+	for _, stage := range []struct{ id, title string }{{"intake", "Intake"}, {"done", "Done"}} {
+		if _, err := svc.AddFlowStage("software-delivery", stage.id, stage.title, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for path, value := range map[string]any{
+		"initial_stage":                             "intake",
+		"manager.agent":                             "activation.manager",
+		"manager.heartbeat_seconds":                 300,
+		"stages.intake.transitions":                 []string{"done"},
+		"stages.intake.worker.agent":                "activation.worker",
+		"stages.intake.completion.requires_summary": true,
+	} {
+		if _, err := svc.SetFlowField("software-delivery", path, value); err != nil {
+			t.Fatalf("set flow.%s: %v", path, err)
+		}
+	}
+	want, err := svc.Get("software-delivery")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pub := &capturePublisher{}
+	if _, err := PublishToRegistry(pub, "@autono/software-delivery"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	installHome := t.TempDir()
+	t.Setenv("BUTTONS_HOME", installHome)
+	src := memorySource{
+		refs: []ButtonRef{{Name: "@autono/software-delivery", Kind: "drawer", Version: pub.bundle.Version}},
+		bundles: map[string]*Bundle{
+			"@autono/software-delivery@" + pub.bundle.Version: pub.bundle,
+		},
+	}
+	if _, _, err := InstallManifest(src, &manifest.Manifest{
+		SchemaVersion: 1,
+		Dependencies:  map[string]string{"@autono/software-delivery": pub.bundle.Version},
+	}, nil, InstallOptions{}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	got, err := drawer.NewService().Get("software-delivery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Flow, want.Flow) {
+		t.Fatalf("flow definition changed:\n got %#v\nwant %#v", got.Flow, want.Flow)
+	}
+	if _, err := os.Stat(filepath.Join(installHome, "drawers", "software-delivery", "flow-definition.json")); err != nil {
+		t.Fatalf("installed normalized definition: %v", err)
 	}
 }
 

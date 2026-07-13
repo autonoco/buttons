@@ -3,6 +3,7 @@ package drawer
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/autonoco/buttons/internal/button"
@@ -36,6 +37,42 @@ type ValidationReport struct {
 // agent every issue at once — one round-trip per fix, not per bug.
 func Validate(d *Drawer, btnSvc *button.Service) ValidationReport {
 	report := ValidationReport{OK: true}
+
+	if d.SchemaVersion != 1 && d.SchemaVersion != SchemaVersion {
+		report.Errors = append(report.Errors, ValidationIssue{
+			Severity: "error",
+			Message:  fmt.Sprintf("unsupported drawer schema_version %d", d.SchemaVersion),
+		})
+		report.OK = false
+		return report
+	}
+
+	if d.SchemaVersion == SchemaVersion && d.DrawerKind == "" {
+		report.Errors = append(report.Errors, ValidationIssue{
+			Severity:    "error",
+			Message:     "schema-v2 drawer requires drawer_kind",
+			Remediation: "set drawer_kind to action or flow",
+		})
+	}
+
+	if d.DrawerKind == DrawerKindFlow {
+		validateFlowDefinition(d, &report)
+		report.OK = len(report.Errors) == 0
+		return report
+	}
+	if d.DrawerKind != "" && d.DrawerKind != DrawerKindAction {
+		report.Errors = append(report.Errors, ValidationIssue{
+			Severity: "error",
+			Message:  fmt.Sprintf("invalid drawer_kind %q", d.DrawerKind),
+		})
+	}
+	if d.Flow != nil {
+		report.Errors = append(report.Errors, ValidationIssue{
+			Severity:    "error",
+			Message:     "action drawer cannot define flow",
+			Remediation: "remove flow or set drawer_kind to flow and remove steps",
+		})
+	}
 
 	// Build quick lookups.
 	stepIDs := map[string]int{} // id -> index
@@ -287,6 +324,147 @@ func Validate(d *Drawer, btnSvc *button.Service) ValidationReport {
 
 	report.OK = len(report.Errors) == 0
 	return report
+}
+
+var (
+	flowStageIDPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+	flowAgentPattern   = regexp.MustCompile(`^(?:activation\.(?:manager|worker)|agent:[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$`)
+)
+
+func validateFlowDefinition(d *Drawer, report *ValidationReport) {
+	addError := func(stageID, message, remediation string) {
+		report.Errors = append(report.Errors, ValidationIssue{
+			Severity:    "error",
+			StepID:      stageID,
+			Message:     message,
+			Remediation: remediation,
+		})
+	}
+
+	if d.SchemaVersion != SchemaVersion {
+		addError("", "flow drawer requires schema_version 2", "upgrade the drawer through the Buttons CLI")
+	}
+	if d.Steps != nil {
+		addError("", "flow drawer cannot define steps", "remove steps; flow drawers use flow.stages")
+	}
+	if d.Flow == nil {
+		addError("", "flow drawer requires a flow definition", "set flow.initial_stage, flow.manager, and flow.stages")
+		return
+	}
+
+	flow := d.Flow
+	if !validFlowAgentRef(flow.Manager.Agent) {
+		addError("", fmt.Sprintf("invalid manager agent reference %q", flow.Manager.Agent), "use activation.manager, activation.worker, or agent:<tenant>:<name>")
+	}
+	if flow.Manager.HeartbeatSeconds < 0 {
+		addError("", "manager heartbeat_seconds must be positive when set", "use a positive duration in seconds")
+	}
+	if flow.Limits != nil {
+		for name, value := range map[string]int{
+			"max_active_tasks":       flow.Limits.MaxActiveTasks,
+			"max_runtime_seconds":    flow.Limits.MaxRuntimeSeconds,
+			"max_attempts_per_stage": flow.Limits.MaxAttemptsPerStage,
+		} {
+			if value < 0 {
+				addError("", fmt.Sprintf("flow limit %s must be positive when set", name), "use zero to omit the limit or a positive value")
+			}
+		}
+	}
+	if len(flow.Stages) == 0 {
+		addError("", "flow requires at least one stage", "add a stage through `buttons drawer NAME stage add ID`")
+		return
+	}
+
+	stageIDs := make(map[string]struct{}, len(flow.Stages))
+	for _, stage := range flow.Stages {
+		if !flowStageIDPattern.MatchString(stage.ID) {
+			addError(stage.ID, fmt.Sprintf("invalid stage id %q", stage.ID), "use a non-empty kebab-case stage id")
+		}
+		if _, exists := stageIDs[stage.ID]; exists {
+			addError(stage.ID, fmt.Sprintf("duplicate stage id %q", stage.ID), "stage ids must be unique")
+		}
+		stageIDs[stage.ID] = struct{}{}
+	}
+	if _, exists := stageIDs[flow.InitialStage]; !exists {
+		addError("", fmt.Sprintf("initial stage %q does not exist", flow.InitialStage), "set flow.initial_stage to an existing stage id")
+	}
+
+	for _, stage := range flow.Stages {
+		if stage.Title == "" {
+			addError(stage.ID, "stage title is required", "set a human-readable stage title")
+		}
+		if stage.Manager != nil {
+			if !validFlowAgentRef(stage.Manager.Agent) {
+				addError(stage.ID, fmt.Sprintf("invalid manager agent reference %q", stage.Manager.Agent), "use activation.manager, activation.worker, or agent:<tenant>:<name>")
+			}
+			if stage.Manager.HeartbeatSeconds < 0 {
+				addError(stage.ID, "manager heartbeat_seconds must be positive when set", "use a positive duration in seconds")
+			}
+		}
+		if stage.Worker != nil && !validFlowAgentRef(stage.Worker.Agent) {
+			addError(stage.ID, fmt.Sprintf("invalid worker agent reference %q", stage.Worker.Agent), "use activation.worker or agent:<tenant>:<name>")
+		}
+		if stage.SessionPolicy != nil {
+			if !validFlowSessionPolicy(stage.SessionPolicy.Manager) {
+				addError(stage.ID, fmt.Sprintf("invalid manager session policy %q", stage.SessionPolicy.Manager), "use new_attempt, continue_stage, or continue_task")
+			}
+			if !validFlowSessionPolicy(stage.SessionPolicy.Worker) {
+				addError(stage.ID, fmt.Sprintf("invalid worker session policy %q", stage.SessionPolicy.Worker), "use new_attempt, continue_stage, or continue_task")
+			}
+		}
+		for _, trigger := range stage.Triggers {
+			switch trigger.Kind {
+			case "heartbeat":
+				if trigger.EverySeconds <= 0 {
+					addError(stage.ID, "heartbeat trigger requires positive every_seconds", "set every_seconds to a positive integer")
+				}
+			case "cron":
+				if strings.TrimSpace(trigger.Cron) == "" {
+					addError(stage.ID, "cron stage trigger requires cron", "set a cron expression")
+				}
+			case "event":
+				if strings.TrimSpace(trigger.EventType) == "" {
+					addError(stage.ID, "event stage trigger requires event_type", "set a durable platform event type")
+				}
+			case "webhook":
+				if strings.TrimSpace(trigger.HookID) == "" {
+					addError(stage.ID, "webhook stage trigger requires hook_id", "set a stable hook id")
+				}
+			default:
+				addError(stage.ID, fmt.Sprintf("invalid stage trigger kind %q", trigger.Kind), "use heartbeat, cron, event, or webhook")
+			}
+		}
+		for _, target := range stage.Transitions {
+			if _, exists := stageIDs[target]; !exists {
+				addError(stage.ID, fmt.Sprintf("unknown transition target %q", target), "target an existing stage id")
+			}
+		}
+		if stage.TimeoutSeconds < 0 {
+			addError(stage.ID, "timeout_seconds must be positive when set", "use a positive duration in seconds")
+		}
+		if stage.Concurrency < 0 {
+			addError(stage.ID, "concurrency must be positive when set", "use a positive integer")
+		}
+		if stage.Retry != nil {
+			if stage.Retry.Limit < 0 {
+				addError(stage.ID, "retry limit must not be negative", "use zero or a positive integer")
+			}
+			if stage.Retry.Backoff != "" && stage.Retry.Backoff != "fixed" && stage.Retry.Backoff != "exponential" {
+				addError(stage.ID, fmt.Sprintf("invalid retry backoff %q", stage.Retry.Backoff), "use fixed or exponential")
+			}
+			if stage.Retry.InitialSeconds < 0 {
+				addError(stage.ID, "retry initial_seconds must be positive when set", "use a positive duration in seconds")
+			}
+		}
+	}
+}
+
+func validFlowAgentRef(value string) bool {
+	return flowAgentPattern.MatchString(value)
+}
+
+func validFlowSessionPolicy(value string) bool {
+	return value == "" || value == "new_attempt" || value == "continue_stage" || value == "continue_task"
 }
 
 // validateRef checks one ${path} reference. Returns an issue if the

@@ -72,12 +72,14 @@ See [button.json](/concepts/button-json) for every field, including HTTP host lo
 
 ## drawer.json
 
-The workflow spec for a drawer. It stores inputs, steps, refs, triggers, return values, and error handling.
+The reusable spec for a Drawer. Schema v2 discriminates pressable action
+Drawers from proactive flow Drawers.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "name": "release-flow",
+  "drawer_kind": "action",
   "steps": [
     { "id": "build", "kind": "button", "button": "build" },
     { "id": "publish", "kind": "button", "button": "publish" }

@@ -258,6 +258,39 @@ func TestInstallManifestInstallsDrawerPackageAndMemberButtons(t *testing.T) {
 	}
 }
 
+func TestInstallManifestRejectsMismatchedNormalizedFlowDefinition(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	d := drawer.Drawer{
+		SchemaVersion: drawer.SchemaVersion,
+		Name:          "software-delivery",
+		DrawerKind:    drawer.DrawerKindFlow,
+		Version:       "1",
+		Flow: &drawer.FlowDefinition{
+			InitialStage: "intake",
+			Manager:      drawer.FlowManager{Agent: "activation.manager"},
+			Stages:       []drawer.FlowStage{{ID: "intake", Title: "Intake"}},
+		},
+	}
+	bundle := drawerBundle(t, "@autono/software-delivery", d)
+	bundle.Files["flow-definition.json"] = []byte(`{"schema_version":2,"name":"other","drawer_kind":"flow"}`)
+	bundle.SHA256 = hashFiles(bundle.Files)
+	src := memorySource{
+		refs: []ButtonRef{{Name: "@autono/software-delivery", Kind: "drawer", Version: "1"}},
+		bundles: map[string]*Bundle{
+			"@autono/software-delivery@1": bundle,
+		},
+	}
+
+	_, _, err := InstallManifest(src, &manifest.Manifest{
+		SchemaVersion: 1,
+		Dependencies:  map[string]string{"@autono/software-delivery": "1"},
+	}, nil, InstallOptions{})
+	if err == nil || !strings.Contains(err.Error(), "flow-definition.json does not match drawer.json") {
+		t.Fatalf("InstallManifest() error = %v, want normalized flow mismatch", err)
+	}
+}
+
 func TestInstallManifestHonorsExistingLock(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("BUTTONS_HOME", home)

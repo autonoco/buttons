@@ -29,11 +29,13 @@ type ButtonRef struct {
 
 // Bundle is a fetched package's content, ready to write to disk.
 type Bundle struct {
-	Name    string
-	Kind    string
-	Version string
-	SHA256  string            // content hash of Files (provenance pin)
-	Files   map[string][]byte // relative filename -> bytes (button.json/drawer.json, code, AGENTS.md)
+	Name                 string
+	Kind                 string
+	Version              string
+	SHA256               string            // content hash of Files (provenance pin)
+	Files                map[string][]byte // relative filename -> bytes (button.json/drawer.json, code, AGENTS.md)
+	FlowDefinition       []byte            // normalized flow-definition.json when Kind is a flow drawer
+	FlowDefinitionSHA256 string            // immutable definition metadata sent during registry publish
 }
 
 // Source is where buttons are installed/updated from. HTTPSource (the registry,

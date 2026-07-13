@@ -51,6 +51,7 @@ func run() error {
 	for k, v := range root {
 		doc[k] = v
 	}
+	doc["oneOf"] = drawerVariants()
 	if len(gen.defs) > 0 {
 		doc["$defs"] = gen.defs
 	}
@@ -76,6 +77,45 @@ func run() error {
 		fmt.Printf("wrote %s\n", p)
 	}
 	return nil
+}
+
+// drawerVariants makes the on-disk compatibility rule explicit. Schema v1 is
+// the legacy action shape; schema v2 is discriminated by drawer_kind and must
+// contain exactly one execution model.
+func drawerVariants() []any {
+	return []any{
+		map[string]any{
+			"title": "Legacy action drawer (schema v1)",
+			"properties": map[string]any{
+				"schema_version": map[string]any{"const": 1},
+			},
+			"required": []string{"schema_version", "name", "steps"},
+			"not": map[string]any{
+				"anyOf": []any{
+					map[string]any{"required": []string{"drawer_kind"}},
+					map[string]any{"required": []string{"flow"}},
+				},
+			},
+		},
+		map[string]any{
+			"title": "Action drawer (schema v2)",
+			"properties": map[string]any{
+				"schema_version": map[string]any{"const": 2},
+				"drawer_kind":    map[string]any{"const": "action"},
+			},
+			"required": []string{"schema_version", "name", "drawer_kind", "steps"},
+			"not":      map[string]any{"required": []string{"flow"}},
+		},
+		map[string]any{
+			"title": "Flow drawer (schema v2)",
+			"properties": map[string]any{
+				"schema_version": map[string]any{"const": 2},
+				"drawer_kind":    map[string]any{"const": "flow"},
+			},
+			"required": []string{"schema_version", "name", "drawer_kind", "flow"},
+			"not":      map[string]any{"required": []string{"steps"}},
+		},
+	}
 }
 
 // generator walks a Go type graph once and produces JSON Schema.
@@ -212,7 +252,7 @@ func applyJSONSchemaTag(schema map[string]any, tag string) {
 		case "description":
 			schema["description"] = val
 		case "enum":
-			enums = append(enums, val)
+			enums = append(enums, schemaEnumValue(schema, val))
 		case "const":
 			// Numeric consts are stored as-is if they parse; else
 			// string const.
@@ -233,6 +273,28 @@ func applyJSONSchemaTag(schema map[string]any, tag string) {
 	if len(enums) > 0 {
 		schema["enum"] = enums
 	}
+}
+
+// schemaEnumValue preserves the Go field's JSON type when translating struct
+// tag values. Struct tags are text, but an enum on an integer/number field must
+// contain JSON numbers rather than strings or the generated schema is
+// internally contradictory.
+func schemaEnumValue(schema map[string]any, value string) any {
+	switch schema["type"] {
+	case "integer":
+		var number json.Number
+		if err := json.Unmarshal([]byte(value), &number); err == nil {
+			if _, err := number.Int64(); err == nil {
+				return jsonNumberToAny(number)
+			}
+		}
+	case "number":
+		var number json.Number
+		if err := json.Unmarshal([]byte(value), &number); err == nil {
+			return jsonNumberToAny(number)
+		}
+	}
+	return value
 }
 
 // splitTagRespectingEscapes splits a struct tag value on commas

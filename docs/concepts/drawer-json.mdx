@@ -1,9 +1,12 @@
 ---
 title: "drawer.json"
-description: "The workflow spec for drawers."
+description: "The action or proactive-flow spec for drawers."
 ---
 
-A drawer is a workflow made of steps. Its source of truth is `drawer.json`.
+A Drawer is a reusable package. Schema v2 distinguishes an `action` Drawer,
+which is pressed as a graph of steps, from a `flow` Drawer, which defines a
+proactive board that a platform runtime activates and supervises. Its source of
+truth is `drawer.json`.
 
 ```text
 ~/.buttons/drawers/<name>/
@@ -13,12 +16,13 @@ A drawer is a workflow made of steps. Its source of truth is `drawer.json`.
 
 Project-local drawers use the same shape under `.buttons/drawers/<name>/`.
 
-## Example
+## Action Drawer example
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "name": "release-flow",
+  "drawer_kind": "action",
   "version": "1",
   "inputs": [
     { "name": "env", "type": "enum", "required": true, "values": ["staging", "prod"] }
@@ -42,16 +46,72 @@ Project-local drawers use the same shape under `.buttons/drawers/<name>/`.
 }
 ```
 
+Schema-v1 action Drawers remain readable, installable, and pressable. New
+Drawers are written as schema v2.
+
+## Flow Drawer example
+
+Flow Drawers describe arbitrary board stages and policy. They do not contain
+`steps` and cannot be pressed locally as action Drawers.
+
+```json
+{
+  "schema_version": 2,
+  "name": "software-delivery",
+  "drawer_kind": "flow",
+  "version": "1",
+  "flow": {
+    "initial_stage": "intake",
+    "manager": {
+      "agent": "activation.manager",
+      "system_prompt": "Supervise this flow and return one valid decision.",
+      "heartbeat_seconds": 300
+    },
+    "stages": [
+      {
+        "id": "intake",
+        "title": "Intake",
+        "worker": { "agent": "activation.worker" },
+        "transitions": ["research"]
+      },
+      {
+        "id": "research",
+        "title": "Research",
+        "transitions": ["done"]
+      },
+      { "id": "done", "title": "Done" }
+    ]
+  }
+}
+```
+
+Create and edit the definition through the CLI:
+
+```bash
+buttons drawer create software-delivery --kind flow
+buttons drawer software-delivery stage add intake --title "Intake"
+buttons drawer software-delivery stage add research --title "Research"
+buttons drawer software-delivery set flow.initial_stage=intake
+buttons drawer software-delivery set flow.manager.agent=activation.manager
+buttons drawer software-delivery set 'flow.stages.intake.transitions=["research"]'
+```
+
+Publishing a valid flow Drawer adds a normalized `flow-definition.json` to the
+immutable artifact and sends its SHA-256 as registry metadata. Installation
+rejects the package if that definition does not exactly match `drawer.json`.
+
 ## Top-level fields
 
 | Field | Meaning |
 | --- | --- |
-| `schema_version` | Drawer spec version. Current version is `1`. |
+| `schema_version` | Drawer spec version. Current version is `2`; version `1` remains supported for legacy action Drawers. |
 | `name` | Drawer name. |
+| `drawer_kind` | Required in schema v2: `action` or `flow`. |
 | `description` | Human-readable one-liner. |
 | `version` | Drawer package content version. New drawers start at `1`; registry publish auto-bumps to the next number when the current immutable version already exists. |
-| `inputs` | Values supplied at drawer press time. |
-| `steps` | Ordered workflow steps. |
+| `inputs` | Values supplied at action Drawer press time. |
+| `steps` | Ordered action steps; required only for action Drawers. |
+| `flow` | Manager, limits, stages, transitions, triggers, sessions, retry, timeout, and concurrency policy; required only for flow Drawers. |
 | `output_schema` | Optional JSON Schema for values exposed when called as a sub-drawer. |
 | `return` | Map of output fields to `${...}` expressions. |
 | `triggers` | Automatic invocation sources. Webhook triggers are live today. |

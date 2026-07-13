@@ -35,6 +35,18 @@ func NewService() *Service { return &Service{} }
 // reserved) so an agent can't create `buttons drawer list` and
 // collide with the subcommand.
 func (s *Service) Create(name string, description string, inputs []InputDef) (*Drawer, error) {
+	return s.CreateWithKind(name, description, inputs, DrawerKindAction)
+}
+
+// CreateWithKind scaffolds one of the schema-v2 Drawer variants. Keeping
+// Create as the action-default entrypoint preserves existing callers.
+func (s *Service) CreateWithKind(name string, description string, inputs []InputDef, kind string) (*Drawer, error) {
+	if kind == "" {
+		kind = DrawerKindAction
+	}
+	if kind != DrawerKindAction && kind != DrawerKindFlow {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: fmt.Sprintf("drawer kind must be %q or %q", DrawerKindAction, DrawerKindFlow)}
+	}
 	if err := button.ValidateName(name); err != nil {
 		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: err.Error()}
 	}
@@ -79,12 +91,18 @@ func (s *Service) Create(name string, description string, inputs []InputDef) (*D
 	d := &Drawer{
 		SchemaVersion: SchemaVersion,
 		Name:          slug,
+		DrawerKind:    kind,
 		Description:   description,
 		Version:       button.InitialContentVersion,
 		Inputs:        inputs,
-		Steps:         []Step{},
 		CreatedAt:     now,
 		UpdatedAt:     now,
+	}
+	if kind == DrawerKindFlow {
+		d.Inputs = nil
+		d.Flow = &FlowDefinition{Stages: []FlowStage{}}
+	} else {
+		d.Steps = []Step{}
 	}
 
 	if err := s.save(d); err != nil {
@@ -92,6 +110,213 @@ func (s *Service) Create(name string, description string, inputs []InputDef) (*D
 		return nil, err
 	}
 	return d, nil
+}
+
+// AddFlowStage appends a stage to a flow-type Drawer in board order.
+func (s *Service) AddFlowStage(drawerName, stageID, title, systemPrompt string) (*Drawer, error) {
+	d, err := s.Get(drawerName)
+	if err != nil {
+		return nil, err
+	}
+	if d.DrawerKind != DrawerKindFlow || d.Flow == nil {
+		return nil, &ServiceError{Code: "DRAWER_KIND_MISMATCH", Message: fmt.Sprintf("drawer %q is not a flow drawer", drawerName)}
+	}
+	if !flowStageIDPattern.MatchString(stageID) {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: fmt.Sprintf("stage id %q must be kebab-case", stageID)}
+	}
+	for _, stage := range d.Flow.Stages {
+		if stage.ID == stageID {
+			return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: fmt.Sprintf("stage %q already exists", stageID)}
+		}
+	}
+	if title == "" {
+		title = strings.ToTitle(strings.ReplaceAll(stageID, "-", " "))
+	}
+	d.Flow.Stages = append(d.Flow.Stages, FlowStage{
+		ID:           stageID,
+		Title:        title,
+		SystemPrompt: systemPrompt,
+	})
+	d.UpdatedAt = time.Now().UTC()
+	if err := s.save(d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// SetFlowField applies a bounded typed path to a flow definition. It avoids a
+// generic reflection/JSON patch surface so typos and unsupported policy fields
+// fail loudly instead of being persisted as inert metadata.
+func (s *Service) SetFlowField(drawerName, path string, value any) (*Drawer, error) {
+	d, err := s.Get(drawerName)
+	if err != nil {
+		return nil, err
+	}
+	if d.DrawerKind != DrawerKindFlow || d.Flow == nil {
+		return nil, &ServiceError{Code: "DRAWER_KIND_MISMATCH", Message: fmt.Sprintf("drawer %q is not a flow drawer", drawerName)}
+	}
+
+	setString := func(dst *string) error {
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("must be a string")
+		}
+		*dst = v
+		return nil
+	}
+	setInt := func(dst *int) error {
+		v, ok := numberAsInt(value)
+		if !ok {
+			return fmt.Errorf("must be an integer")
+		}
+		*dst = v
+		return nil
+	}
+	setBool := func(dst *bool) error {
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("must be a boolean")
+		}
+		*dst = v
+		return nil
+	}
+
+	var setErr error
+	switch path {
+	case "initial_stage":
+		setErr = setString(&d.Flow.InitialStage)
+	case "manager.agent":
+		setErr = setString(&d.Flow.Manager.Agent)
+	case "manager.system_prompt":
+		setErr = setString(&d.Flow.Manager.SystemPrompt)
+	case "manager.heartbeat_seconds":
+		setErr = setInt(&d.Flow.Manager.HeartbeatSeconds)
+	case "limits.max_active_tasks", "limits.max_runtime_seconds", "limits.max_attempts_per_stage":
+		if d.Flow.Limits == nil {
+			d.Flow.Limits = &FlowLimits{}
+		}
+		switch path {
+		case "limits.max_active_tasks":
+			setErr = setInt(&d.Flow.Limits.MaxActiveTasks)
+		case "limits.max_runtime_seconds":
+			setErr = setInt(&d.Flow.Limits.MaxRuntimeSeconds)
+		case "limits.max_attempts_per_stage":
+			setErr = setInt(&d.Flow.Limits.MaxAttemptsPerStage)
+		}
+	default:
+		parts := strings.Split(path, ".")
+		if len(parts) < 3 || parts[0] != "stages" {
+			return nil, &ServiceError{Code: "FLOW_FIELD_UNKNOWN", Message: fmt.Sprintf("unknown flow field %q", path)}
+		}
+		stage := findFlowStage(d.Flow.Stages, parts[1])
+		if stage == nil {
+			return nil, &ServiceError{Code: "STAGE_NOT_FOUND", Message: fmt.Sprintf("stage %q not found in drawer %q", parts[1], drawerName)}
+		}
+		field := strings.Join(parts[2:], ".")
+		switch field {
+		case "title":
+			setErr = setString(&stage.Title)
+		case "system_prompt":
+			setErr = setString(&stage.SystemPrompt)
+		case "transitions":
+			setErr = decodeFlowValue(value, &stage.Transitions)
+		case "timeout_seconds":
+			setErr = setInt(&stage.TimeoutSeconds)
+		case "concurrency":
+			setErr = setInt(&stage.Concurrency)
+		case "manager.agent", "manager.system_prompt", "manager.heartbeat_seconds":
+			if stage.Manager == nil {
+				stage.Manager = &FlowManager{}
+			}
+			switch field {
+			case "manager.agent":
+				setErr = setString(&stage.Manager.Agent)
+			case "manager.system_prompt":
+				setErr = setString(&stage.Manager.SystemPrompt)
+			case "manager.heartbeat_seconds":
+				setErr = setInt(&stage.Manager.HeartbeatSeconds)
+			}
+		case "worker.agent":
+			if stage.Worker == nil {
+				stage.Worker = &FlowWorker{}
+			}
+			setErr = setString(&stage.Worker.Agent)
+		case "session_policy.manager", "session_policy.worker":
+			if stage.SessionPolicy == nil {
+				stage.SessionPolicy = &FlowSessionPolicy{}
+			}
+			if field == "session_policy.manager" {
+				setErr = setString(&stage.SessionPolicy.Manager)
+			} else {
+				setErr = setString(&stage.SessionPolicy.Worker)
+			}
+		case "triggers":
+			setErr = decodeFlowValue(value, &stage.Triggers)
+		case "completion.requires_summary", "completion.requires_proof":
+			if stage.Completion == nil {
+				stage.Completion = &FlowCompletion{}
+			}
+			if field == "completion.requires_summary" {
+				setErr = setBool(&stage.Completion.RequiresSummary)
+			} else {
+				setErr = setBool(&stage.Completion.RequiresProof)
+			}
+		case "retry.limit", "retry.backoff", "retry.initial_seconds":
+			if stage.Retry == nil {
+				stage.Retry = &FlowRetry{}
+			}
+			switch field {
+			case "retry.limit":
+				setErr = setInt(&stage.Retry.Limit)
+			case "retry.backoff":
+				setErr = setString(&stage.Retry.Backoff)
+			case "retry.initial_seconds":
+				setErr = setInt(&stage.Retry.InitialSeconds)
+			}
+		default:
+			return nil, &ServiceError{Code: "FLOW_FIELD_UNKNOWN", Message: fmt.Sprintf("unknown flow stage field %q", field)}
+		}
+	}
+	if setErr != nil {
+		return nil, &ServiceError{Code: "VALIDATION_ERROR", Message: fmt.Sprintf("flow.%s %s", path, setErr)}
+	}
+	d.UpdatedAt = time.Now().UTC()
+	if err := s.save(d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+func findFlowStage(stages []FlowStage, id string) *FlowStage {
+	for i := range stages {
+		if stages[i].ID == id {
+			return &stages[i]
+		}
+	}
+	return nil
+}
+
+func numberAsInt(value any) (int, bool) {
+	switch v := value.(type) {
+	case int:
+		return v, true
+	case float64:
+		if v == float64(int(v)) {
+			return int(v), true
+		}
+	}
+	return 0, false
+}
+
+func decodeFlowValue(value any, target any) error {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(raw, target); err != nil {
+		return fmt.Errorf("has invalid shape: %w", err)
+	}
+	return nil
 }
 
 func buttonSpecExists(name string) (bool, error) {
@@ -195,6 +420,9 @@ func (s *Service) AddSteps(drawerName string, targets []string) (*Drawer, error)
 	d, err := s.Get(drawerName)
 	if err != nil {
 		return nil, err
+	}
+	if d.DrawerKind == DrawerKindFlow {
+		return nil, &ServiceError{Code: "DRAWER_KIND_MISMATCH", Message: fmt.Sprintf("flow drawer %q uses stages; action steps cannot be added", drawerName)}
 	}
 
 	btnSvc := button.NewService()
