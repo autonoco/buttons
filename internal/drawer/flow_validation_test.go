@@ -246,4 +246,19 @@ func TestDrawerSchemaDescribesLegacyActionAndFlowVariants(t *testing.T) {
 			t.Errorf("schema missing %s", want)
 		}
 	}
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema properties = %#v", schema["properties"])
+	}
+	versionSchema, ok := properties["schema_version"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema_version = %#v", properties["schema_version"])
+	}
+	if got := versionSchema["type"]; got != "integer" {
+		t.Fatalf("schema_version type = %#v, want integer", got)
+	}
+	versions, ok := versionSchema["enum"].([]any)
+	if !ok || len(versions) != 2 || versions[0] != float64(1) || versions[1] != float64(2) {
+		t.Fatalf("schema_version enum = %#v, want numeric [1, 2]", versionSchema["enum"])
+	}
 }

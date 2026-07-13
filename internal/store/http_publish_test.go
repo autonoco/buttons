@@ -179,6 +179,7 @@ func TestHTTPPublisherRequiresNameAndVersion(t *testing.T) {
 
 func TestHTTPPublisherSendsFlowDefinitionMetadata(t *testing.T) {
 	definition := []byte(`{"schema_version":2,"name":"software-delivery","drawer_kind":"flow"}`)
+	staleInMemoryDefinition := []byte(`{"schema_version":2,"name":"stale","drawer_kind":"flow"}`)
 	var drawerKind, definitionHash string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		drawerKind = r.Header.Get("X-Drawer-Kind")
@@ -192,7 +193,7 @@ func TestHTTPPublisherSendsFlowDefinitionMetadata(t *testing.T) {
 		Kind:                 "drawer",
 		Version:              "1",
 		Files:                map[string][]byte{"drawer.json": []byte(`{"schema_version":2}`), "flow-definition.json": definition},
-		FlowDefinition:       definition,
+		FlowDefinition:       staleInMemoryDefinition,
 		FlowDefinitionSHA256: sha256hex(definition),
 	}
 	if err := (&HTTPPublisher{BaseURL: srv.URL}).Publish(bundle); err != nil {
@@ -207,17 +208,34 @@ func TestHTTPPublisherSendsFlowDefinitionMetadata(t *testing.T) {
 }
 
 func TestHTTPPublisherRejectsMismatchedFlowDefinitionHash(t *testing.T) {
+	definition := []byte(`{"drawer_kind":"flow"}`)
 	bundle := &Bundle{
 		Name:                 "@autono/software-delivery",
 		Kind:                 "drawer",
 		Version:              "1",
-		Files:                map[string][]byte{"drawer.json": []byte(`{"schema_version":2}`)},
-		FlowDefinition:       []byte(`{"drawer_kind":"flow"}`),
+		Files:                map[string][]byte{"drawer.json": []byte(`{"schema_version":2}`), "flow-definition.json": definition},
+		FlowDefinition:       definition,
 		FlowDefinitionSHA256: "wrong",
 	}
 	err := (&HTTPPublisher{BaseURL: "http://unused.invalid"}).Publish(bundle)
 	if err == nil || !strings.Contains(err.Error(), "flow definition hash mismatch") {
 		t.Fatalf("Publish() error = %v, want flow definition hash mismatch", err)
+	}
+}
+
+func TestHTTPPublisherRejectsMissingFlowDefinitionFile(t *testing.T) {
+	definition := []byte(`{"drawer_kind":"flow"}`)
+	bundle := &Bundle{
+		Name:                 "@autono/software-delivery",
+		Kind:                 "drawer",
+		Version:              "1",
+		Files:                map[string][]byte{"drawer.json": []byte(`{"schema_version":2}`)},
+		FlowDefinition:       definition,
+		FlowDefinitionSHA256: sha256hex(definition),
+	}
+	err := (&HTTPPublisher{BaseURL: "http://unused.invalid"}).Publish(bundle)
+	if err == nil || !strings.Contains(err.Error(), "missing flow-definition.json") {
+		t.Fatalf("Publish() error = %v, want missing flow-definition.json", err)
 	}
 }
 

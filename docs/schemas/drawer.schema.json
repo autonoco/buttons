@@ -663,8 +663,8 @@
     "schema_version": {
       "description": "Drawer spec version",
       "enum": [
-        "1",
-        "2"
+        1,
+        2
       ],
       "type": "integer"
     },

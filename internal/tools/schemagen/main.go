@@ -252,7 +252,7 @@ func applyJSONSchemaTag(schema map[string]any, tag string) {
 		case "description":
 			schema["description"] = val
 		case "enum":
-			enums = append(enums, val)
+			enums = append(enums, schemaEnumValue(schema, val))
 		case "const":
 			// Numeric consts are stored as-is if they parse; else
 			// string const.
@@ -273,6 +273,28 @@ func applyJSONSchemaTag(schema map[string]any, tag string) {
 	if len(enums) > 0 {
 		schema["enum"] = enums
 	}
+}
+
+// schemaEnumValue preserves the Go field's JSON type when translating struct
+// tag values. Struct tags are text, but an enum on an integer/number field must
+// contain JSON numbers rather than strings or the generated schema is
+// internally contradictory.
+func schemaEnumValue(schema map[string]any, value string) any {
+	switch schema["type"] {
+	case "integer":
+		var number json.Number
+		if err := json.Unmarshal([]byte(value), &number); err == nil {
+			if _, err := number.Int64(); err == nil {
+				return jsonNumberToAny(number)
+			}
+		}
+	case "number":
+		var number json.Number
+		if err := json.Unmarshal([]byte(value), &number); err == nil {
+			return jsonNumberToAny(number)
+		}
+	}
+	return value
 }
 
 // splitTagRespectingEscapes splits a struct tag value on commas

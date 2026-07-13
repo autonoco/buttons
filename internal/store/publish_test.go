@@ -196,6 +196,32 @@ func TestPublishToRegistryAutoDetectsDrawerPackage(t *testing.T) {
 	}
 }
 
+func TestPublishNonFlowDrawerRemovesStaleFlowDefinition(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	writeInstalledDrawer(t, home, drawer.Drawer{
+		SchemaVersion: drawer.SchemaVersion,
+		Name:          "deploy-pack",
+		DrawerKind:    drawer.DrawerKindAction,
+		Steps:         []drawer.Step{{ID: "build", Button: "build"}},
+	})
+	staleDefinition := filepath.Join(home, "drawers", "deploy-pack", "flow-definition.json")
+	if err := os.WriteFile(staleDefinition, []byte(`{"drawer_kind":"flow","name":"stale"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	pub := &capturePublisher{}
+	if _, err := Publish(pub, "deploy-pack"); err != nil {
+		t.Fatalf("publish non-flow drawer: %v", err)
+	}
+	if _, ok := pub.bundle.Files["flow-definition.json"]; ok {
+		t.Fatal("non-flow drawer publish retained stale flow-definition.json")
+	}
+	if len(pub.bundle.FlowDefinition) != 0 || pub.bundle.FlowDefinitionSHA256 != "" {
+		t.Fatalf("non-flow drawer retained normalized flow metadata: %+v", pub.bundle)
+	}
+}
+
 func TestPublishToRegistryAddsNormalizedFlowDefinition(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("BUTTONS_HOME", home)

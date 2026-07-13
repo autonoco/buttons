@@ -195,6 +195,8 @@ func loadLocalDrawerBundle(localName, identity, dir string) (*Bundle, error) {
 		}
 		files["flow-definition.json"] = normalized
 		normalizedHash = sha256hex(normalized)
+	} else {
+		delete(files, "flow-definition.json")
 	}
 
 	name := spec.Name
