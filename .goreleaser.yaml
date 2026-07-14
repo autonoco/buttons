@@ -128,7 +128,10 @@ dockers:
   # Build the linux/amd64 image from the prebuilt amd64 binary.
   # goreleaser copies the correct binary into the build context before
   # running `docker build`. The image is tagged per-arch; the manifest
-  # list below joins them into multi-arch tags (:{version}, :latest).
+  # list below joins them into multi-arch tags (:{version}, :latest). Only
+  # immutable versioned architecture tags are pushed; the rolling manifest
+  # references those same tags so another release cannot invalidate a digest
+  # between image publication and manifest creation.
   - id: buttons-amd64
     goos: linux
     goarch: amd64
@@ -136,7 +139,6 @@ dockers:
     use: buildx
     image_templates:
       - "ghcr.io/autonoco/buttons:{{ .Version }}-amd64"
-      - "ghcr.io/autonoco/buttons:latest-amd64"
     build_flag_templates:
       - "--platform=linux/amd64"
       # Disable buildx attestation manifests. Without these flags, buildx
@@ -169,7 +171,6 @@ dockers:
     use: buildx
     image_templates:
       - "ghcr.io/autonoco/buttons:{{ .Version }}-arm64"
-      - "ghcr.io/autonoco/buttons:latest-arm64"
     build_flag_templates:
       - "--platform=linux/arm64"
       # Same attestation-disable rationale as the amd64 block above.
@@ -197,8 +198,8 @@ docker_manifests:
   # Rolling :latest manifest. Updated on every release.
   - name_template: "ghcr.io/autonoco/buttons:latest"
     image_templates:
-      - "ghcr.io/autonoco/buttons:latest-amd64"
-      - "ghcr.io/autonoco/buttons:latest-arm64"
+      - "ghcr.io/autonoco/buttons:{{ .Version }}-amd64"
+      - "ghcr.io/autonoco/buttons:{{ .Version }}-arm64"
 
 checksum:
   name_template: "checksums.txt"
