@@ -1,7 +1,9 @@
 name: Auto-release
 
-# On every push to main, tags the next minor version and runs
-# goreleaser to publish binaries + Docker image in ONE workflow.
+# On pushes to main, tags the next minor version and runs goreleaser to
+# publish binaries + Docker image in ONE workflow. Rapid pushes are
+# serialized and may be coalesced by the concurrency group below; the newest
+# queued main commit is released after the active release finishes.
 #
 # Previous approach (separate auto-release → release.yml) broke
 # because GitHub blocks cross-workflow triggering from GITHUB_TOKEN:
@@ -16,6 +18,18 @@ name: Auto-release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing semver tag to recover (for example, v0.135.0)
+        required: true
+        type: string
+
+# GoReleaser updates shared mutable destinations (:latest, Homebrew, npm).
+# Never let this workflow overlap another release workflow in this repository.
+concurrency:
+  group: buttons-release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -32,17 +46,44 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: |
-      github.actor != 'github-actions[bot]' &&
-      !contains(github.event.head_commit.message, '[skip release]')
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.actor != 'github-actions[bot]' &&
+        !contains(github.event.head_commit.message, '[skip release]')
+      )
     steps:
       - name: Check out code
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # Manual recovery must build the existing tag, not the branch used
+          # to dispatch the workflow. Push-triggered releases use their SHA.
+          ref: ${{ inputs.tag || github.sha }}
 
       - name: Determine next version
         id: version
         run: |
+          REQUESTED_TAG="${{ inputs.tag }}"
+          if [ -n "$REQUESTED_TAG" ]; then
+            if [[ ! "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+              echo "Invalid recovery tag: $REQUESTED_TAG" >&2
+              exit 1
+            fi
+
+            TAG_SHA=$(git rev-parse --verify "refs/tags/$REQUESTED_TAG^{commit}")
+            HEAD_SHA=$(git rev-parse HEAD)
+            if [ "$TAG_SHA" != "$HEAD_SHA" ]; then
+              echo "Recovery checkout mismatch: $REQUESTED_TAG points to $TAG_SHA, checked out $HEAD_SHA" >&2
+              exit 1
+            fi
+
+            echo "latest=$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
+            echo "next=$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
+            echo "create_tag=false" >> "$GITHUB_OUTPUT"
+            echo "Recovering existing release: $REQUESTED_TAG"
+            exit 0
+          fi
+
           LATEST=$(git tag --list 'v*' --sort=-version:refname | head -n1)
           if [ -z "$LATEST" ]; then
             NEXT="v0.1.0"
@@ -54,9 +95,11 @@ jobs:
           fi
           echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "create_tag=true" >> "$GITHUB_OUTPUT"
           echo "Releasing: $LATEST → $NEXT"
 
       - name: Create and push tag
+        if: steps.version.outputs.create_tag == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

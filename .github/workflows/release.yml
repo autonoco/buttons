@@ -10,6 +10,12 @@ on:
     tags:
       - 'v*'
 
+# Share the same lock as auto-release.yml so an externally pushed tag cannot
+# race a main-branch or manual recovery release.
+concurrency:
+  group: buttons-release
+  cancel-in-progress: false
+
 permissions:
   contents: write   # Create the GitHub Release.
   packages: write   # Push Docker images to ghcr.io.
