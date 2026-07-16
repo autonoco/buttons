@@ -141,7 +141,7 @@ const Body = `## Buttons
 
 This project uses [Buttons](https://buttons.sh) — a CLI workflow engine. Buttons are reusable, named actions with typed args and structured output.
 
-**Before writing a one-off shell command, check ` + "`buttons list`" + ` for an existing button.** If you write a script you'd want again, save it with ` + "`buttons create <name>`" + `.
+**Before writing a one-off shell command, check ` + "`buttons list`" + ` for an existing button. Never create a button directory, ` + "`button.json`" + `, or the initial button files manually; always create the button with ` + "`buttons create <name>`" + `. After creation, edit the generated per-button ` + "`AGENTS.md`" + ` to document its purpose, when to use it, inputs, expected output, and important gotchas. Do not leave the placeholder text in place.
 
 Common commands:
 
@@ -187,7 +187,7 @@ A reusable, named action with typed args and structured output. Each one wraps a
 
 ## For the agent reading this
 
-Run ` + "`buttons --help`" + ` or ` + "`buttons list --json`" + ` to discover what's here. Prefer pressing an existing button over writing a new script inline; if you write a one-off script you'd want again, save it with ` + "`buttons create <name>`" + `.
+Run ` + "`buttons --help`" + ` or ` + "`buttons list --json`" + ` to discover what's here. Prefer pressing an existing button over writing a new script inline. Never create a button directory, ` + "`button.json`" + `, or the initial button files manually; always create the button with ` + "`buttons create <name>`" + `. After creation, edit the generated per-button ` + "`AGENTS.md`" + ` to document its purpose, when to use it, inputs, expected output, and important gotchas. Do not leave the placeholder text in place.
 
 Common commands:
 
