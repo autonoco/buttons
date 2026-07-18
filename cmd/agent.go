@@ -116,6 +116,14 @@ run-token (saved to agent.json).`,
 		if !slugRe.MatchString(slug) {
 			return agentConfigError("slug must be one DNS label: lowercase letters, digits and hyphens, starting alphanumeric (max 63 chars)")
 		}
+		existing, err := agent.LoadConfig()
+		if err != nil {
+			return agentRuntimeError("AGENT_KEY_ERROR", err)
+		}
+		token := enrollToken()
+		if (existing == nil || existing.DeviceSeed == "") && token == "" {
+			return agentConfigError("device not enrolled and no ENROLL_TOKEN set: run `buttons batteries set ENROLL_TOKEN <token>` (or set $BUTTONS_BAT_ENROLL_TOKEN)")
+		}
 		c, err := agent.LoadOrCreate()
 		if err != nil {
 			return agentRuntimeError("AGENT_KEY_ERROR", err)
@@ -137,7 +145,6 @@ run-token (saved to agent.json).`,
 			tunnel = c.TunnelID
 		}
 
-		token := enrollToken()
 		res, err := (&agent.Client{BaseURL: reg}).Setup(cmd.Context(), id, token, runtime.GOOS+"/"+runtime.GOARCH, agent.RegisterParams{
 			Slug:      slug,
 			TunnelID:  tunnel,
