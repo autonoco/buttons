@@ -138,6 +138,8 @@ type ArgDef struct {
 // ExtForRuntime returns the code file extension for a given runtime.
 func ExtForRuntime(runtime string) string {
 	switch runtime {
+	case "bash":
+		return ".sh"
 	case "python", "python3":
 		return ".py"
 	case "node", "javascript", "js":
