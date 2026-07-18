@@ -215,7 +215,7 @@ buttons create [flags]
 | `--max-response-size` | string | max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M |
 | `--method` | string | HTTP method for --url (default: GET) |
 | `--prompt` | string | prompt/instruction for the consuming agent (written to AGENTS.md) |
-| `--runtime` | string | code runtime: shell, python, node (default: shell) |
+| `--runtime` | string | code runtime: shell, bash, python, node (default: shell) |
 | `--timeout` | int | execution timeout in seconds |
 | `--url` | string | HTTP API endpoint URL (supports {{arg}} templates) |
 
@@ -611,7 +611,7 @@ Pass at press time: `--arg key=value`
 
 | Flag | Source | Runtime |
 |------|--------|--------|
-| (none) | Scaffold `main.<ext>` with shebang + TODO | `--runtime shell\|python\|node` (default: shell) |
+| (none) | Scaffold `main.<ext>` with shebang + TODO | `--runtime shell\|bash\|python\|node` (default: shell) |
 | `--code` | Inline script body (one-liners) | Same as above |
 | `-f`/`--file` | Existing script file (copied into button folder) | Detected from shebang |
 | `--url` | HTTP endpoint with `{{arg}}` templates | HTTP client |

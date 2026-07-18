@@ -138,6 +138,8 @@ type ArgDef struct {
 // ExtForRuntime returns the code file extension for a given runtime.
 func ExtForRuntime(runtime string) string {
 	switch runtime {
+	case "bash":
+		return ".sh"
 	case "python", "python3":
 		return ".py"
 	case "node", "javascript", "js":
@@ -153,6 +155,8 @@ func ExtForRuntime(runtime string) string {
 // put the real implementation.
 func scaffoldFor(runtime string) string {
 	switch runtime {
+	case "bash":
+		return "#!/usr/bin/env bash\nset -euo pipefail\n\n# TODO: add your command here\n# Args arrive as $BUTTONS_ARG_<NAME>\n"
 	case "python", "python3":
 		return "#!/usr/bin/env python3\n# TODO: add your code here\n# Args arrive as os.environ[\"BUTTONS_ARG_<NAME>\"]\n"
 	case "node", "javascript", "js":

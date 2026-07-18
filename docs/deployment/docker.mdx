@@ -16,7 +16,7 @@ ghcr.io/autonoco/buttons:v0.128.0   # pinned version
 - **Runs as:** non-root user `buttons` (UID 1000), `WORKDIR /home/buttons`
 - **Entrypoint:** the `buttons` binary, so `docker run … <verb>` runs that command; bare `docker run …` defaults to `--help`
 - **Shell available:** `/bin/sh` — shell buttons work out of the box
-- **Python / Node:** not included — add via `apk add` in your derived image
+- **Bash / Python / Node:** not included — add via `apk add` in your derived image
 - **Architectures:** `linux/amd64`, `linux/arm64`
 
 ## Pattern 1: Multi-stage copy (recommended)
@@ -66,9 +66,9 @@ This lets you manage buttons on the host and invoke them from containers, or sha
 
 The mounted directory must be writable by UID 1000. If your host user has a different UID, either `chown` the directory to `1000` or add `--user "$(id -u)"` to the `docker run` invocation (combine with `-e BUTTONS_HOME=/home/buttons/.buttons` so the data dir is found regardless of that user's home).
 
-## Adding Python or Node to a derived image
+## Adding Bash, Python, or Node to a derived image
 
-Shell buttons work in the base image. For Python or Node buttons, extend the image:
+Shell buttons work in the base image. For Bash, Python, or Node buttons, extend the image:
 
 <CodeGroup>
 
@@ -84,10 +84,10 @@ FROM ghcr.io/autonoco/buttons:v0.128.0
 RUN apk add --no-cache nodejs npm
 ```
 
-```dockerfile Python + Node
+```dockerfile Python + Node + Bash
 FROM ghcr.io/autonoco/buttons:v0.128.0
 
-RUN apk add --no-cache python3 py3-pip nodejs npm
+RUN apk add --no-cache bash python3 py3-pip nodejs npm
 ```
 
 </CodeGroup>

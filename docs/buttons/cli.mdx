@@ -11,7 +11,7 @@ buttons create tail-logs --code 'openclaw tail --service api --env production'
 buttons create git-status --code 'git status --short'
 ```
 
-`--code` writes the command straight into the button's `main.sh` and skips the placeholder scaffold. `--runtime` defaults to `shell`, so you don't pass it for a CLI command (it's there for `python` / `node` bodies). Press it like any other button:
+`--code` writes the command straight into the button's `main.sh` and skips the placeholder scaffold. `--runtime` defaults to `shell`, so you don't pass it for a portable CLI command; use `bash`, `python`, or `node` when the body requires that interpreter. Press it like any other button:
 
 ```bash
 buttons press git-status

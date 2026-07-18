@@ -69,11 +69,11 @@ func Execute(ctx context.Context, btn *button.Button, args, batteries map[string
 	}
 
 	// #nosec G204 -- `interpreter` is whitelisted by interpreterForRuntime() which
-	// only returns /bin/sh, a resolved python3/python, or a resolved node — never
-	// a user-supplied string. `codePath` is inside the button's own folder under
-	// ButtonsDir and is not influenced by button args at press time. Args reach the
-	// script exclusively via BUTTONS_ARG_* env vars (see cmd.Env below), so there
-	// is no string interpolation into a shell command.
+	// only returns /bin/sh or a resolved bash, python3/python, or node — never a
+	// user-supplied string. `codePath` is inside the button's own folder under
+	// ButtonsDir and is not influenced by button args at press time. Args reach
+	// the script exclusively via BUTTONS_ARG_* env vars (see cmd.Env below), so
+	// there is no string interpolation into a shell command.
 	cmd := exec.Command(interpreter, codePath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
@@ -187,8 +187,13 @@ func Execute(ctx context.Context, btn *button.Button, args, batteries map[string
 // interpreterForRuntime maps a runtime name to the interpreter binary path.
 func interpreterForRuntime(runtime string) (string, error) {
 	switch runtime {
-	case "shell", "sh", "bash", "":
+	case "shell", "sh", "":
 		return "/bin/sh", nil
+	case "bash":
+		if path, err := exec.LookPath("bash"); err == nil {
+			return path, nil
+		}
+		return "", fmt.Errorf("bash not found on PATH")
 	case "python", "python3":
 		if path, err := exec.LookPath("python3"); err == nil {
 			return path, nil

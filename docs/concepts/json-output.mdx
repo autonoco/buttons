@@ -59,7 +59,7 @@ The shape of `data` varies by command, but `ok` is always present, and on a fail
 | `VALIDATION_ERROR` | An argument value did not match its declared type |
 | `TIMEOUT` | The button execution exceeded its timeout |
 | `SCRIPT_ERROR` | The subprocess exited with a non-zero exit code |
-| `RUNTIME_MISSING` | The required interpreter (`python3`, `node`, etc.) is not on `$PATH` |
+| `RUNTIME_MISSING` | The required interpreter (`bash`, `python3`, `node`, etc.) is not on `$PATH` |
 | `QUEUE_TIMEOUT` | The press waited too long for a free slot in the button's concurrency queue |
 | `INTERNAL_ERROR` | An unexpected error inside the Buttons runtime |
 | `KIND_NOT_IMPLEMENTED` | A drawer step used a step kind not yet implemented in the v1 executor |

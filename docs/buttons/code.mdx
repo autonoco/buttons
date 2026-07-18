@@ -45,9 +45,16 @@ buttons press greet --arg name=Ada
   Args are declared at create time and stored in `button.json`. If you need to change them, delete and recreate the button — your `main.sh` is at the same path each time, so you can copy your edits over.
 </Note>
 
-## Scaffold in Python or Node
+## Scaffold in Bash, Python, or Node
 
 Pass `--runtime` to scaffold with the right shebang and extension:
+
+```bash
+buttons create deploy --runtime bash --arg env:string:required
+# → scaffolds main.sh with:
+#     #!/usr/bin/env bash
+#     set -euo pipefail
+```
 
 ```bash
 buttons create parse-json --runtime python --arg input:string:required
@@ -65,8 +72,13 @@ buttons create transform --runtime node --arg payload:string:required
 | Flag value | Interpreter used | File written |
 |---|---|---|
 | `shell` (default) | `/bin/sh` | `main.sh` |
+| `bash` | `bash` from `PATH` | `main.sh` |
 | `python` | `python3` | `main.py` |
 | `node` | `node` | `main.js` |
+
+The `bash` runtime requires Bash to be installed. If it is unavailable,
+`buttons press` returns `RUNTIME_MISSING`; Buttons does not install it
+automatically.
 
 ## Shortcuts for when you already know the code
 
@@ -95,7 +107,9 @@ buttons create deploy \
   -d "Deploy a tagged release"
 ```
 
-If the script has a shebang, the OS uses that interpreter directly — no need to pass `--runtime`. Without a shebang and without `--runtime`, Buttons defaults to `/bin/sh`.
+When importing code, Buttons infers the runtime from the file extension or
+shebang. Without a recognized extension or shebang, Buttons defaults to
+`/bin/sh`.
 
 ## Argument injection
 

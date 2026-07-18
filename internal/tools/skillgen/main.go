@@ -139,7 +139,7 @@ func writeSkill(b *strings.Builder, root *cobra.Command) {
 	b.WriteString("`buttons create <name>` scaffolds a shell button with a placeholder `main.sh` the agent edits, then presses. Use a shortcut flag to skip the scaffold:\n\n")
 	b.WriteString("| Flag | Source | Runtime |\n")
 	b.WriteString("|------|--------|--------|\n")
-	b.WriteString("| (none) | Scaffold `main.<ext>` with shebang + TODO | `--runtime shell\\|python\\|node` (default: shell) |\n")
+	b.WriteString("| (none) | Scaffold `main.<ext>` with shebang + TODO | `--runtime shell\\|bash\\|python\\|node` (default: shell) |\n")
 	b.WriteString("| `--code` | Inline script body (one-liners) | Same as above |\n")
 	b.WriteString("| `-f`/`--file` | Existing script file (copied into button folder) | Detected from shebang |\n")
 	b.WriteString("| `--url` | HTTP endpoint with `{{arg}}` templates | HTTP client |\n")

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +13,33 @@ import (
 
 	"github.com/autonoco/buttons/internal/button"
 )
+
+func TestInterpreterForRuntimeBash(t *testing.T) {
+	want, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is not installed")
+	}
+
+	got, err := interpreterForRuntime("bash")
+	if err != nil {
+		t.Fatalf("interpreterForRuntime(bash): %v", err)
+	}
+	if got != want {
+		t.Fatalf("interpreter = %q, want resolved bash path %q", got, want)
+	}
+}
+
+func TestInterpreterForRuntimeBashMissing(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+
+	_, err := interpreterForRuntime("bash")
+	if err == nil {
+		t.Fatal("expected missing bash to return an error")
+	}
+	if !strings.Contains(err.Error(), "bash not found") {
+		t.Fatalf("error = %q, want bash not found", err)
+	}
+}
 
 // TestExecute_BatteriesInjectedAsEnv verifies the caller-provided
 // batteries map lands on the child process as BUTTONS_BAT_<KEY>. This
