@@ -33,6 +33,30 @@ func TestPlanCodeInfersRuntime(t *testing.T) {
 	if plan.Items[0].Runtime != "node" || plan.Items[0].Name != "tool" {
 		t.Fatalf("shebang/override failed: %+v", plan.Items[0])
 	}
+
+	bash := filepath.Join(dir, "release.bash")
+	if err := os.WriteFile(bash, []byte("#!/usr/bin/env bash\necho release\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan, err = PlanCode(bash, "")
+	if err != nil {
+		t.Fatalf("plan bash: %v", err)
+	}
+	if plan.Items[0].Runtime != "bash" {
+		t.Fatalf(".bash runtime = %q, want bash", plan.Items[0].Runtime)
+	}
+
+	bashNoExt := filepath.Join(dir, "release-script")
+	if err := os.WriteFile(bashNoExt, []byte("#!/usr/bin/env bash\necho release\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan, err = PlanCode(bashNoExt, "")
+	if err != nil {
+		t.Fatalf("plan extensionless bash: %v", err)
+	}
+	if plan.Items[0].Runtime != "bash" {
+		t.Fatalf("bash shebang runtime = %q, want bash", plan.Items[0].Runtime)
+	}
 }
 
 func TestPlanCodeApplyCreatesFunctionalButton(t *testing.T) {

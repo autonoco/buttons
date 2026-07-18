@@ -31,7 +31,7 @@ The security controls in Buttons are aimed at preventing unintended execution or
 
 ## Assumptions
 
-- **`$PATH` is trusted.** Buttons resolves `python3`, `node`, `sh`, and other interpreters by name. If an attacker can modify `$PATH`, they can substitute a malicious interpreter.
+- **`$PATH` is trusted.** Buttons resolves `bash`, `python3`, `node`, and other non-POSIX interpreters by name. If an attacker can modify `$PATH`, they can substitute a malicious interpreter.
 - **`~/.buttons/` is user-private.** The directory is created with mode `0700`. On shared systems, confirm your `umask` does not override this.
 - **The button creator is trusted.** Buttons does not distinguish between a button you created and one an agent created on your behalf. Both execute with your permissions.
 

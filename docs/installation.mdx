@@ -46,7 +46,7 @@ FROM python:3.12-slim AS agent
 COPY --from=ghcr.io/autonoco/buttons:v0.128.0 /usr/local/bin/buttons /usr/local/bin/buttons
 ```
 
-The image is Alpine-based with `/bin/sh`, so shell buttons work out of the box. Add `python3` or `nodejs` via `apk add` in derived images when those runtimes are needed.
+The image is Alpine-based with `/bin/sh`, so shell buttons work out of the box. Bash is not included; add `bash`, `python3`, or `nodejs` via `apk add` in derived images when those runtimes are needed.
 
 <Tip>
 For one-off invocations with state persisted to the host:

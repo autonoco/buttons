@@ -175,7 +175,7 @@ func PlanURL(url, nameOverride string) (*Plan, error) {
 	}}}, nil
 }
 
-// inferRuntime maps a script to a supported runtime (shell|python|node) by
+// inferRuntime maps a script to a supported runtime (shell|bash|python|node) by
 // extension first, then shebang, defaulting to shell.
 func inferRuntime(path, content string) string {
 	switch strings.ToLower(filepath.Ext(path)) {
@@ -183,7 +183,9 @@ func inferRuntime(path, content string) string {
 		return "python"
 	case ".js", ".mjs", ".cjs":
 		return "node"
-	case ".sh", ".bash":
+	case ".bash":
+		return "bash"
+	case ".sh":
 		return "shell"
 	}
 	first := content
@@ -196,6 +198,8 @@ func inferRuntime(path, content string) string {
 		return "python"
 	case strings.Contains(first, "node"):
 		return "node"
+	case strings.Contains(first, "bash"):
+		return "bash"
 	default:
 		return "shell"
 	}

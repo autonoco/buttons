@@ -13,7 +13,7 @@ Create a new button.
 
 By default, 'buttons create `<name>`' scaffolds a shell button with a
 placeholder main.sh the agent can edit, then press. Use --runtime to
-scaffold a Python or Node button instead.
+scaffold a Bash, Python, or Node button instead.
 
 New buttons start with package version 1 in button.json. Registry publish uses
 that version, then auto-bumps to the next number if that immutable version
@@ -48,7 +48,7 @@ Common flags:
                         or name:enum:required:a|b|c; repeatable)
       --timeout SECS    execution timeout (default: 300)
   -d, --description S   human-readable description for 'buttons list'
-      --runtime NAME    shell | python | node  (default: shell)
+      --runtime NAME    shell | bash | python | node  (default: shell)
 ```
 
 **Examples:**
@@ -56,7 +56,8 @@ Common flags:
 ```bash
 buttons create deploy --arg env:enum:required:staging|prod|canary   # enum arg
 buttons create deploy                                  # scaffold, then edit main.sh
-buttons create etl --runtime python                    # scaffold, then edit main.py
+buttons create deploy --runtime bash                  # scaffold, then edit main.sh
+buttons create etl --runtime python                   # scaffold, then edit main.py
 buttons create greet --code 'echo "Hello, $BUTTONS_ARG_NAME"' --arg name:string:required
 buttons create k8s-deploy -f ./scripts/deploy.sh --arg env:string:required
 buttons create weather --url 'https://wttr.in/{{city}}?format=j1' --arg city:string:required
@@ -85,7 +86,7 @@ buttons create [name] [flags]
       --max-response-size string   max HTTP response body size for --url buttons (e.g. 10M, 1G). default: 10M
       --method string              HTTP method for --url (default: GET)
       --prompt string              prompt/instruction for the consuming agent (written to AGENTS.md)
-      --runtime string             code runtime: shell, python, node (default: shell)
+      --runtime string             code runtime: shell, bash, python, node (default: shell)
       --timeout int                execution timeout in seconds (default 300)
       --url string                 HTTP API endpoint URL (supports {{arg}} templates)
 ```

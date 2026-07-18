@@ -135,6 +135,23 @@ func TestCreateGatedByFlag(t *testing.T) {
 	}
 }
 
+func TestCreateRuntimeSchemaIncludesBash(t *testing.T) {
+	s := New(Config{AllowCreate: true})
+	defs := s.toolDefs()
+	create := defs[len(defs)-1]
+	schema := create["inputSchema"].(map[string]any)
+	properties := schema["properties"].(map[string]any)
+	runtime := properties["runtime"].(map[string]any)
+	values := runtime["enum"].([]string)
+
+	for _, value := range values {
+		if value == "bash" {
+			return
+		}
+	}
+	t.Fatalf("runtime enum = %v, want bash", values)
+}
+
 // TestServeWire drives the full stdio loop with newline-delimited JSON-RPC and
 // checks initialize + tools/list responses come back id-matched.
 func TestServeWire(t *testing.T) {

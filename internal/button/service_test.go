@@ -135,6 +135,32 @@ func TestService_Create_ScaffoldNoSource(t *testing.T) {
 	}
 }
 
+func TestService_Create_BashScaffold(t *testing.T) {
+	home := setupTestEnv(t)
+	svc := NewService()
+
+	btn, err := svc.Create(CreateOpts{
+		Name:           "bash-script",
+		Runtime:        "bash",
+		TimeoutSeconds: 60,
+	})
+	if err != nil {
+		t.Fatalf("bash scaffold create failed: %v", err)
+	}
+	if btn.Runtime != "bash" {
+		t.Fatalf("runtime = %q, want bash", btn.Runtime)
+	}
+
+	codePath := filepath.Join(home, "buttons", "bash-script", "main.sh")
+	data, err := os.ReadFile(codePath)
+	if err != nil {
+		t.Fatalf("bash scaffold not found: %v", err)
+	}
+	if !strings.HasPrefix(string(data), "#!/usr/bin/env bash\n") {
+		t.Fatalf("bash scaffold = %q, want bash shebang", data)
+	}
+}
+
 func TestService_Create_CustomTimeout(t *testing.T) {
 	home := setupTestEnv(t)
 	script := createTestScript(t, home)

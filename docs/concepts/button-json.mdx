@@ -51,7 +51,7 @@ Real files always carry `runtime`, `env`, `timeout_seconds`, and `mcp_enabled` e
 | `name` | Kebab-case button name. |
 | `description` | One-line description surfaced by `buttons list`, `summary`, and the board. |
 | `kind` | `""`/`"button"` for a regular button (pressed); `"app"` for an app button under `apps/` (see [App buttons](#app-buttons)). |
-| `runtime` | `shell`, `python`, or `node`. HTTP buttons (created with `--url`) carry an empty runtime and are identified by `url`; prompt-only buttons (created with `--prompt`) use `prompt`. |
+| `runtime` | `shell`, `bash`, `python`, or `node`. HTTP buttons (created with `--url`) carry an empty runtime and are identified by `url`; prompt-only buttons (created with `--prompt`) use `prompt`. |
 | `args` | Typed press-time arguments. |
 | `env` | Static environment variables injected into every press. |
 | `timeout_seconds` | Default timeout for this button. |
@@ -60,7 +60,7 @@ Real files always carry `runtime`, `env`, `timeout_seconds`, and `mcp_enabled` e
 
 ## Code buttons
 
-Code buttons use `runtime: shell`, `python`, or `node`. The script lives next to `button.json` as `main.sh`, `main.py`, or `main.js`.
+Code buttons use `runtime: shell`, `bash`, `python`, or `node`. The script lives next to `button.json` as `main.sh`, `main.py`, or `main.js`. Both shell runtimes use `main.sh`; `shell` executes it with `/bin/sh`, while `bash` resolves and executes Bash from `PATH`.
 
 Arguments arrive as environment variables:
 

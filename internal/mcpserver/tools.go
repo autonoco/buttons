@@ -54,7 +54,7 @@ func (s *Server) toolDefs() []map[string]any {
 				"type": "object",
 				"properties": map[string]any{
 					"name":        map[string]any{"type": "string"},
-					"runtime":     map[string]any{"type": "string", "enum": []string{"shell", "python", "node"}},
+					"runtime":     map[string]any{"type": "string", "enum": []string{"shell", "bash", "python", "node"}},
 					"code":        map[string]any{"type": "string"},
 					"description": map[string]any{"type": "string"},
 				},

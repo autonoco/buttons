@@ -44,7 +44,7 @@ var createCmd = &cobra.Command{
 
 By default, 'buttons create <name>' scaffolds a shell button with a
 placeholder main.sh the agent can edit, then press. Use --runtime to
-scaffold a Python or Node button instead.
+scaffold a Bash, Python, or Node button instead.
 
 New buttons start with package version 1 in button.json. Registry publish uses
 that version, then auto-bumps to the next number if that immutable version
@@ -74,12 +74,13 @@ Common flags:
                         or name:enum:required:a|b|c; repeatable)
       --timeout SECS    execution timeout (default: 300)
   -d, --description S   human-readable description for 'buttons list'
-      --runtime NAME    shell | python | node  (default: shell)
+      --runtime NAME    shell | bash | python | node  (default: shell)
 
 Examples:
   buttons create deploy --arg env:enum:required:staging|prod|canary   # enum arg
   buttons create deploy                                  # scaffold, then edit main.sh
-  buttons create etl --runtime python                    # scaffold, then edit main.py
+  buttons create deploy --runtime bash                  # scaffold, then edit main.sh
+  buttons create etl --runtime python                   # scaffold, then edit main.py
   buttons create greet --code 'echo "Hello, $BUTTONS_ARG_NAME"' --arg name:string:required
   buttons create k8s-deploy -f ./scripts/deploy.sh --arg env:string:required
   buttons create weather --url 'https://wttr.in/{{city}}?format=j1' --arg city:string:required
@@ -259,7 +260,7 @@ func resolveCreateTimeout(cmd *cobra.Command) int {
 func init() {
 	createCmd.Flags().StringVarP(&createFile, "file", "f", "", "copy an existing script file into the button folder")
 	createCmd.Flags().StringVar(&createCode, "code", "", "inline script code (shortcut for one-liners)")
-	createCmd.Flags().StringVar(&createRuntime, "runtime", "", "code runtime: shell, python, node (default: shell)")
+	createCmd.Flags().StringVar(&createRuntime, "runtime", "", "code runtime: shell, bash, python, node (default: shell)")
 	createCmd.Flags().StringVar(&createURL, "url", "", "HTTP API endpoint URL (supports {{arg}} templates)")
 	createCmd.Flags().StringVar(&createMethod, "method", "", "HTTP method for --url (default: GET)")
 	createCmd.Flags().StringArrayVar(&createHeaders, "header", nil, "HTTP header as 'Key: Value' (repeatable)")

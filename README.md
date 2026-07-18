@@ -410,7 +410,7 @@ By default, `buttons create <name>` scaffolds a shell button with a placeholder 
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--runtime` | | Scaffold runtime: shell, python, node (default: shell) |
+| `--runtime` | | Scaffold runtime: shell, bash, python, node (default: shell) |
 | `--code` | | Inline script body (shortcut for one-liners) |
 | `--file` | `-f` | Copy an existing script file into the button folder |
 | `--url` | | HTTP API endpoint (supports `{{arg}}` templates) |
