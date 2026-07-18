@@ -53,6 +53,7 @@ func runAgentSetup(t *testing.T, slug string) {
 
 func TestAgentSetupWritesWebhookConfig(t *testing.T) {
 	t.Setenv("BUTTONS_HOME", t.TempDir())
+	t.Setenv("BUTTONS_BAT_ENROLL_TOKEN", "test-enroll-token")
 	srv := fakeSetupBroker(t)
 	defer srv.Close()
 	t.Setenv("BUTTONS_REGISTRY_URL", srv.URL)
@@ -74,6 +75,7 @@ func TestAgentSetupWritesWebhookConfig(t *testing.T) {
 
 func TestAgentSetupRerunKeepsWebhookConfig(t *testing.T) {
 	t.Setenv("BUTTONS_HOME", t.TempDir())
+	t.Setenv("BUTTONS_BAT_ENROLL_TOKEN", "test-enroll-token")
 	srv := fakeSetupBroker(t)
 	defer srv.Close()
 	t.Setenv("BUTTONS_REGISTRY_URL", srv.URL)
@@ -90,6 +92,7 @@ func TestAgentSetupRerunKeepsWebhookConfig(t *testing.T) {
 
 	// Re-run reuses the stored tunnel, so the broker returns no run-token and
 	// the config written by the first run must survive byte for byte.
+	t.Setenv("BUTTONS_BAT_ENROLL_TOKEN", "")
 	runAgentSetup(t, "cindy")
 	after, err := os.ReadFile(path)
 	if err != nil {
@@ -97,6 +100,29 @@ func TestAgentSetupRerunKeepsWebhookConfig(t *testing.T) {
 	}
 	if !bytes.Equal(before, after) {
 		t.Fatalf("re-run rewrote webhook.json:\nbefore: %s\nafter:  %s", before, after)
+	}
+}
+
+func TestAgentSetupWithoutTokenDoesNotCreateDeviceIdentity(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("BUTTONS_HOME", home)
+	t.Setenv("BUTTONS_BAT_ENROLL_TOKEN", "")
+	srv := fakeSetupBroker(t)
+	defer srv.Close()
+	t.Setenv("BUTTONS_REGISTRY_URL", srv.URL)
+
+	agentSetupTunnel = ""
+	agentSetupCmd.SetContext(context.Background())
+	err := agentSetupCmd.RunE(agentSetupCmd, []string{"cindy"})
+	if err == nil {
+		t.Fatal("expected tokenless fresh setup to fail")
+	}
+	path, pathErr := agent.ConfigPath()
+	if pathErr != nil {
+		t.Fatalf("ConfigPath: %v", pathErr)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Fatalf("tokenless setup created agent identity at %s: %v", path, statErr)
 	}
 }
 
