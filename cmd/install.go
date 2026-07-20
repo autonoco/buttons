@@ -101,8 +101,19 @@ func registryKey() string {
 	return ""
 }
 
+// registryURL resolves the registry base URL — $BUTTONS_REGISTRY_URL wins,
+// else the REGISTRY_URL battery that `buttons login` pins. No hardcoded host:
+// absent both, registry-backed commands stay unconfigured by design.
 func registryURL() string {
-	return strings.TrimRight(os.Getenv("BUTTONS_REGISTRY_URL"), "/")
+	if u := os.Getenv("BUTTONS_REGISTRY_URL"); u != "" {
+		return strings.TrimRight(u, "/")
+	}
+	if svc, err := newBatteryService(); err == nil {
+		if v, _, err := svc.Get("REGISTRY_URL"); err == nil {
+			return strings.TrimRight(v, "/")
+		}
+	}
+	return ""
 }
 
 func init() {
