@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var addNoRefresh bool
+
 var addCmd = &cobra.Command{
 	Use:   "add @desk/name[@version]",
 	Short: "Add a registry package dependency",
@@ -23,12 +25,17 @@ Bare package names are not supported in the MVP. Use scoped names like
 declares its kind. Omit @version to track latest; include @version to pin an
 exact immutable version.
 
+By default, add re-resolves every floating "latest" dependency against the
+registry while installing. Pass --no-refresh to install only the new package
+and keep other floating dependencies at their locked versions.
+
 Examples:
   buttons add @your-desk/hello
-  buttons add @your-desk/hello@1`,
+  buttons add @your-desk/hello@1
+  buttons add @your-desk/hello@1 --no-refresh`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		res, name, requested, err := runAdd(context.Background(), args[0])
+		res, name, requested, err := runAdd(context.Background(), args[0], !addNoRefresh)
 		if err != nil {
 			if jsonOutput {
 				_ = config.WriteJSONError("ADD_ERROR", err.Error())
@@ -61,7 +68,7 @@ Examples:
 	},
 }
 
-func runAdd(ctx context.Context, spec string) (*store.Result, string, string, error) {
+func runAdd(ctx context.Context, spec string, refreshFloating bool) (*store.Result, string, string, error) {
 	_ = ctx
 	name, requested, err := manifest.ParsePackageSpec(spec)
 	if err != nil {
@@ -90,7 +97,7 @@ func runAdd(ctx context.Context, spec string) (*store.Result, string, string, er
 	if err != nil {
 		return nil, "", "", err
 	}
-	res, next, err := store.InstallManifest(src, m, lock, store.InstallOptions{RefreshFloating: true})
+	res, next, err := store.InstallManifest(src, m, lock, store.InstallOptions{RefreshFloating: refreshFloating})
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -105,5 +112,6 @@ func runAdd(ctx context.Context, spec string) (*store.Result, string, string, er
 }
 
 func init() {
+	addCmd.Flags().BoolVar(&addNoRefresh, "no-refresh", false, "keep other floating (latest) dependencies at their locked versions")
 	rootCmd.AddCommand(addCmd)
 }
