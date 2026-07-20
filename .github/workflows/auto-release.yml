@@ -107,7 +107,7 @@ jobs:
           git push origin "${{ steps.version.outputs.next }}"
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           # Keep in sync with GO_VERSION in ci.yml.
           go-version: "1.26.5"
