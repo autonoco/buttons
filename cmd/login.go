@@ -157,27 +157,30 @@ func waitForLoopbackCode(listener net.Listener, state string) (string, error) {
 		err  error
 	}
 	results := make(chan result, 1)
-	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/callback" {
-			http.NotFound(w, r)
-			return
-		}
-		query := r.URL.Query()
-		switch {
-		case query.Get("state") != state:
-			http.Error(w, "state mismatch", http.StatusBadRequest)
-			results <- result{err: errors.New("login failed: state mismatch on loopback callback")}
-		case query.Get("error") != "":
-			fmt.Fprintln(w, "Authorization denied. You can close this tab.")
-			results <- result{err: fmt.Errorf("login denied in browser: %s", query.Get("error"))}
-		case query.Get("code") == "":
-			http.Error(w, "missing code", http.StatusBadRequest)
-			results <- result{err: errors.New("login failed: loopback callback carried no code")}
-		default:
-			fmt.Fprintln(w, "Machine authorized. You can close this tab and return to the terminal.")
-			results <- result{code: query.Get("code")}
-		}
-	})}
+	server := &http.Server{
+		ReadHeaderTimeout: 10 * time.Second,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/callback" {
+				http.NotFound(w, r)
+				return
+			}
+			query := r.URL.Query()
+			switch {
+			case query.Get("state") != state:
+				http.Error(w, "state mismatch", http.StatusBadRequest)
+				results <- result{err: errors.New("login failed: state mismatch on loopback callback")}
+			case query.Get("error") != "":
+				fmt.Fprintln(w, "Authorization denied. You can close this tab.")
+				results <- result{err: fmt.Errorf("login denied in browser: %s", query.Get("error"))}
+			case query.Get("code") == "":
+				http.Error(w, "missing code", http.StatusBadRequest)
+				results <- result{err: errors.New("login failed: loopback callback carried no code")}
+			default:
+				fmt.Fprintln(w, "Machine authorized. You can close this tab and return to the terminal.")
+				results <- result{code: query.Get("code")}
+			}
+		}),
+	}
 	go func() { _ = server.Serve(listener) }()
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -226,15 +229,21 @@ func exchangeLoginCode(registry, code, verifier string) (token, orgID string, er
 }
 
 // openBrowser best-effort opens the URL; false means the caller should print it.
+// Only http(s) URLs are ever handed to the OS opener, and always as a single
+// argv element (no shell), so the variable cannot inject commands.
 func openBrowser(target string) bool {
+	parsed, err := url.Parse(target)
+	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+		return false
+	}
 	var command *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		command = exec.Command("open", target)
+		command = exec.Command("open", target) // #nosec G204 -- scheme-validated URL, argv only
 	case "windows":
-		command = exec.Command("rundll32", "url.dll,FileProtocolHandler", target)
+		command = exec.Command("rundll32", "url.dll,FileProtocolHandler", target) // #nosec G204 -- scheme-validated URL, argv only
 	default:
-		command = exec.Command("xdg-open", target)
+		command = exec.Command("xdg-open", target) // #nosec G204 -- scheme-validated URL, argv only
 	}
 	return command.Start() == nil
 }
