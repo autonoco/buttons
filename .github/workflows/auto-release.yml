@@ -158,7 +158,7 @@ jobs:
       # because the running npm's dependencies get swapped out mid-install.
       # Using Node 24 avoids the self-upgrade entirely.
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
