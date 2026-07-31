@@ -71,8 +71,12 @@ buttons [command]
 Add a registry package dependency
 
 ```
-buttons add
+buttons add [flags]
 ```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--no-refresh` | bool | keep other floating (latest) dependencies at their locked versions |
 
 ### `buttons agent`
 
@@ -332,6 +336,28 @@ List all buttons
 buttons list
 ```
 
+### `buttons login`
+
+Connect this machine to the Buttons platform
+
+```
+buttons login [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--desk` | string | Buttons console URL that hosts the authorization page |
+| `--no-browser` | bool | print the authorization URL instead of opening a browser |
+| `--registry` | string | registry base URL the token is issued for |
+
+### `buttons logout`
+
+Disconnect this machine from the Buttons platform
+
+```
+buttons logout
+```
+
 ### `buttons logs`
 
 View past runs for a button or tail the live progress stream
@@ -381,6 +407,14 @@ Publish a local button or drawer to the registry
 
 ```
 buttons publish
+```
+
+### `buttons remove`
+
+Remove a registry package dependency
+
+```
+buttons remove
 ```
 
 ### `buttons serve`

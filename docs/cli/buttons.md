@@ -40,10 +40,13 @@ buttons [flags]
 * [buttons init](buttons_init.md)	 - Initialize a project-local .buttons directory
 * [buttons install](buttons_install.md)	 - Install packages from .buttons/buttons.json
 * [buttons list](buttons_list.md)	 - List all buttons
+* [buttons login](buttons_login.md)	 - Connect this machine to the Buttons platform
+* [buttons logout](buttons_logout.md)	 - Disconnect this machine from the Buttons platform
 * [buttons logs](buttons_logs.md)	 - View past runs for a button or tail the live progress stream
 * [buttons mcp](buttons_mcp.md)	 - Run an MCP server over stdio (expose buttons to agents)
 * [buttons press](buttons_press.md)	 - Run a button
 * [buttons publish](buttons_publish.md)	 - Publish a local button or drawer to the registry
+* [buttons remove](buttons_remove.md)	 - Remove a registry package dependency
 * [buttons serve](buttons_serve.md)	 - Run a REST API server exposing buttons over HTTP
 * [buttons smash](buttons_smash.md)	 - Run multiple buttons in parallel
 * [buttons status](buttons_status.md)	 - Show available CLI and package updates
