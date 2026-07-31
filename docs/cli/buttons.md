@@ -46,6 +46,7 @@ buttons [flags]
 * [buttons mcp](buttons_mcp.md)	 - Run an MCP server over stdio (expose buttons to agents)
 * [buttons press](buttons_press.md)	 - Run a button
 * [buttons publish](buttons_publish.md)	 - Publish a local button or drawer to the registry
+* [buttons remove](buttons_remove.md)	 - Remove a registry package dependency
 * [buttons serve](buttons_serve.md)	 - Run a REST API server exposing buttons over HTTP
 * [buttons smash](buttons_smash.md)	 - Run multiple buttons in parallel
 * [buttons status](buttons_status.md)	 - Show available CLI and package updates
