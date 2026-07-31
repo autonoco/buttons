@@ -71,8 +71,12 @@ buttons [command]
 Add a registry package dependency
 
 ```
-buttons add
+buttons add [flags]
 ```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--no-refresh` | bool | keep other floating (latest) dependencies at their locked versions |
 
 ### `buttons agent`
 
@@ -403,6 +407,14 @@ Publish a local button or drawer to the registry
 
 ```
 buttons publish
+```
+
+### `buttons remove`
+
+Remove a registry package dependency
+
+```
+buttons remove
 ```
 
 ### `buttons serve`

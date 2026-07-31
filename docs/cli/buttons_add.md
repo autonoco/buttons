@@ -16,11 +16,16 @@ Bare package names are not supported in the MVP. Use scoped names like
 declares its kind. Omit @version to track latest; include @version to pin an
 exact immutable version.
 
+By default, add re-resolves every floating "latest" dependency against the
+registry while installing. Pass --no-refresh to install only the new package
+and keep other floating dependencies at their locked versions.
+
 **Examples:**
 
 ```bash
 buttons add @your-desk/hello
 buttons add @your-desk/hello@1
+buttons add @your-desk/hello@1 --no-refresh
 ```
 
 ```
@@ -30,7 +35,8 @@ buttons add @desk/name[@version] [flags]
 ### Options
 
 ```
-  -h, --help   help for add
+  -h, --help         help for add
+      --no-refresh   keep other floating (latest) dependencies at their locked versions
 ```
 
 ### Options inherited from parent commands
