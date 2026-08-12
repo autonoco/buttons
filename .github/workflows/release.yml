@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 0  # Full history + tags for goreleaser changelog.
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           # Keep in sync with GO_VERSION in ci.yml.
           go-version: "1.26.5"

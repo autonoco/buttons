@@ -218,7 +218,8 @@ Examples:
 		}
 		if codePath != "" {
 			fmt.Fprintf(os.Stderr, "  Edit:  %s\n", codePath)
-		} else if btn.Runtime == "prompt" {
+			fmt.Fprintf(os.Stderr, "  Also edit: %s\n", filepath.Join(btnDir, "AGENTS.md"))
+		} else {
 			fmt.Fprintf(os.Stderr, "  Edit:  %s\n", filepath.Join(btnDir, "AGENTS.md"))
 		}
 		// Build a press hint that's actually runnable — if the button

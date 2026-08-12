@@ -175,7 +175,10 @@
             "expanded": false,
             "pages": [
               "cli/buttons_add",
+              "cli/buttons_remove",
               "cli/buttons_install",
+              "cli/buttons_login",
+              "cli/buttons_logout",
               "cli/buttons_publish",
               "cli/buttons_import",
               "cli/buttons_import_skill",
