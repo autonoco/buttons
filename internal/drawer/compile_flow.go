@@ -64,13 +64,13 @@ func CompileFlow(d *Drawer, opts CompileOptions) (*Drawer, error) {
 
 	prefix := "flow-" + provider
 	parallelism := 1
-	if d.Flow.Limits != nil && d.Flow.Limits.MaxActiveTasks > 0 {
-		parallelism = d.Flow.Limits.MaxActiveTasks
-	}
 	for _, stage := range d.Flow.Stages {
 		if stage.Concurrency > parallelism {
 			parallelism = stage.Concurrency
 		}
+	}
+	if d.Flow.Limits != nil && d.Flow.Limits.MaxActiveTasks > 0 && parallelism > d.Flow.Limits.MaxActiveTasks {
+		parallelism = d.Flow.Limits.MaxActiveTasks
 	}
 
 	systemPrompt := composePerformPrompt(d.Flow)
@@ -79,7 +79,7 @@ func CompileFlow(d *Drawer, opts CompileOptions) (*Drawer, error) {
 	evidenceJSON := stageEvidenceJSON(d.Flow.Stages)
 
 	compiled := &Drawer{
-		SchemaVersion: 1,
+		SchemaVersion: SchemaVersion,
 		Name:          d.Name,
 		DrawerKind:    DrawerKindAction,
 		Description:   d.Description,

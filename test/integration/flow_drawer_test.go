@@ -182,10 +182,15 @@ func TestFlowDrawerPressCompilesAndRuns(t *testing.T) {
 	if r.ExitCode != 0 {
 		t.Fatalf("press flow: exit=%d stdout=%s stderr=%s", r.ExitCode, r.Stdout, r.Stderr)
 	}
-	if !strings.Contains(r.Stdout, `"ok"`) && !strings.Contains(r.Stdout, `"status": "ok"`) {
-		// ExecuteResult uses status field
-		if !strings.Contains(r.Stdout, `"status"`) {
-			t.Fatalf("unexpected press output: %s", r.Stdout)
+	var pressResult map[string]any
+	if err := json.Unmarshal([]byte(r.Stdout), &pressResult); err != nil {
+		t.Fatalf("parse press output: %v %s", err, r.Stdout)
+	}
+	if data, ok := pressResult["data"].(map[string]any); ok {
+		if data["status"] != "ok" {
+			t.Fatalf("expected data.status=ok, got %v: %s", data["status"], r.Stdout)
 		}
+	} else if pressResult["status"] != "ok" {
+		t.Fatalf("expected status=ok, got %v: %s", pressResult["status"], r.Stdout)
 	}
 }

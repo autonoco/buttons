@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/flowkit"
 )
 
@@ -25,7 +26,11 @@ func TestLocalClaimRaceAndStaleness(t *testing.T) {
 		t.Fatal(err)
 	}
 	tid := "task1"
-	taskPath := filepath.Join(home, "flows", board, "tasks", tid+".json")
+	boardDir, err := config.FlowBoardDir(board)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskPath := filepath.Join(boardDir, "tasks", tid+".json")
 	task := map[string]any{
 		"id": tid, "title": "t", "status": "intake",
 		"props": map[string]any{"status": "intake"},

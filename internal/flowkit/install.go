@@ -15,7 +15,14 @@ import (
 	"github.com/autonoco/buttons/internal/config"
 )
 
-const claimWaitSeconds = 1
+// ValidProvider returns true for recognized flow provider names.
+func ValidProvider(name string) bool {
+	switch strings.TrimSpace(name) {
+	case "local", "github":
+		return true
+	}
+	return false
+}
 
 // EnsureButtons installs (or refreshes) the pipeline buttons for provider
 // ("local" or "github"). Idempotent.
@@ -68,7 +75,7 @@ func ensureGitHubButtons() error {
 		{name: "flow-github-task-read", args: []button.ArgDef{arg("board", "string", true), arg("id", "string", true), arg("repo", "string", false)}, code: githubTaskReadCode, timeout: 60},
 		{name: "flow-github-task-update", args: []button.ArgDef{arg("board", "string", true), arg("id", "string", true), arg("patch", "string", true), arg("repo", "string", false)}, code: githubTaskUpdateCode, timeout: 60},
 		{name: "flow-github-task-rm", args: []button.ArgDef{arg("board", "string", true), arg("id", "string", true), arg("repo", "string", false)}, code: githubTaskRmCode, timeout: 60},
-		{name: "flow-github-task-claim", args: append(boardTaskArgs(), arg("repo", "string", false)), code: githubClaimCode, timeout: 60},
+		{name: "flow-github-task-claim", args: append(boardTaskArgs(), arg("repo", "string", false), arg("task_id", "string", false)), code: githubClaimCode, timeout: 60, queue: &button.QueueConfig{Name: "flow-github-claim", Concurrency: 1, Key: "${inputs.task_id}"}},
 		{name: "flow-github-task-comment", args: []button.ArgDef{arg("board", "string", true), arg("id", "string", true), arg("body", "string", true), arg("repo", "string", false)}, code: githubTaskCommentCode, timeout: 60},
 		{name: "flow-github-approve", args: []button.ArgDef{arg("board", "string", true), arg("id", "string", true), arg("repo", "string", false)}, code: githubApproveCode, timeout: 60},
 		{name: "flow-github-reject", args: []button.ArgDef{arg("board", "string", true), arg("id", "string", true), arg("reason", "string", false), arg("repo", "string", false)}, code: githubRejectCode, timeout: 60},
@@ -99,9 +106,22 @@ func installOne(svc *button.Service, sp buttonSpec) error {
 	if err != nil {
 		return err
 	}
+
+	// Rename the live button aside so a failed Create can restore it whole
+	// (spec + code), rather than leaving a deleted button behind.
+	var bakDir string
 	if exists {
-		_ = svc.Remove(sp.name)
+		dir, dirErr := config.ButtonDir(sp.name)
+		if dirErr != nil {
+			return dirErr
+		}
+		bakDir = dir + ".bak"
+		_ = os.RemoveAll(bakDir)
+		if err := os.Rename(dir, bakDir); err != nil {
+			return fmt.Errorf("backup %s: %w", sp.name, err)
+		}
 	}
+
 	_, err = svc.Create(button.CreateOpts{
 		Name:           sp.name,
 		Runtime:        "shell",
@@ -111,7 +131,15 @@ func installOne(svc *button.Service, sp buttonSpec) error {
 		Description:    "Buttons Flow pipeline button (" + sp.name + ")",
 	})
 	if err != nil {
+		if bakDir != "" {
+			dir, _ := config.ButtonDir(sp.name)
+			_ = os.RemoveAll(dir)
+			_ = os.Rename(bakDir, dir)
+		}
 		return err
+	}
+	if bakDir != "" {
+		_ = os.RemoveAll(bakDir)
 	}
 	if sp.queue != nil {
 		if err := patchQueue(sp.name, sp.queue); err != nil {

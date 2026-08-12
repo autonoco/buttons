@@ -154,14 +154,14 @@ type FlowGate struct {
 
 // FlowRole is a named agent persona composed into perform at compile time.
 type FlowRole struct {
-	SystemPrompt   string            `json:"system_prompt,omitempty"`
-	Model          string            `json:"model,omitempty"`
-	Capabilities   *FlowCapabilities `json:"capabilities,omitempty"`
-	Heartbeat      int               `json:"heartbeat_seconds,omitempty"`
-	Cron           string            `json:"cron,omitempty"`
-	Watches        []string          `json:"watches,omitempty"`
-	TimeoutSeconds int               `json:"timeout_seconds,omitempty"`
-	Escalation     string            `json:"escalation,omitempty"`
+	SystemPrompt     string            `json:"system_prompt,omitempty"`
+	Model            string            `json:"model,omitempty"`
+	Capabilities     *FlowCapabilities `json:"capabilities,omitempty"`
+	HeartbeatSeconds int               `json:"heartbeat_seconds,omitempty"`
+	Cron             string            `json:"cron,omitempty"`
+	Watches          []string          `json:"watches,omitempty"`
+	TimeoutSeconds   int               `json:"timeout_seconds,omitempty"`
+	Escalation       string            `json:"escalation,omitempty"`
 }
 
 // FlowEvidence is checked by the validate button before accepting an advance.

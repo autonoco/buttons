@@ -58,6 +58,7 @@
           "type": "string"
         },
         "with": {
+          "additionalProperties": {},
           "type": "object"
         }
       },
@@ -152,6 +153,9 @@
           "type": "string"
         },
         "roles": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FlowRole"
+          },
           "description": "Named role registry for stage bindings",
           "type": "object"
         },
@@ -250,6 +254,39 @@
         },
         "limit": {
           "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "FlowRole": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "$ref": "#/$defs/FlowCapabilities"
+        },
+        "cron": {
+          "type": "string"
+        },
+        "escalation": {
+          "type": "string"
+        },
+        "heartbeat_seconds": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "string"
+        },
+        "system_prompt": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": "integer"
+        },
+        "watches": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "type": "object"
@@ -440,6 +477,7 @@
       "additionalProperties": false,
       "properties": {
         "args": {
+          "additionalProperties": {},
           "description": "Arg/input values or ${ref} strings to pass to the button or drawer",
           "type": "object"
         },
@@ -740,6 +778,7 @@
       "type": "array"
     },
     "return": {
+      "additionalProperties": {},
       "description": "CEL expressions producing the drawer's output fields",
       "type": "object"
     },

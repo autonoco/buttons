@@ -54,9 +54,19 @@ PY
 const localClaimCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os, time, uuid
+import json, os, time, tempfile
 from pathlib import Path
 from datetime import datetime, timezone
+
+def atomic_write(p, text):
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+    try:
+        os.write(fd, text.encode()); os.fchmod(fd, 0o600); os.close(fd)
+        os.replace(tmp, str(p))
+    except BaseException:
+        os.close(fd) if not os.get_inheritable(fd) else None
+        os.unlink(tmp)
+        raise
 
 board = os.environ["BUTTONS_ARG_BOARD"]
 raw = os.environ["BUTTONS_ARG_TASK"]
@@ -87,7 +97,7 @@ now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 props["flow.claimed_by"] = holder
 props["flow.claimed_at"] = now
 props["flow.claim_label"] = "Agent Claimed"
-path.write_text(json.dumps(task, indent=2) + "\n")
+atomic_write(path, json.dumps(task, indent=2) + "\n")
 time.sleep(float(os.environ.get("BUTTONS_FLOW_CLAIM_WAIT", "1")))
 task2 = json.loads(path.read_text())
 props2 = task2.get("props") or {}
@@ -168,8 +178,19 @@ PY
 const localApplyCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os
+import json, os, tempfile
 from pathlib import Path
+from datetime import datetime, timezone
+
+def atomic_write(p, text):
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+    try:
+        os.write(fd, text.encode()); os.fchmod(fd, 0o600); os.close(fd)
+        os.replace(tmp, str(p))
+    except BaseException:
+        os.close(fd) if not os.get_inheritable(fd) else None
+        os.unlink(tmp)
+        raise
 
 board = os.environ["BUTTONS_ARG_BOARD"]
 raw_task = os.environ.get("BUTTONS_ARG_TASK", "{}")
@@ -184,26 +205,28 @@ if not path.exists():
     raise SystemExit(0)
 task = json.loads(path.read_text())
 props = task.setdefault("props", {})
-# merge unknown props/tags from inbound task
 for k, v in (task_in.get("props") or {}).items():
     if k not in props:
         props[k] = v
 if not verdict.get("ok", True):
     props["needs_attention"] = verdict.get("reason") or "validate_failed"
-    path.write_text(json.dumps(task, indent=2) + "\n")
+    atomic_write(path, json.dumps(task, indent=2) + "\n")
     print(json.dumps({"applied": False, "reason": props["needs_attention"], "id": tid}))
     raise SystemExit(0)
 v = verdict.get("verdict")
 from_stage = verdict.get("from_stage") or props.get("status")
 to_stage = verdict.get("to_stage") or from_stage
 gate = gates.get(from_stage) or {}
-if v == "advance" and gate.get("requires_human_approval") and not props.get("approved"):
-    props["flow.pending_approval"] = to_stage
-    props.pop("flow.claimed_by", None)
-    props.pop("flow.claimed_at", None)
-    path.write_text(json.dumps(task, indent=2) + "\n")
-    print(json.dumps({"applied": True, "pending_approval": to_stage, "id": tid}))
-    raise SystemExit(0)
+if v == "advance" and gate.get("requires_human_approval"):
+    approved_stage = props.get("flow.approved_stage")
+    if approved_stage != from_stage:
+        props["flow.pending_approval"] = to_stage
+        props.pop("flow.claimed_by", None)
+        props.pop("flow.claimed_at", None)
+        atomic_write(path, json.dumps(task, indent=2) + "\n")
+        print(json.dumps({"applied": True, "pending_approval": to_stage, "id": tid}))
+        raise SystemExit(0)
+    props.pop("flow.approved_stage", None)
 if v == "advance":
     props["status"] = to_stage
     task["status"] = to_stage
@@ -212,8 +235,8 @@ props.pop("flow.claimed_at", None)
 props.pop("flow.pending_approval", None)
 if verdict.get("summary"):
     comments = task.setdefault("comments", [])
-    comments.append({"body": verdict["summary"], "at": __import__("datetime").datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")})
-path.write_text(json.dumps(task, indent=2) + "\n")
+    comments.append({"body": verdict["summary"], "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")})
+atomic_write(path, json.dumps(task, indent=2) + "\n")
 print(json.dumps({"applied": True, "status": props.get("status"), "id": tid, "verdict": v}))
 PY
 `
@@ -238,16 +261,25 @@ PY
 const localTaskAddCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os, uuid
+import json, os, uuid, tempfile
 from pathlib import Path
 from datetime import datetime, timezone
+
+def atomic_write(p, text):
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+    try:
+        os.write(fd, text.encode()); os.fchmod(fd, 0o600); os.close(fd)
+        os.replace(tmp, str(p))
+    except BaseException:
+        os.close(fd) if not os.get_inheritable(fd) else None
+        os.unlink(tmp)
+        raise
 
 board = os.environ["BUTTONS_ARG_BOARD"]
 title = os.environ.get("BUTTONS_ARG_TITLE") or ""
 body = os.environ.get("BUTTONS_ARG_BODY") or ""
 status = os.environ.get("BUTTONS_ARG_STATUS") or ""
 home = os.environ.get("BUTTONS_HOME") or str(Path.home() / ".buttons")
-# Discover initial stage from drawer.json when status omitted.
 if not status:
     drawer = Path(home) / "drawers" / board / "drawer.json"
     status = "intake"
@@ -267,7 +299,7 @@ task = {
 }
 tasks = Path(home) / "flows" / board / "tasks"
 tasks.mkdir(parents=True, exist_ok=True)
-(tasks / f"{tid}.json").write_text(json.dumps(task, indent=2) + "\n")
+atomic_write(tasks / f"{tid}.json", json.dumps(task, indent=2) + "\n")
 print(json.dumps(task))
 PY
 `
@@ -325,13 +357,25 @@ PY
 const localTaskUpdateCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os
+import json, os, sys, tempfile
 from pathlib import Path
 board = os.environ["BUTTONS_ARG_BOARD"]
 tid = os.environ["BUTTONS_ARG_ID"]
 patch = json.loads(os.environ.get("BUTTONS_ARG_PATCH") or "{}")
 home = os.environ.get("BUTTONS_HOME") or str(Path.home() / ".buttons")
 path = Path(home) / "flows" / board / "tasks" / f"{tid}.json"
+if not path.exists():
+    print(json.dumps({"ok": False, "error": "not_found"}))
+    sys.exit(1)
+def atomic_write(p, text):
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+    try:
+        os.write(fd, text.encode()); os.fchmod(fd, 0o600); os.close(fd)
+        os.replace(tmp, str(p))
+    except BaseException:
+        os.close(fd) if not os.get_inheritable(fd) else None
+        os.unlink(tmp)
+        raise
 task = json.loads(path.read_text())
 props = task.setdefault("props", {})
 for k, v in patch.items():
@@ -344,7 +388,7 @@ for k, v in patch.items():
         task["status"] = v
     else:
         task[k] = v
-path.write_text(json.dumps(task, indent=2) + "\n")
+atomic_write(path, json.dumps(task, indent=2) + "\n")
 print(json.dumps(task))
 PY
 `
@@ -367,7 +411,7 @@ PY
 const localTaskCommentCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os
+import json, os, sys, tempfile
 from pathlib import Path
 from datetime import datetime, timezone
 board = os.environ["BUTTONS_ARG_BOARD"]
@@ -375,10 +419,22 @@ tid = os.environ["BUTTONS_ARG_ID"]
 body = os.environ.get("BUTTONS_ARG_BODY") or ""
 home = os.environ.get("BUTTONS_HOME") or str(Path.home() / ".buttons")
 path = Path(home) / "flows" / board / "tasks" / f"{tid}.json"
+if not path.exists():
+    print(json.dumps({"ok": False, "error": "not_found"}))
+    sys.exit(1)
+def atomic_write(p, text):
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+    try:
+        os.write(fd, text.encode()); os.fchmod(fd, 0o600); os.close(fd)
+        os.replace(tmp, str(p))
+    except BaseException:
+        os.close(fd) if not os.get_inheritable(fd) else None
+        os.unlink(tmp)
+        raise
 task = json.loads(path.read_text())
 comments = task.setdefault("comments", [])
 comments.append({"body": body, "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")})
-path.write_text(json.dumps(task, indent=2) + "\n")
+atomic_write(path, json.dumps(task, indent=2) + "\n")
 print(json.dumps(task))
 PY
 `
@@ -386,20 +442,33 @@ PY
 const localApproveCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os
+import json, os, sys, tempfile
 from pathlib import Path
 board = os.environ["BUTTONS_ARG_BOARD"]
 tid = os.environ["BUTTONS_ARG_ID"]
 home = os.environ.get("BUTTONS_HOME") or str(Path.home() / ".buttons")
 path = Path(home) / "flows" / board / "tasks" / f"{tid}.json"
+if not path.exists():
+    print(json.dumps({"ok": False, "error": "not_found"}))
+    sys.exit(1)
+def atomic_write(p, text):
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+    try:
+        os.write(fd, text.encode()); os.fchmod(fd, 0o600); os.close(fd)
+        os.replace(tmp, str(p))
+    except BaseException:
+        os.close(fd) if not os.get_inheritable(fd) else None
+        os.unlink(tmp)
+        raise
 task = json.loads(path.read_text())
 props = task.setdefault("props", {})
 pending = props.pop("flow.pending_approval", None)
-props["approved"] = True
+from_stage = props.get("status") or task.get("status") or "intake"
+props["flow.approved_stage"] = from_stage
 if pending:
     props["status"] = pending
     task["status"] = pending
-path.write_text(json.dumps(task, indent=2) + "\n")
+atomic_write(path, json.dumps(task, indent=2) + "\n")
 print(json.dumps({"ok": True, "id": tid, "status": props.get("status"), "approved_to": pending}))
 PY
 `
@@ -407,7 +476,7 @@ PY
 const localRejectCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os
+import json, os, sys, tempfile
 from pathlib import Path
 from datetime import datetime, timezone
 board = os.environ["BUTTONS_ARG_BOARD"]
@@ -415,13 +484,25 @@ tid = os.environ["BUTTONS_ARG_ID"]
 reason = os.environ.get("BUTTONS_ARG_REASON") or "rejected"
 home = os.environ.get("BUTTONS_HOME") or str(Path.home() / ".buttons")
 path = Path(home) / "flows" / board / "tasks" / f"{tid}.json"
+if not path.exists():
+    print(json.dumps({"ok": False, "error": "not_found"}))
+    sys.exit(1)
+def atomic_write(p, text):
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+    try:
+        os.write(fd, text.encode()); os.fchmod(fd, 0o600); os.close(fd)
+        os.replace(tmp, str(p))
+    except BaseException:
+        os.close(fd) if not os.get_inheritable(fd) else None
+        os.unlink(tmp)
+        raise
 task = json.loads(path.read_text())
 props = task.setdefault("props", {})
 props.pop("flow.pending_approval", None)
 props["needs_attention"] = reason
 comments = task.setdefault("comments", [])
 comments.append({"body": f"rejected: {reason}", "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")})
-path.write_text(json.dumps(task, indent=2) + "\n")
+atomic_write(path, json.dumps(task, indent=2) + "\n")
 print(json.dumps({"ok": True, "id": tid, "rejected": True}))
 PY
 `

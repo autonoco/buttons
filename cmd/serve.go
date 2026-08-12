@@ -413,22 +413,26 @@ func (h *serveHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//
 	// WaitGroup lets runListen's shutdown path drain in-flight presses
 	// instead of abandoning them.
+	execDrawer, prepErr := drawer.PrepareForExecute(d)
+	if prepErr != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "compile_failed",
+			"detail": prepErr.Error(),
+		})
+		return
+	}
+
 	h.wg.Add(1)
 
 	go func() {
 		defer h.wg.Done()
-		// Derive from h.pressCtx (cancelled on shutdown) with a 1h
-		// cap so a wedged drawer can't leak forever. Steps that honor
-		// ctx observe cancellation and return cleanly.
 		ctx, cancel := context.WithTimeout(h.pressCtx, time.Hour)
 		defer cancel()
 
 		exec := drawer.NewExecutor()
-		execDrawer, prepErr := drawer.PrepareForExecute(d)
-		if prepErr != nil {
-			fmt.Fprintf(os.Stderr, "[serve] drawer %s compile error: %v\n", d.Name, prepErr)
-			return
-		}
 		result, execErr := exec.Execute(ctx, execDrawer, map[string]any{"webhook": webhookInput})
 		if execErr != nil && result == nil {
 			fmt.Fprintf(os.Stderr, "[serve] drawer %s error: %v\n", d.Name, execErr)
@@ -441,7 +445,6 @@ func (h *serveHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(os.Stderr, "[serve] drawer %s ok (%dms)\n", d.Name, result.DurationMs)
 	}()
 
-	// Response to the webhook sender.
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(w).Encode(map[string]any{

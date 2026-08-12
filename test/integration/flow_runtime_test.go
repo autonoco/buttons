@@ -2,6 +2,7 @@ package integration
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,15 +114,15 @@ func taskCountWithStatus(t *testing.T, env *testEnv, board, status string) int {
 		Count int              `json:"count"`
 	}
 	if err := json.Unmarshal([]byte(payload), &listed); err != nil {
-		if strings.Contains(payload, status) {
-			return 1
+		t.Fatalf("parse list payload: %v %s", err, payload)
+	}
+	count := 0
+	for _, item := range listed.Items {
+		if fmt.Sprint(item["status"]) == status {
+			count++
 		}
-		return 0
 	}
-	if listed.Count > 0 {
-		return listed.Count
-	}
-	return len(listed.Items)
+	return count
 }
 
 func TestFlowInitGitHubWritesActionsWorkflow(t *testing.T) {

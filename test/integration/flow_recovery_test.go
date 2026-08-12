@@ -97,4 +97,7 @@ func TestFlowKillMidTurnRecoversViaStaleness(t *testing.T) {
 	if status != "done" {
 		t.Fatalf("expected status=done after reclaim press, got %#v task=%s", status, data)
 	}
+	if cb, _ := props["flow.claimed_by"].(string); cb == "crashed-agent" {
+		t.Fatalf("claimed_by should not be crashed-agent after recovery, got %q", cb)
+	}
 }

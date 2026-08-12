@@ -2,6 +2,7 @@ package drawer
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -67,8 +68,8 @@ func TestCompileFlowValidationFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	se, ok := err.(*ServiceError)
-	if !ok || se.Code != "VALIDATION_ERROR" {
+	var se *ServiceError
+	if !errors.As(err, &se) || se.Code != "VALIDATION_ERROR" {
 		t.Fatalf("err = %#v", err)
 	}
 	if !strings.Contains(se.Message, "initial stage") {

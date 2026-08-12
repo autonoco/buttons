@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/drawer"
@@ -23,6 +22,7 @@ var (
 	flowNoVerify bool
 	flowPurge    bool
 	flowFilter   string
+	flowReason   string
 	flowFailed   bool
 	flowTaskID   string
 	flowLimit    int
@@ -109,8 +109,8 @@ var flowRejectCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		argsMap := map[string]string{"id": args[1]}
-		if flowFilter != "" { // reuse as reason when provided via --reason alias below
-			argsMap["reason"] = flowFilter
+		if flowReason != "" {
+			argsMap["reason"] = flowReason
 		}
 		return pressFlowHelper(args[0], "reject", argsMap)
 	},
@@ -135,7 +135,7 @@ func init() {
 	flowLogsCmd.Flags().BoolVar(&flowFailed, "failed", false, "only failed presses")
 	flowLogsCmd.Flags().StringVar(&flowTaskID, "task", "", "filter by task id (best-effort)")
 	flowLogsCmd.Flags().IntVar(&flowLimit, "limit", 20, "max history entries")
-	flowRejectCmd.Flags().StringVar(&flowFilter, "reason", "", "rejection reason")
+	flowRejectCmd.Flags().StringVar(&flowReason, "reason", "", "rejection reason")
 
 	flowTaskCmd.AddCommand(
 		&cobra.Command{Use: "add BOARD TITLE", Args: cobra.MinimumNArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
@@ -240,7 +240,7 @@ func flowInit(name string) error {
 		// Install research-deck template when asking for it and missing.
 		if name == "research-deck" {
 			if err := installResearchDeckBoard(provider); err != nil {
-				return err
+				return handleDrawerError(&drawer.ServiceError{Code: "VALIDATION_ERROR", Message: err.Error()})
 			}
 			d, err = dsvc.Get(name)
 		}
@@ -318,11 +318,15 @@ func writeFlowSchedule(board, provider string) error {
 	if err := os.MkdirAll(boardDir, 0o700); err != nil {
 		return err
 	}
+	everySeconds := 60
+	if provider == "github" {
+		everySeconds = 300
+	}
 	meta := map[string]any{
 		"board":         board,
 		"provider":      provider,
 		"kind":          "poll",
-		"every_seconds": 60,
+		"every_seconds": everySeconds,
 		"command":       fmt.Sprintf("buttons drawer %s press", board),
 	}
 	raw, _ := json.MarshalIndent(meta, "", "  ")
@@ -332,10 +336,14 @@ func writeFlowSchedule(board, provider string) error {
 
 	switch provider {
 	case "github":
+		cronMinutes := everySeconds / 60
+		if cronMinutes < 1 {
+			cronMinutes = 1
+		}
 		wf := fmt.Sprintf(`name: buttons-flow-%s
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/%d * * * *"
   workflow_dispatch:
 jobs:
   press:
@@ -344,7 +352,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Press flow board
         run: buttons drawer %s press
-`, board, board)
+`, board, cronMinutes, board)
 		wfDir := filepath.Join(boardDir, "github-actions")
 		_ = os.MkdirAll(wfDir, 0o700)
 		return os.WriteFile(filepath.Join(wfDir, "press.yml"), []byte(wf), 0o600)
@@ -441,13 +449,17 @@ func flowStatus(name string) error {
 
 func flowLogs(name string) error {
 	if name == "" {
-		return fmt.Errorf("board name required")
+		if jsonOutput {
+			_ = config.WriteJSONError("MISSING_ARG", "board name required")
+			return errSilent
+		}
+		return fmt.Errorf("MISSING_ARG: board name required")
 	}
 	entries, err := drawer.ListRuns(name, flowLimit)
 	if err != nil {
 		return err
 	}
-	filtered := make([]any, 0, len(entries))
+	filtered := make([]drawer.Run, 0, len(entries))
 	for _, e := range entries {
 		if flowFailed && e.Status == "ok" {
 			continue
@@ -464,43 +476,16 @@ func flowLogs(name string) error {
 		return config.WriteJSON(map[string]any{"ok": true, "runs": filtered})
 	}
 	for _, e := range filtered {
-		raw, _ := json.Marshal(e)
-		fmt.Println(string(raw))
+		fmt.Fprintf(os.Stderr, "%s  %s  %dms  started=%s\n",
+			e.RunID, e.Status, e.DurationMs, e.StartedAt.Format("2006-01-02T15:04:05Z"))
 	}
 	return nil
 }
 
 func flowRm(name string) error {
 	dsvc := drawer.NewService()
-	d, err := dsvc.Get(name)
-	if err != nil {
+	if _, err := dsvc.ClearTriggers(name); err != nil {
 		return handleDrawerError(err)
-	}
-	// Strip webhook triggers.
-	d.Triggers = nil
-	d.UpdatedAt = time.Now().UTC()
-	// save via SetWebhook isn't for clear — write through service field isn't exported.
-	// Use a tiny hack: Get + marshal by calling SetWebhookTrigger with empty after manual file edit.
-	dir, err := config.DrawerDir(d.Name)
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(dir, "drawer.json")
-	data, err := os.ReadFile(path) // #nosec G304
-	if err != nil {
-		return err
-	}
-	var obj map[string]any
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return err
-	}
-	delete(obj, "triggers")
-	out, err := json.MarshalIndent(obj, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(path, append(out, '\n'), 0o600); err != nil {
-		return err
 	}
 	boardDir, err := config.FlowBoardDir(name)
 	if err == nil {

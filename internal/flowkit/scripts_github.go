@@ -66,14 +66,16 @@ PY
 const githubClaimCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os, subprocess, time
+import json, os, subprocess, sys, time
 
 repo = os.environ.get("BUTTONS_ARG_REPO") or os.environ.get("BUTTONS_FLOW_REPO")
+if not repo:
+    print(json.dumps({"ok": False, "error": "repo required"})); sys.exit(1)
 raw = os.environ.get("BUTTONS_ARG_TASK","{}")
 task = json.loads(raw) if raw.strip().startswith("{") else {"id": raw}
 tid = str(task.get("id") or "")
-if not repo or not tid:
-    print(json.dumps({"claimed": False, "reason": "missing_repo_or_id"}))
+if not tid:
+    print(json.dumps({"claimed": False, "reason": "missing_id"}))
     raise SystemExit(0)
 holder = os.environ.get("BUTTONS_FLOW_HOLDER") or os.environ.get("GITHUB_ACTOR") or "buttons-agent"
 view = subprocess.run(["gh","issue","view",tid,"--repo",repo,"--json","assignees,labels"], capture_output=True, text=True)
@@ -81,9 +83,10 @@ if view.returncode != 0:
     print(json.dumps({"claimed": False, "reason": "view_failed", "error": view.stderr.strip()}))
     raise SystemExit(0)
 data = json.loads(view.stdout)
-assignees = data.get("assignees") or []
-if assignees and assignees[0].get("login") != holder:
-    print(json.dumps({"claimed": False, "reason": "already_claimed", "claimed_by": assignees[0].get("login")}))
+assignees = [a.get("login") for a in (data.get("assignees") or [])]
+others = [a for a in assignees if a != holder]
+if others:
+    print(json.dumps({"claimed": False, "reason": "already_claimed", "claimed_by": others[0]}))
     raise SystemExit(0)
 edit = subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--add-assignee",holder,"--add-label","Agent Claimed"], capture_output=True, text=True)
 if edit.returncode != 0:
@@ -92,8 +95,8 @@ if edit.returncode != 0:
 time.sleep(float(os.environ.get("BUTTONS_FLOW_CLAIM_WAIT","1")))
 view2 = subprocess.run(["gh","issue","view",tid,"--repo",repo,"--json","assignees"], capture_output=True, text=True)
 data2 = json.loads(view2.stdout or "{}")
-assignees2 = data2.get("assignees") or []
-if not assignees2 or assignees2[0].get("login") != holder:
+assignees2 = [a.get("login") for a in (data2.get("assignees") or [])]
+if assignees2 != [holder]:
     print(json.dumps({"claimed": False, "reason": "lost_race"}))
     raise SystemExit(0)
 print(json.dumps({"claimed": True, "claimed_by": holder, "id": tid}))
@@ -103,19 +106,23 @@ PY
 const githubApplyCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os, subprocess
+import json, os, subprocess, sys
 
 repo = os.environ.get("BUTTONS_ARG_REPO") or os.environ.get("BUTTONS_FLOW_REPO")
+if not repo:
+    print(json.dumps({"ok": False, "error": "repo required"})); sys.exit(1)
 raw_task = os.environ.get("BUTTONS_ARG_TASK","{}")
 task = json.loads(raw_task) if raw_task.strip().startswith("{") else {"id": raw_task}
 tid = str(task.get("id") or "")
 verdict = json.loads(os.environ.get("BUTTONS_ARG_VERDICT") or "{}")
 gates = json.loads(os.environ.get("BUTTONS_ARG_GATES") or "{}")
-if not repo or not tid:
-    print(json.dumps({"applied": False, "reason": "missing_repo_or_id"}))
+if not tid:
+    print(json.dumps({"applied": False, "reason": "missing_id"}))
     raise SystemExit(0)
 if not verdict.get("ok", True):
-    subprocess.run(["gh","issue","comment",tid,"--repo",repo,"--body",f"needs_attention: {verdict.get('reason')}"], check=False)
+    proc = subprocess.run(["gh","issue","comment",tid,"--repo",repo,"--body",f"needs_attention: {verdict.get('reason')}"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(json.dumps({"ok": False, "error": proc.stderr.strip() or "comment failed"})); sys.exit(1)
     print(json.dumps({"applied": False, "reason": verdict.get("reason")}))
     raise SystemExit(0)
 v = verdict.get("verdict")
@@ -123,20 +130,25 @@ from_stage = verdict.get("from_stage") or (task.get("props") or {}).get("status"
 to_stage = verdict.get("to_stage") or from_stage
 gate = gates.get(from_stage) or {}
 if v == "advance" and gate.get("requires_human_approval"):
-    subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--add-label","flow.pending_approval"], check=False)
+    proc = subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--add-label","flow.pending_approval"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(json.dumps({"ok": False, "error": proc.stderr.strip() or "label failed"})); sys.exit(1)
     print(json.dumps({"applied": True, "pending_approval": to_stage, "id": tid}))
     raise SystemExit(0)
 if v == "advance":
-    # swap status label
     if from_stage:
-        subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--remove-label",f"status:{from_stage}"], check=False)
-    subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--add-label",f"status:{to_stage}"], check=False)
+        subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--remove-label",f"status:{from_stage}"], capture_output=True, text=True)
+    proc = subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--add-label",f"status:{to_stage}"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(json.dumps({"ok": False, "error": proc.stderr.strip() or "status update failed"})); sys.exit(1)
     if to_stage == "done":
-        subprocess.run(["gh","issue","close",tid,"--repo",repo], check=False)
+        subprocess.run(["gh","issue","close",tid,"--repo",repo], capture_output=True, text=True)
 if verdict.get("summary"):
-    subprocess.run(["gh","issue","comment",tid,"--repo",repo,"--body",verdict["summary"]], check=False)
-# clear assignee to release claim
-subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--remove-assignee","@me"], check=False)
+    subprocess.run(["gh","issue","comment",tid,"--repo",repo,"--body",verdict["summary"]], capture_output=True, text=True)
+holder = os.environ.get("BUTTONS_FLOW_HOLDER") or os.environ.get("GITHUB_ACTOR") or "buttons-agent"
+proc = subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--remove-assignee",holder], capture_output=True, text=True)
+if proc.returncode != 0:
+    print(json.dumps({"ok": False, "error": proc.stderr.strip() or "release claim failed"})); sys.exit(1)
 print(json.dumps({"applied": True, "status": to_stage if v=="advance" else from_stage, "id": tid, "verdict": v}))
 PY
 `
@@ -166,8 +178,10 @@ PY
 const githubTaskListCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os, subprocess
+import json, os, subprocess, sys
 repo = os.environ.get("BUTTONS_ARG_REPO") or os.environ.get("BUTTONS_FLOW_REPO")
+if not repo:
+    print(json.dumps({"ok": False, "error": "repo required"})); sys.exit(1)
 board = os.environ["BUTTONS_ARG_BOARD"]
 filt = os.environ.get("BUTTONS_ARG_FILTER") or ""
 want_status = None
@@ -194,8 +208,10 @@ PY
 const githubTaskReadCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os, subprocess
+import json, os, subprocess, sys
 repo = os.environ.get("BUTTONS_ARG_REPO") or os.environ.get("BUTTONS_FLOW_REPO")
+if not repo:
+    print(json.dumps({"ok": False, "error": "repo required"})); sys.exit(1)
 tid = os.environ["BUTTONS_ARG_ID"]
 proc = subprocess.run(["gh","issue","view",tid,"--repo",repo,"--json","number,title,body,labels,assignees,state"], capture_output=True, text=True)
 if proc.returncode != 0:
@@ -213,8 +229,10 @@ PY
 const githubTaskUpdateCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os, subprocess
+import json, os, subprocess, sys
 repo = os.environ.get("BUTTONS_ARG_REPO") or os.environ.get("BUTTONS_FLOW_REPO")
+if not repo:
+    print(json.dumps({"ok": False, "error": "repo required"})); sys.exit(1)
 tid = os.environ["BUTTONS_ARG_ID"]
 patch = json.loads(os.environ.get("BUTTONS_ARG_PATCH") or "{}")
 if "title" in patch:
@@ -231,8 +249,10 @@ PY
 const githubTaskRmCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os, subprocess
+import json, os, subprocess, sys
 repo = os.environ.get("BUTTONS_ARG_REPO") or os.environ.get("BUTTONS_FLOW_REPO")
+if not repo:
+    print(json.dumps({"ok": False, "error": "repo required"})); sys.exit(1)
 tid = os.environ["BUTTONS_ARG_ID"]
 subprocess.run(["gh","issue","close",tid,"--repo",repo,"--comment","removed via buttons flow task rm"], check=False)
 print(json.dumps({"ok": True, "id": tid}))
@@ -242,11 +262,15 @@ PY
 const githubTaskCommentCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os, subprocess
+import json, os, subprocess, sys
 repo = os.environ.get("BUTTONS_ARG_REPO") or os.environ.get("BUTTONS_FLOW_REPO")
+if not repo:
+    print(json.dumps({"ok": False, "error": "repo required"})); sys.exit(1)
 tid = os.environ["BUTTONS_ARG_ID"]
 body = os.environ.get("BUTTONS_ARG_BODY") or ""
-subprocess.run(["gh","issue","comment",tid,"--repo",repo,"--body",body], check=True)
+proc = subprocess.run(["gh","issue","comment",tid,"--repo",repo,"--body",body], capture_output=True, text=True)
+if proc.returncode != 0:
+    print(json.dumps({"ok": False, "error": proc.stderr.strip() or "comment failed"})); sys.exit(1)
 print(json.dumps({"ok": True, "id": tid}))
 PY
 `
@@ -254,10 +278,14 @@ PY
 const githubApproveCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os, subprocess
+import json, os, subprocess, sys
 repo = os.environ.get("BUTTONS_ARG_REPO") or os.environ.get("BUTTONS_FLOW_REPO")
+if not repo:
+    print(json.dumps({"ok": False, "error": "repo required"})); sys.exit(1)
 tid = os.environ["BUTTONS_ARG_ID"]
-subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--remove-label","flow.pending_approval","--add-label","approved"], check=False)
+proc = subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--remove-label","flow.pending_approval","--add-label","approved"], capture_output=True, text=True)
+if proc.returncode != 0:
+    print(json.dumps({"ok": False, "error": proc.stderr.strip() or "approve failed"})); sys.exit(1)
 print(json.dumps({"ok": True, "id": tid, "approved": True}))
 PY
 `
@@ -265,12 +293,18 @@ PY
 const githubRejectCode = `#!/bin/sh
 set -e
 python3 - <<'PY'
-import json, os, subprocess
+import json, os, subprocess, sys
 repo = os.environ.get("BUTTONS_ARG_REPO") or os.environ.get("BUTTONS_FLOW_REPO")
+if not repo:
+    print(json.dumps({"ok": False, "error": "repo required"})); sys.exit(1)
 tid = os.environ["BUTTONS_ARG_ID"]
 reason = os.environ.get("BUTTONS_ARG_REASON") or "rejected"
-subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--remove-label","flow.pending_approval"], check=False)
-subprocess.run(["gh","issue","comment",tid,"--repo",repo,"--body",f"rejected: {reason}"], check=False)
+proc = subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--remove-label","flow.pending_approval"], capture_output=True, text=True)
+if proc.returncode != 0:
+    print(json.dumps({"ok": False, "error": proc.stderr.strip() or "reject failed"})); sys.exit(1)
+proc = subprocess.run(["gh","issue","comment",tid,"--repo",repo,"--body",f"rejected: {reason}"], capture_output=True, text=True)
+if proc.returncode != 0:
+    print(json.dumps({"ok": False, "error": proc.stderr.strip() or "comment failed"})); sys.exit(1)
 print(json.dumps({"ok": True, "id": tid, "rejected": True}))
 PY
 `
