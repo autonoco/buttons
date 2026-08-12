@@ -130,13 +130,62 @@ func TestFlowDrawerRejectsActionExecutionCommands(t *testing.T) {
 		t.Fatalf("create button: %s", r.Stderr)
 	}
 
-	for _, args := range [][]string{
-		{"drawer", "managed-flow", "add", "build", "--json"},
-		{"drawer", "managed-flow", "press", "--json"},
-	} {
+	// Adding action steps to a flow drawer remains forbidden.
+	r = env.run("drawer", "managed-flow", "add", "build", "--json")
+	if r.ExitCode == 0 || !strings.Contains(r.Stdout+r.Stderr, "flow drawer") {
+		t.Fatalf("add should reject action execution: exit=%d stdout=%s stderr=%s", r.ExitCode, r.Stdout, r.Stderr)
+	}
+
+	// Press is now allowed through the flow compiler; an incomplete
+	// definition fails validation rather than FLOW_RUNTIME_REQUIRED.
+	r = env.run("drawer", "managed-flow", "press", "--json")
+	if r.ExitCode == 0 {
+		t.Fatalf("press incomplete flow should fail validation: stdout=%s", r.Stdout)
+	}
+	out := r.Stdout + r.Stderr
+	if strings.Contains(out, "FLOW_RUNTIME_REQUIRED") {
+		t.Fatalf("press should not return FLOW_RUNTIME_REQUIRED anymore: %s", out)
+	}
+}
+
+func TestFlowDrawerPressCompilesAndRuns(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Install local pipeline buttons used by CompileFlow.
+	r := env.run("flow", "ensure-buttons", "--on", "local", "--json")
+	if r.ExitCode != 0 {
+		t.Fatalf("ensure-buttons: exit=%d stdout=%s stderr=%s", r.ExitCode, r.Stdout, r.Stderr)
+	}
+
+	commands := [][]string{
+		{"drawer", "create", "demo-board", "--kind", "flow", "--json"},
+		{"drawer", "demo-board", "stage", "add", "intake", "--title", "Intake"},
+		{"drawer", "demo-board", "stage", "add", "done", "--title", "Done"},
+		{"drawer", "demo-board", "set", "flow.initial_stage=intake"},
+		{"drawer", "demo-board", "set", "flow.manager.agent=activation.manager"},
+		{"drawer", "demo-board", "set", `flow.stages.intake.transitions=["done"]`},
+		{"drawer", "demo-board", "set", "flow.provider=local"},
+	}
+	for _, args := range commands {
 		r = env.run(args...)
-		if r.ExitCode == 0 || !strings.Contains(r.Stdout+r.Stderr, "flow drawer") {
-			t.Fatalf("%s should reject action execution: exit=%d stdout=%s stderr=%s", strings.Join(args, " "), r.ExitCode, r.Stdout, r.Stderr)
+		if r.ExitCode != 0 {
+			t.Fatalf("%s: exit=%d stdout=%s stderr=%s", strings.Join(args, " "), r.ExitCode, r.Stdout, r.Stderr)
+		}
+	}
+
+	r = env.run("flow", "task", "add", "demo-board", "login page 500s on Safari", "--json")
+	if r.ExitCode != 0 {
+		t.Fatalf("task add: exit=%d stdout=%s stderr=%s", r.ExitCode, r.Stdout, r.Stderr)
+	}
+
+	r = env.run("drawer", "demo-board", "press", "--json")
+	if r.ExitCode != 0 {
+		t.Fatalf("press flow: exit=%d stdout=%s stderr=%s", r.ExitCode, r.Stdout, r.Stderr)
+	}
+	if !strings.Contains(r.Stdout, `"ok"`) && !strings.Contains(r.Stdout, `"status": "ok"`) {
+		// ExecuteResult uses status field
+		if !strings.Contains(r.Stdout, `"status"`) {
+			t.Fatalf("unexpected press output: %s", r.Stdout)
 		}
 	}
 }

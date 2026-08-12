@@ -98,6 +98,24 @@
       ],
       "type": "object"
     },
+    "FlowCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "skills": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "FlowCompletion": {
       "additionalProperties": false,
       "properties": {
@@ -125,6 +143,18 @@
           "$ref": "#/$defs/FlowManager",
           "description": "Default manager binding and supervision prompt"
         },
+        "provider": {
+          "description": "Task provider for compiled presses",
+          "enum": [
+            "local",
+            "github"
+          ],
+          "type": "string"
+        },
+        "roles": {
+          "description": "Named role registry for stage bindings",
+          "type": "object"
+        },
         "stages": {
           "description": "Ordered board stages",
           "items": {
@@ -138,6 +168,35 @@
         "manager",
         "stages"
       ],
+      "type": "object"
+    },
+    "FlowEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "description": "Verdict/output field names required to advance",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "FlowGate": {
+      "additionalProperties": false,
+      "properties": {
+        "approvers": {
+          "description": "Optional approver identities",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "requires_human_approval": {
+          "type": "boolean"
+        }
+      },
       "type": "object"
     },
     "FlowLimits": {
@@ -220,11 +279,23 @@
     "FlowStage": {
       "additionalProperties": false,
       "properties": {
+        "capabilities": {
+          "$ref": "#/$defs/FlowCapabilities",
+          "description": "Tools and skills available during a stage turn"
+        },
         "completion": {
           "$ref": "#/$defs/FlowCompletion"
         },
         "concurrency": {
           "type": "integer"
+        },
+        "evidence": {
+          "$ref": "#/$defs/FlowEvidence",
+          "description": "Evidence requirements checked by validate"
+        },
+        "gate": {
+          "$ref": "#/$defs/FlowGate",
+          "description": "Human-approval gate for advances out of this stage"
         },
         "id": {
           "description": "Stable stage id",
@@ -233,8 +304,20 @@
         "manager": {
           "$ref": "#/$defs/FlowManager"
         },
+        "on_feedback": {
+          "description": "Prompt used when the turn is a comment/feedback event",
+          "type": "string"
+        },
         "retry": {
           "$ref": "#/$defs/FlowRetry"
+        },
+        "review": {
+          "description": "Review prompt for gated human stages",
+          "type": "string"
+        },
+        "role": {
+          "description": "Role id from flow.roles",
+          "type": "string"
         },
         "session_policy": {
           "$ref": "#/$defs/FlowSessionPolicy"

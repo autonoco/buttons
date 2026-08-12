@@ -80,13 +80,14 @@ func runManifestInstall(ctx context.Context, refreshFloating bool) (*store.Resul
 func resolveRegistrySource() (store.Source, error) {
 	reg := registryURL()
 	if reg == "" {
-		return nil, fmt.Errorf("registry URL not set: set $BUTTONS_REGISTRY_URL")
+		// No remote registry configured — still serve builtin flow packages.
+		return store.PreferBuiltin{}, nil
 	}
 	key := registryKey()
 	if key == "" {
 		return nil, fmt.Errorf("registry key not set: run `buttons batteries set REGISTRY_KEY <key>` (or set $BUTTONS_BAT_REGISTRY_KEY)")
 	}
-	return &store.HTTPSource{BaseURL: reg, Key: key}, nil
+	return store.PreferBuiltin{Primary: &store.HTTPSource{BaseURL: reg, Key: key}}, nil
 }
 
 func registryKey() string {

@@ -95,6 +95,12 @@ type FlowDefinition struct {
 	Manager      FlowManager `json:"manager" jsonschema:"description=Default manager binding and supervision prompt"`
 	Limits       *FlowLimits `json:"limits,omitempty" jsonschema:"description=Definition-wide execution limits"`
 	Stages       []FlowStage `json:"stages" jsonschema:"description=Ordered board stages"`
+	// Provider selects which provider/claim button set CompileFlow wires
+	// (local file tasks vs GitHub issues). Set by `buttons flow init --on`.
+	Provider string `json:"provider,omitempty" jsonschema:"enum=local,enum=github,description=Task provider for compiled presses"`
+	// Roles is an optional named role registry composed into perform prompts
+	// (board → stage → role, additive).
+	Roles map[string]FlowRole `json:"roles,omitempty" jsonschema:"description=Named role registry for stage bindings"`
 }
 
 type FlowManager struct {
@@ -126,6 +132,47 @@ type FlowStage struct {
 	Retry          *FlowRetry         `json:"retry,omitempty"`
 	TimeoutSeconds int                `json:"timeout_seconds,omitempty"`
 	Concurrency    int                `json:"concurrency,omitempty"`
+	// Gate requires human approval before apply writes an advance status.
+	Gate *FlowGate `json:"gate,omitempty" jsonschema:"description=Human-approval gate for advances out of this stage"`
+	// Role references FlowDefinition.Roles by id for prompt/capability composition.
+	Role string `json:"role,omitempty" jsonschema:"description=Role id from flow.roles"`
+	// OnFeedback is used by perform when the triggering event is a comment.
+	OnFeedback string `json:"on_feedback,omitempty" jsonschema:"description=Prompt used when the turn is a comment/feedback event"`
+	// Review is an optional review prompt composed into gated stages.
+	Review string `json:"review,omitempty" jsonschema:"description=Review prompt for gated human stages"`
+	// Evidence lists required fields on an advance verdict.
+	Evidence *FlowEvidence `json:"evidence,omitempty" jsonschema:"description=Evidence requirements checked by validate"`
+	// Capabilities resolve to tools/skills on the compiled perform button.
+	Capabilities *FlowCapabilities `json:"capabilities,omitempty" jsonschema:"description=Tools and skills available during a stage turn"`
+}
+
+// FlowGate parks advances behind human approval (flow.pending_approval).
+type FlowGate struct {
+	RequiresHumanApproval bool     `json:"requires_human_approval,omitempty"`
+	Approvers             []string `json:"approvers,omitempty" jsonschema:"description=Optional approver identities"`
+}
+
+// FlowRole is a named agent persona composed into perform at compile time.
+type FlowRole struct {
+	SystemPrompt   string            `json:"system_prompt,omitempty"`
+	Model          string            `json:"model,omitempty"`
+	Capabilities   *FlowCapabilities `json:"capabilities,omitempty"`
+	Heartbeat      int               `json:"heartbeat_seconds,omitempty"`
+	Cron           string            `json:"cron,omitempty"`
+	Watches        []string          `json:"watches,omitempty"`
+	TimeoutSeconds int               `json:"timeout_seconds,omitempty"`
+	Escalation     string            `json:"escalation,omitempty"`
+}
+
+// FlowEvidence is checked by the validate button before accepting an advance.
+type FlowEvidence struct {
+	Required []string `json:"required,omitempty" jsonschema:"description=Verdict/output field names required to advance"`
+}
+
+// FlowCapabilities lists tools and skills the perform turn may use.
+type FlowCapabilities struct {
+	Skills []string `json:"skills,omitempty"`
+	Tools  []string `json:"tools,omitempty"`
 }
 
 type FlowSessionPolicy struct {

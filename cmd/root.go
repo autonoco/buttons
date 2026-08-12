@@ -74,7 +74,7 @@ func Execute() {
 	if len(os.Args) >= 3 && os.Args[2] == "logs" && !strings.HasPrefix(os.Args[1], "-") {
 		switch os.Args[1] {
 		case "add", "drawer", "create", "press", "list", "delete", "rm", "remove",
-			"batteries", "board", "config", "history", "init", "logs",
+			"batteries", "board", "config", "flow", "history", "init", "logs",
 			"smash", "status", "store", "summary", "tail", "update", "version":
 			// Already a subcommand; don't rewrite.
 		default:

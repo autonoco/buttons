@@ -191,6 +191,17 @@ func (s *Service) SetFlowField(drawerName, path string, value any) (*Drawer, err
 		setErr = setString(&d.Flow.Manager.SystemPrompt)
 	case "manager.heartbeat_seconds":
 		setErr = setInt(&d.Flow.Manager.HeartbeatSeconds)
+	case "provider":
+		v, ok := value.(string)
+		if !ok {
+			setErr = fmt.Errorf("must be a string")
+		} else if v != "local" && v != "github" {
+			setErr = fmt.Errorf("must be local or github")
+		} else {
+			d.Flow.Provider = v
+		}
+	case "roles":
+		setErr = decodeFlowValue(value, &d.Flow.Roles)
 	case "limits.max_active_tasks", "limits.max_runtime_seconds", "limits.max_attempts_per_stage":
 		if d.Flow.Limits == nil {
 			d.Flow.Limits = &FlowLimits{}
@@ -273,6 +284,37 @@ func (s *Service) SetFlowField(drawerName, path string, value any) (*Drawer, err
 			case "retry.initial_seconds":
 				setErr = setInt(&stage.Retry.InitialSeconds)
 			}
+		case "role":
+			setErr = setString(&stage.Role)
+		case "on_feedback":
+			setErr = setString(&stage.OnFeedback)
+		case "review":
+			setErr = setString(&stage.Review)
+		case "gate.requires_human_approval":
+			if stage.Gate == nil {
+				stage.Gate = &FlowGate{}
+			}
+			setErr = setBool(&stage.Gate.RequiresHumanApproval)
+		case "gate.approvers":
+			if stage.Gate == nil {
+				stage.Gate = &FlowGate{}
+			}
+			setErr = decodeFlowValue(value, &stage.Gate.Approvers)
+		case "evidence.required":
+			if stage.Evidence == nil {
+				stage.Evidence = &FlowEvidence{}
+			}
+			setErr = decodeFlowValue(value, &stage.Evidence.Required)
+		case "capabilities.skills":
+			if stage.Capabilities == nil {
+				stage.Capabilities = &FlowCapabilities{}
+			}
+			setErr = decodeFlowValue(value, &stage.Capabilities.Skills)
+		case "capabilities.tools":
+			if stage.Capabilities == nil {
+				stage.Capabilities = &FlowCapabilities{}
+			}
+			setErr = decodeFlowValue(value, &stage.Capabilities.Tools)
 		default:
 			return nil, &ServiceError{Code: "FLOW_FIELD_UNKNOWN", Message: fmt.Sprintf("unknown flow stage field %q", field)}
 		}

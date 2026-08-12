@@ -424,7 +424,12 @@ func (h *serveHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 
 		exec := drawer.NewExecutor()
-		result, execErr := exec.Execute(ctx, d, map[string]any{"webhook": webhookInput})
+		execDrawer, prepErr := drawer.PrepareForExecute(d)
+		if prepErr != nil {
+			fmt.Fprintf(os.Stderr, "[serve] drawer %s compile error: %v\n", d.Name, prepErr)
+			return
+		}
+		result, execErr := exec.Execute(ctx, execDrawer, map[string]any{"webhook": webhookInput})
 		if execErr != nil && result == nil {
 			fmt.Fprintf(os.Stderr, "[serve] drawer %s error: %v\n", d.Name, execErr)
 			return
