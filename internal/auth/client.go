@@ -119,7 +119,9 @@ func (c *Client) Login(ctx context.Context, options LoginOptions) (Credentials, 
 	}
 	existing, existingErr := c.Store.Load(registryURL)
 	if existingErr == nil {
-		if !options.SwitchOrganization {
+		// An envelope without a capability token is a partial login (the
+		// capability exchange failed), so a plain retry may resume it.
+		if existing.CapabilityToken != "" && !options.SwitchOrganization {
 			return Credentials{}, errors.New("already logged in; use --switch-organization to replace the current organization")
 		}
 		if err := c.revokeCredential(ctx, existing); err != nil {
@@ -163,7 +165,7 @@ func (c *Client) Login(ctx context.Context, options LoginOptions) (Credentials, 
 		return Credentials{}, errors.New("OAuth provider metadata is incomplete")
 	}
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		return Credentials{}, fmt.Errorf("start loopback listener: %w", err)
 	}

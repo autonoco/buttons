@@ -25,7 +25,8 @@ var publishCmd = &cobra.Command{
 is never published.
 
 Publish uses $BUTTONS_REGISTRY_URL when set, otherwise it uses the registry URL
-pinned by "buttons login". This repo does not ship a default registry host.
+pinned by "buttons login". The https://api.buttons.sh default applies to login
+and logout only; publish requires $BUTTONS_REGISTRY_URL or a pinned registry.
 
 A registry publish takes a scoped name (@desk/name): the on-disk package is
 found by its bare name, and @desk is its registry namespace. The CLI detects

@@ -129,7 +129,11 @@ func TestLoginUsesDiscoveryLoopbackPKCEAndStoresOneEnvelope(t *testing.T) {
 		}
 		callback := authorize.Query().Get("redirect_uri") + "?code=provider-code&state=" + url.QueryEscape(authorize.Query().Get("state"))
 		go func() {
-			response, err := http.Get(callback)
+			request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, callback, nil)
+			if err != nil {
+				return
+			}
+			response, err := http.DefaultClient.Do(request)
 			if err == nil {
 				_ = response.Body.Close()
 			}
@@ -199,6 +203,28 @@ func TestLoginRetainsProviderCredentialWhenCapabilityExchangeFails(t *testing.T)
 	}
 	if store.credential == nil || store.credential.RefreshToken != "oauth-refresh" || store.credential.CapabilityToken != "" {
 		t.Fatalf("provider credential was not retained without a capability: %#v", store.credential)
+	}
+}
+
+func TestLoginRetriesPlainlyAfterFailedCapabilityExchange(t *testing.T) {
+	server, openBrowser, events := loginFailureFixture(t, http.StatusCreated)
+	defer server.Close()
+	store := &memoryStore{credential: &Credentials{
+		RegistryURL: server.URL, ClientID: "buttons-cli", RefreshToken: "stale-refresh",
+		RevocationEndpoint: server.URL + "/oauth/revoke",
+	}}
+	client := NewClient(store)
+	client.OpenBrowser = openBrowser
+
+	credential, err := client.Login(context.Background(), LoginOptions{RegistryURL: server.URL})
+	if err != nil {
+		t.Fatalf("plain login retry after failed capability exchange: %v", err)
+	}
+	if credential.CapabilityToken != "bpt_login" || credential.OrganizationID != "org_master" {
+		t.Fatalf("unexpected credential: %#v", credential)
+	}
+	if strings.Join(*events, ",") != "oauth-revoke" {
+		t.Fatalf("stale provider credential was not revoked before retry: %v", *events)
 	}
 }
 
@@ -285,7 +311,11 @@ func loginFailureFixture(t *testing.T, capabilityStatus int) (*httptest.Server, 
 		}
 		callback := authorize.Query().Get("redirect_uri") + "?code=provider-code&state=" + url.QueryEscape(authorize.Query().Get("state"))
 		go func() {
-			response, err := http.Get(callback)
+			request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, callback, nil)
+			if err != nil {
+				return
+			}
+			response, err := http.DefaultClient.Do(request)
 			if err == nil {
 				_ = response.Body.Close()
 			}
