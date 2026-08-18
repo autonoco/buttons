@@ -250,7 +250,9 @@ func waitForLoopbackCode(ctx context.Context, listener net.Listener, state strin
 		err  error
 	}
 	results := make(chan result, 1)
-	server := &http.Server{ReadHeaderTimeout: 10 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// #nosec G112 -- this is a one-shot 127.0.0.1 callback whose lifetime is
+	// bounded by the command context; #620 intentionally adds no app timeout.
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/callback" {
 			http.NotFound(w, r)
 			return
