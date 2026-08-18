@@ -16,12 +16,11 @@ permissions:
 
 env:
   # Pinned Go toolchain. Bumping this also resolves stdlib CVEs
-  # tracked in autonoco/autono#331. 1.26.4 clears four reachable
-  # vulnerabilities that 1.26.2 is exposed to: GO-2026-4918 (net/http
-  # HTTP/2 infinite loop) and GO-2026-4971 (net) fixed in 1.26.3, plus
-  # GO-2026-5037 (crypto/x509) and GO-2026-5039 (net/textproto) fixed
-  # in 1.26.4.
-  GO_VERSION: "1.26.5"
+  # tracked in autonoco/autono#331. 1.26.6 clears five reachable
+  # vulnerabilities that 1.26.5 is exposed to: GO-2026-6218 (net/url),
+  # GO-2026-6090 (crypto/tls), GO-2026-6089 (net/http), GO-2026-5972
+  # (encoding/asn1), and GO-2026-5026 (x/net/idna via net/http).
+  GO_VERSION: "1.26.6"
 
 jobs:
   test:
