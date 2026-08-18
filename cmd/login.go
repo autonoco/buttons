@@ -48,7 +48,7 @@ system keychain. The CLI contains no provider-specific authentication code.`,
 
 		// The registry URL is non-secret configuration. OAuth tokens and the
 		// publish capability exist only in the OS keychain envelope above.
-		registry := strings.TrimRight(loginRegistry, "/")
+		registry := credential.RegistryURL
 		if svc, batteryErr := newBatteryService(); batteryErr != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not persist REGISTRY_URL: %v\n", batteryErr)
 		} else if setErr := svc.Set("REGISTRY_URL", registry, battery.ScopeGlobal); setErr != nil {

@@ -147,6 +147,9 @@ func TestLoginUsesDiscoveryLoopbackPKCEAndStoresOneEnvelope(t *testing.T) {
 	if credential.CapabilityToken != "bpt_login" || credential.OrganizationID != "org_master" {
 		t.Fatalf("unexpected credential: %#v", credential)
 	}
+	if credential.RegistryURL != server.URL {
+		t.Fatalf("credential registry URL = %q, want %q", credential.RegistryURL, server.URL)
+	}
 	if store.credential == nil || store.credential.RefreshToken != "oauth-refresh" {
 		t.Fatalf("credential envelope was not saved: %#v", store.credential)
 	}
