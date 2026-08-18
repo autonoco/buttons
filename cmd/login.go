@@ -1,236 +1,101 @@
 package cmd
 
 import (
-	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
-	"time"
 
+	buttonsauth "github.com/autonoco/buttons/internal/auth"
 	"github.com/autonoco/buttons/internal/battery"
+	"github.com/autonoco/buttons/internal/config"
 	"github.com/spf13/cobra"
 )
 
-// buttons login — browser-based authorization against the Buttons platform
-// (PKCE authorization-code with a 127.0.0.1 loopback redirect, the same shape
-// as `gh auth login`). The browser page mints nothing by itself: this process
-// holds the PKCE verifier, so only it can redeem the one-time code for the
-// publish token. The token lands in the global REGISTRY_WRITE_KEY battery,
-// which `buttons publish` already reads — no separate credential store.
-
-const (
-	defaultRegistryURL = "https://api.buttons.sh"
-	defaultDeskURL     = "https://desk.buttons.sh"
-	loginTimeout       = 3 * time.Minute
-)
+const defaultRegistryURL = "https://api.buttons.sh"
 
 var (
-	loginRegistry  string
-	loginDesk      string
-	loginNoBrowser bool
+	loginRegistry           string
+	loginNoBrowser          bool
+	loginSwitchOrganization bool
+	logoutRegistry          string
 )
 
 var loginCmd = &cobra.Command{
 	Use:   "login",
-	Short: "Connect this machine to the Buttons platform",
-	Long: `Authorize this machine in your browser and store a publish token.
+	Short: "Sign in to a registry with OAuth",
+	Long: `Sign in through the registry's standard OAuth/OIDC provider.
 
-Opens your Buttons console to approve the connection under your organization,
-then stores the issued token as the global REGISTRY_WRITE_KEY battery (used by
-"buttons publish") and pins the registry URL as the REGISTRY_URL battery.
-
-Revoke a machine any time from the console's Desks page.`,
+The CLI discovers the provider, opens an authorization-code + PKCE flow on a
+127.0.0.1 loopback callback, and stores one credential envelope in the operating
+system keychain. The CLI contains no provider-specific authentication code.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		verifier, challenge, state, err := pkcePair()
-		if err != nil {
-			return fmt.Errorf("generate PKCE material: %w", err)
-		}
-
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			return fmt.Errorf("start loopback listener: %w", err)
-		}
-		defer listener.Close()
-		port := listener.Addr().(*net.TCPAddr).Port
-
 		host, _ := os.Hostname()
-		authorizeURL := strings.TrimRight(loginDesk, "/") + "/cli-authorize?" + url.Values{
-			"state":     {state},
-			"challenge": {challenge},
-			"port":      {fmt.Sprint(port)},
-			"label":     {host},
-		}.Encode()
-
-		if loginNoBrowser || !openBrowser(authorizeURL) {
-			fmt.Fprintf(os.Stderr, "Open this URL in your browser to authorize:\n\n  %s\n\n", authorizeURL)
-		} else {
-			fmt.Fprintln(os.Stderr, "Opened your browser to authorize this machine. Waiting…")
-		}
-
-		code, err := waitForLoopbackCode(listener, state)
+		client := buttonsauth.NewClient(buttonsauth.KeyringStore{})
+		client.OpenBrowser = openBrowser
+		credential, err := client.Login(cmd.Context(), buttonsauth.LoginOptions{
+			RegistryURL:        loginRegistry,
+			Label:              host,
+			NoBrowser:          loginNoBrowser,
+			SwitchOrganization: loginSwitchOrganization,
+		})
 		if err != nil {
-			return err
+			return loginCommandError("LOGIN_ERROR", err)
 		}
 
-		token, orgID, err := exchangeLoginCode(strings.TrimRight(loginRegistry, "/"), code, verifier)
-		if err != nil {
-			return err
-		}
-
+		// The registry URL is non-secret configuration. OAuth tokens and the
+		// publish capability exist only in the OS keychain envelope above.
 		svc, err := newBatteryService()
 		if err != nil {
-			return handleBatteryError(err)
-		}
-		if err := svc.Set("REGISTRY_WRITE_KEY", token, battery.ScopeGlobal); err != nil {
 			return handleBatteryError(err)
 		}
 		if err := svc.Set("REGISTRY_URL", strings.TrimRight(loginRegistry, "/"), battery.ScopeGlobal); err != nil {
 			return handleBatteryError(err)
 		}
 
-		fmt.Fprintf(os.Stderr, "Logged in: %s connected to %s\n", host, orgID)
-		printNextHint("publish with `buttons publish @%s/<name>`", orgID)
+		if jsonOutput {
+			return config.WriteJSON(map[string]any{
+				"organization_id": credential.OrganizationID,
+				"registry_url":    strings.TrimRight(loginRegistry, "/"),
+			})
+		}
+		fmt.Fprintf(os.Stderr, "Logged in to organization %s.\n", credential.OrganizationID)
+		printNextHint("publish with `buttons publish @<namespace>/<name>`")
 		return nil
 	},
 }
 
 var logoutCmd = &cobra.Command{
 	Use:   "logout",
-	Short: "Disconnect this machine from the Buttons platform",
-	Long: `Remove the stored publish token and registry URL.
-
-The token itself stays valid until revoked from the console's Desks page —
-logout only forgets it on this machine.`,
+	Short: "Revoke registry OAuth credentials and sign out",
+	Long: `Revoke both the bounded publish capability and the OAuth refresh token,
+then remove the credential envelope from the operating system keychain.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		svc, err := newBatteryService()
-		if err != nil {
-			return handleBatteryError(err)
+		client := buttonsauth.NewClient(buttonsauth.KeyringStore{})
+		registry := resolveLogoutRegistry(logoutRegistry, registryURL)
+		if err := client.Logout(cmd.Context(), registry); err != nil {
+			return loginCommandError("LOGOUT_ERROR", err)
 		}
-		for _, key := range []string{"REGISTRY_WRITE_KEY", "REGISTRY_URL"} {
-			if err := svc.Delete(key, battery.ScopeGlobal); err != nil {
-				return handleBatteryError(err)
-			}
+		if jsonOutput {
+			return config.WriteJSON(map[string]any{"registry_url": registry, "revoked": true})
 		}
-		fmt.Fprintln(os.Stderr, "Logged out. Revoke the token from the console's Desks page to invalidate it.")
+		fmt.Fprintln(os.Stderr, "Logged out and revoked this machine's credentials.")
 		return nil
 	},
 }
 
-// pkcePair returns (verifier, S256 challenge, state), all base64url.
-func pkcePair() (string, string, string, error) {
-	random := func(bytes int) (string, error) {
-		buf := make([]byte, bytes)
-		if _, err := rand.Read(buf); err != nil {
-			return "", err
-		}
-		return base64.RawURLEncoding.EncodeToString(buf), nil
+func loginCommandError(code string, err error) error {
+	if !jsonOutput {
+		return err
 	}
-	verifier, err := random(32)
-	if err != nil {
-		return "", "", "", err
-	}
-	state, err := random(16)
-	if err != nil {
-		return "", "", "", err
-	}
-	digest := sha256.Sum256([]byte(verifier))
-	return verifier, base64.RawURLEncoding.EncodeToString(digest[:]), state, nil
+	_ = config.WriteJSONError(code, err.Error())
+	return errSilent
 }
 
-// waitForLoopbackCode serves exactly one /callback on the loopback listener and
-// returns the delivered code once its state matches ours.
-func waitForLoopbackCode(listener net.Listener, state string) (string, error) {
-	type result struct {
-		code string
-		err  error
-	}
-	results := make(chan result, 1)
-	server := &http.Server{
-		ReadHeaderTimeout: 10 * time.Second,
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/callback" {
-				http.NotFound(w, r)
-				return
-			}
-			query := r.URL.Query()
-			switch {
-			case query.Get("state") != state:
-				http.Error(w, "state mismatch", http.StatusBadRequest)
-				results <- result{err: errors.New("login failed: state mismatch on loopback callback")}
-			case query.Get("error") != "":
-				fmt.Fprintln(w, "Authorization denied. You can close this tab.")
-				results <- result{err: fmt.Errorf("login denied in browser: %s", query.Get("error"))}
-			case query.Get("code") == "":
-				http.Error(w, "missing code", http.StatusBadRequest)
-				results <- result{err: errors.New("login failed: loopback callback carried no code")}
-			default:
-				fmt.Fprintln(w, "Machine authorized. You can close this tab and return to the terminal.")
-				results <- result{code: query.Get("code")}
-			}
-		}),
-	}
-	go func() { _ = server.Serve(listener) }()
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_ = server.Shutdown(ctx)
-	}()
-
-	select {
-	case r := <-results:
-		return r.code, r.err
-	case <-time.After(loginTimeout):
-		return "", errors.New("login timed out waiting for the browser authorization")
-	}
-}
-
-// exchangeLoginCode redeems the one-time code + PKCE verifier for the token.
-func exchangeLoginCode(registry, code, verifier string) (token, orgID string, err error) {
-	body, err := json.Marshal(map[string]string{"code": code, "verifier": verifier})
-	if err != nil {
-		return "", "", err
-	}
-	client := &http.Client{Timeout: 30 * time.Second}
-	response, err := client.Post(registry+"/v1/cli-auth/exchange", "application/json", strings.NewReader(string(body)))
-	if err != nil {
-		return "", "", fmt.Errorf("registry %s: %w", registry, err)
-	}
-	defer response.Body.Close()
-	var payload struct {
-		Token string `json:"token"`
-		OrgID string `json:"org_id"`
-		Error *struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-		return "", "", fmt.Errorf("registry %s: malformed exchange response: %w", registry, err)
-	}
-	if response.StatusCode != http.StatusOK || payload.Token == "" {
-		code := "exchange failed"
-		if payload.Error != nil {
-			code = payload.Error.Code
-		}
-		return "", "", fmt.Errorf("login failed: %s (HTTP %d)", code, response.StatusCode)
-	}
-	return payload.Token, payload.OrgID, nil
-}
-
-// openBrowser best-effort opens the URL; false means the caller should print it.
-// Only http(s) URLs are ever handed to the OS opener, and always as a single
-// argv element (no shell), so the variable cannot inject commands.
 func openBrowser(target string) bool {
 	parsed, err := url.Parse(target)
 	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
@@ -249,16 +114,27 @@ func openBrowser(target string) bool {
 }
 
 func init() {
-	loginCmd.Flags().StringVar(&loginRegistry, "registry", envOr("BUTTONS_REGISTRY_URL", defaultRegistryURL), "registry base URL the token is issued for")
-	loginCmd.Flags().StringVar(&loginDesk, "desk", envOr("BUTTONS_DESK_URL", defaultDeskURL), "Buttons console URL that hosts the authorization page")
+	loginCmd.Flags().StringVar(&loginRegistry, "registry", envOr("BUTTONS_REGISTRY_URL", defaultRegistryURL), "registry base URL")
 	loginCmd.Flags().BoolVar(&loginNoBrowser, "no-browser", false, "print the authorization URL instead of opening a browser")
+	loginCmd.Flags().BoolVar(&loginSwitchOrganization, "switch-organization", false, "revoke the current login and select another organization")
+	logoutCmd.Flags().StringVar(&logoutRegistry, "registry", "", "registry base URL (defaults to the configured registry)")
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(logoutCmd)
 }
 
+func resolveLogoutRegistry(explicit string, configured func() string) string {
+	if registry := strings.TrimRight(explicit, "/"); registry != "" {
+		return registry
+	}
+	if registry := strings.TrimRight(configured(), "/"); registry != "" {
+		return registry
+	}
+	return defaultRegistryURL
+}
+
 func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
 	return fallback
 }

@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 
+	buttonsauth "github.com/autonoco/buttons/internal/auth"
 	"github.com/autonoco/buttons/internal/config"
 	"github.com/autonoco/buttons/internal/store"
 	"github.com/spf13/cobra"
@@ -21,16 +24,16 @@ var publishCmd = &cobra.Command{
 (.buttons/drawers/<name>/drawer.json + AGENTS.md). Run history under pressed/
 is never published.
 
-Publish uses $BUTTONS_REGISTRY_URL as the registry base URL. This repo does not
-ship a default registry host; the caller must configure the target explicitly.
+Publish uses $BUTTONS_REGISTRY_URL when set, otherwise it uses the registry URL
+pinned by "buttons login". This repo does not ship a default registry host.
 
 A registry publish takes a scoped name (@desk/name): the on-disk package is
 found by its bare name, and @desk is its registry namespace. The CLI detects
 whether the local package is a button or drawer from button.json or drawer.json.
 The registry pins immutable versions; publish starts at the package's current
 version and auto-bumps to the next number if that version already exists. Auth
-uses the *write* key (REGISTRY_WRITE_KEY battery or
-$BUTTONS_BAT_REGISTRY_WRITE_KEY) — distinct from the read key install uses.
+uses either the explicit machine/CI key in $BUTTONS_BAT_REGISTRY_WRITE_KEY or
+the human OAuth credential stored by "buttons login" in the OS keychain.
 
 Examples:
   BUTTONS_REGISTRY_URL=https://registry.example buttons publish @your-desk/hello
@@ -41,9 +44,12 @@ Examples:
 		name := args[0]
 
 		if reg := registryURL(); reg != "" {
-			key := registryWriteKey()
+			key, err := registryWriteKey(cmd.Context(), reg)
+			if err != nil {
+				return publishConfigError(err.Error())
+			}
 			if key == "" {
-				return publishConfigError("registry write key not set: run `buttons batteries set REGISTRY_WRITE_KEY <key>` (or set $BUTTONS_BAT_REGISTRY_WRITE_KEY)")
+				return publishConfigError("not logged in: run `buttons login` or set $BUTTONS_BAT_REGISTRY_WRITE_KEY for machine/CI publishing")
 			}
 			pub := &store.HTTPPublisher{BaseURL: reg, Key: key, Kind: publishKind}
 			return renderPublish(func() (*store.PublishResult, error) {
@@ -51,7 +57,7 @@ Examples:
 			}, "to "+reg)
 		}
 
-		return publishConfigError("no publish target: set $BUTTONS_REGISTRY_URL (+ REGISTRY_WRITE_KEY) for the registry")
+		return publishConfigError("no publish target: run `buttons login` or set $BUTTONS_REGISTRY_URL with $BUTTONS_BAT_REGISTRY_WRITE_KEY for machine/CI publishing")
 	},
 }
 
@@ -87,19 +93,28 @@ func publishConfigError(msg string) error {
 	return fmt.Errorf("%s", msg)
 }
 
-// registryWriteKey resolves the registry *write* bearer key — the
-// BUTTONS_BAT_REGISTRY_WRITE_KEY env (injected during a press) wins, else the
-// REGISTRY_WRITE_KEY battery.
-func registryWriteKey() string {
-	if k := os.Getenv("BUTTONS_BAT_REGISTRY_WRITE_KEY"); k != "" {
-		return k
+// registryWriteKey keeps machine and human authorization distinct: an explicit
+// press/CI key wins; otherwise the OAuth keychain envelope supplies a bounded
+// human capability.
+func registryWriteKey(ctx context.Context, registry string) (string, error) {
+	return resolveRegistryWriteKey(ctx, registry, func(ctx context.Context, registry string) (string, error) {
+		return buttonsauth.NewClient(buttonsauth.KeyringStore{}).Capability(ctx, registry)
+	})
+}
+
+func resolveRegistryWriteKey(
+	ctx context.Context,
+	registry string,
+	capability func(context.Context, string) (string, error),
+) (string, error) {
+	if key := os.Getenv("BUTTONS_BAT_REGISTRY_WRITE_KEY"); key != "" {
+		return key, nil
 	}
-	if svc, err := newBatteryService(); err == nil {
-		if v, _, err := svc.Get("REGISTRY_WRITE_KEY"); err == nil {
-			return v
-		}
+	key, err := capability(ctx, registry)
+	if errors.Is(err, buttonsauth.ErrCredentialsNotFound) {
+		return "", nil
 	}
-	return ""
+	return key, err
 }
 
 func init() {

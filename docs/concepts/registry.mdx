@@ -136,12 +136,12 @@ buttons update
 
 ## Auth
 
-Hosted-registry requests are bearer-authed (`Authorization: Bearer <key>`). Read and write use distinct batteries:
+Hosted-registry requests are bearer-authed (`Authorization: Bearer <key>`). Reads use the registry battery. Human writes use `buttons login` (standard OAuth/OIDC discovery, authorization-code + PKCE, and an OS-keychain credential envelope); machine and CI writes use an explicit environment credential:
 
 | Operation | Battery | Press-time env override |
 |---|---|---|
 | `add`, `install`, `status`, `update` | `REGISTRY_KEY` | `$BUTTONS_BAT_REGISTRY_KEY` |
-| `publish` | `REGISTRY_WRITE_KEY` | `$BUTTONS_BAT_REGISTRY_WRITE_KEY` |
+| `publish` | OS keychain after `buttons login` | `$BUTTONS_BAT_REGISTRY_WRITE_KEY` (machine/CI only) |
 
 The registry base URL comes from `$BUTTONS_REGISTRY_URL`. This public repo does not bake in a real registry host.
 
