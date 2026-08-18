@@ -47,7 +47,7 @@ Examples:
 		if reg := registryURL(); reg != "" {
 			key, err := registryWriteKey(cmd.Context(), reg)
 			if err != nil {
-				return publishConfigError(err.Error())
+				return publishAuthError(err)
 			}
 			if key == "" {
 				return publishConfigError("not logged in: run `buttons login` or set $BUTTONS_BAT_REGISTRY_WRITE_KEY for machine/CI publishing")
@@ -60,6 +60,14 @@ Examples:
 
 		return publishConfigError("no publish target: run `buttons login` or set $BUTTONS_REGISTRY_URL with $BUTTONS_BAT_REGISTRY_WRITE_KEY for machine/CI publishing")
 	},
+}
+
+func publishAuthError(err error) error {
+	if jsonOutput {
+		_ = config.WriteJSONError("AUTH_ERROR", err.Error())
+		return errSilent
+	}
+	return err
 }
 
 // renderPublish runs a publish closure and renders the shared success/error

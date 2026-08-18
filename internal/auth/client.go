@@ -119,9 +119,20 @@ func (c *Client) Login(ctx context.Context, options LoginOptions) (Credentials, 
 	}
 	existing, existingErr := c.Store.Load(registryURL)
 	if existingErr == nil {
-		// An envelope without a capability token is a partial login (the
-		// capability exchange failed), so a plain retry may resume it.
-		if existing.CapabilityToken != "" && !options.SwitchOrganization {
+		if existing.CapabilityToken == "" && !options.SwitchOrganization {
+			// A previous explicit login may have completed provider authorization
+			// before its single capability exchange failed. A second explicit login
+			// resumes that staged credential once without restarting browser auth.
+			if _, err := c.Capability(ctx, registryURL); err != nil {
+				return Credentials{}, fmt.Errorf("complete staged login: %w", err)
+			}
+			credential, err := c.Store.Load(registryURL)
+			if err != nil {
+				return Credentials{}, fmt.Errorf("read completed keychain credential: %w", err)
+			}
+			return credential, nil
+		}
+		if !options.SwitchOrganization {
 			return Credentials{}, errors.New("already logged in; use --switch-organization to replace the current organization")
 		}
 		if err := c.revokeCredential(ctx, existing); err != nil {
@@ -149,6 +160,9 @@ func (c *Client) Login(ctx context.Context, options LoginOptions) (Credentials, 
 	if metadata.Issuer != registry.Issuer {
 		return Credentials{}, errors.New("OAuth provider issuer does not match registry discovery")
 	}
+	if metadata.AuthorizationEndpoint == "" || metadata.TokenEndpoint == "" || metadata.RevocationEndpoint == "" {
+		return Credentials{}, errors.New("OAuth provider metadata is incomplete")
+	}
 	for _, endpoint := range []string{
 		registry.Issuer,
 		registry.CapabilityExchangeURL,
@@ -161,11 +175,9 @@ func (c *Client) Login(ctx context.Context, options LoginOptions) (Credentials, 
 			return Credentials{}, fmt.Errorf("unsafe OAuth endpoint: %w", err)
 		}
 	}
-	if metadata.AuthorizationEndpoint == "" || metadata.TokenEndpoint == "" || metadata.RevocationEndpoint == "" {
-		return Credentials{}, errors.New("OAuth provider metadata is incomplete")
-	}
 
-	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+	listener, err := listenConfig.Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		return Credentials{}, fmt.Errorf("start loopback listener: %w", err)
 	}
@@ -356,12 +368,20 @@ func (c *Client) refreshOAuth(ctx context.Context, credential Credentials) (*oau
 		RefreshToken string `json:"refresh_token"`
 		TokenType    string `json:"token_type"`
 		ExpiresIn    int64  `json:"expires_in"`
+		Error        string `json:"error"`
 	}
-	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("decode OAuth refresh response: %w", err)
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 || payload.AccessToken == "" {
+	decodeErr := json.NewDecoder(response.Body).Decode(&payload)
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		if payload.Error != "" {
+			return nil, fmt.Errorf("OAuth refresh failed (HTTP %d: %s); run `buttons login`", response.StatusCode, payload.Error)
+		}
 		return nil, fmt.Errorf("OAuth refresh failed (HTTP %d)", response.StatusCode)
+	}
+	if decodeErr != nil {
+		return nil, fmt.Errorf("decode OAuth refresh response: %w", decodeErr)
+	}
+	if payload.AccessToken == "" {
+		return nil, errors.New("OAuth refresh response did not include an access token")
 	}
 	return &oauth2.Token{
 		AccessToken: payload.AccessToken, RefreshToken: payload.RefreshToken, TokenType: payload.TokenType,
@@ -467,6 +487,7 @@ func (c *Client) revokeCapability(ctx context.Context, endpoint, token string) e
 }
 
 func fetchJSON[T any](ctx context.Context, client *http.Client, endpoint string) (T, error) {
+	const maxDiscoveryBodyBytes = 1 << 20
 	var result T
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -480,7 +501,7 @@ func fetchJSON[T any](ctx context.Context, client *http.Client, endpoint string)
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return result, fmt.Errorf("HTTP %d", response.StatusCode)
 	}
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(response.Body, maxDiscoveryBodyBytes)).Decode(&result); err != nil {
 		return result, err
 	}
 	return result, nil

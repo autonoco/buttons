@@ -131,6 +131,7 @@ func TestLoginUsesDiscoveryLoopbackPKCEAndStoresOneEnvelope(t *testing.T) {
 		go func() {
 			request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, callback, nil)
 			if err != nil {
+				t.Errorf("create callback request: %v", err)
 				return
 			}
 			response, err := http.DefaultClient.Do(request)
@@ -166,7 +167,8 @@ func TestLoginUsesDiscoveryLoopbackPKCEAndStoresOneEnvelope(t *testing.T) {
 }
 
 func TestLoopbackCallbackWithoutCodeReturnsTerminalError(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+	listener, err := listenConfig.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
@@ -176,7 +178,16 @@ func TestLoopbackCallbackWithoutCodeReturnsTerminalError(t *testing.T) {
 		result <- waitErr
 	}()
 
-	response, err := http.Get("http://" + listener.Addr().String() + "/callback?state=expected-state")
+	request, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"http://"+listener.Addr().String()+"/callback?state=expected-state",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("create callback request: %v", err)
+	}
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatalf("request callback: %v", err)
 	}
@@ -206,25 +217,45 @@ func TestLoginRetainsProviderCredentialWhenCapabilityExchangeFails(t *testing.T)
 	}
 }
 
-func TestLoginRetriesPlainlyAfterFailedCapabilityExchange(t *testing.T) {
-	server, openBrowser, events := loginFailureFixture(t, http.StatusCreated)
+func TestLoginResumesStagedProviderCredentialWithOneCapabilityExchange(t *testing.T) {
+	var capabilityCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/cli-auth/exchange" {
+			http.NotFound(w, r)
+			return
+		}
+		capabilityCalls.Add(1)
+		if r.Header.Get("Authorization") != "Bearer oauth-access" {
+			http.Error(w, "missing bearer", http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"token": "bpt_resumed", "org_id": "org_master", "expires_at": time.Now().Add(24 * time.Hour).Unix(),
+		})
+	}))
 	defer server.Close()
+
 	store := &memoryStore{credential: &Credentials{
-		RegistryURL: server.URL, ClientID: "buttons-cli", RefreshToken: "stale-refresh",
-		RevocationEndpoint: server.URL + "/oauth/revoke",
+		RegistryURL: server.URL, AccessToken: "oauth-access", OAuthExpiresAt: time.Now().Add(time.Hour).Unix(),
+		CapabilityExchangeURL: server.URL + "/v1/cli-auth/exchange", CapabilityRevokeURL: server.URL + "/v1/cli-auth/capability",
+		RefreshToken: "oauth-refresh", Label: "test laptop",
 	}}
 	client := NewClient(store)
-	client.OpenBrowser = openBrowser
+	client.OpenBrowser = func(string) bool {
+		t.Fatal("resuming a staged credential must not restart browser authorization")
+		return false
+	}
 
 	credential, err := client.Login(context.Background(), LoginOptions{RegistryURL: server.URL})
 	if err != nil {
-		t.Fatalf("plain login retry after failed capability exchange: %v", err)
+		t.Fatalf("resume staged login: %v", err)
 	}
-	if credential.CapabilityToken != "bpt_login" || credential.OrganizationID != "org_master" {
-		t.Fatalf("unexpected credential: %#v", credential)
+	if credential.CapabilityToken != "bpt_resumed" || credential.OrganizationID != "org_master" {
+		t.Fatalf("unexpected resumed credential: %#v", credential)
 	}
-	if strings.Join(*events, ",") != "oauth-revoke" {
-		t.Fatalf("stale provider credential was not revoked before retry: %v", *events)
+	if capabilityCalls.Load() != 1 {
+		t.Fatalf("capability exchanges = %d, want exactly 1", capabilityCalls.Load())
 	}
 }
 
@@ -313,6 +344,7 @@ func loginFailureFixture(t *testing.T, capabilityStatus int) (*httptest.Server, 
 		go func() {
 			request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, callback, nil)
 			if err != nil {
+				t.Errorf("create callback request: %v", err)
 				return
 			}
 			response, err := http.DefaultClient.Do(request)
@@ -395,6 +427,23 @@ func TestCapabilityPersistsRotatedRefreshTokenBeforeCapabilityExchange(t *testin
 	}
 	if store.credential.RefreshToken != "refresh-new" || store.credential.AccessToken != "access-new" {
 		t.Fatalf("rotated OAuth credential was not retained: %#v", store.credential)
+	}
+}
+
+func TestRefreshOAuthReportsProviderErrorBeforeDecodeFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant"})
+	}))
+	defer server.Close()
+
+	client := NewClient(&memoryStore{})
+	_, err := client.refreshOAuth(context.Background(), Credentials{
+		ClientID: "buttons-cli", RefreshToken: "revoked", TokenEndpoint: server.URL,
+	})
+	if err == nil || !strings.Contains(err.Error(), "HTTP 400: invalid_grant") {
+		t.Fatalf("unexpected refresh error: %v", err)
 	}
 }
 

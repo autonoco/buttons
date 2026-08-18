@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
+
+	buttonsauth "github.com/autonoco/buttons/internal/auth"
 )
 
 func TestRegistryWriteAuthorizationSeparatesMachineAndHumanCredentials(t *testing.T) {
@@ -29,5 +32,23 @@ func TestRegistryWriteAuthorizationSeparatesMachineAndHumanCredentials(t *testin
 	})
 	if err != nil || key != "human-capability" || calls != 1 {
 		t.Fatalf("human authorization = %q, %v, calls=%d", key, err, calls)
+	}
+}
+
+func TestResolveRegistryWriteKeyHandlesCredentialLookupErrors(t *testing.T) {
+	t.Setenv("BUTTONS_BAT_REGISTRY_WRITE_KEY", "")
+	key, err := resolveRegistryWriteKey(context.Background(), "https://registry.example", func(context.Context, string) (string, error) {
+		return "", buttonsauth.ErrCredentialsNotFound
+	})
+	if err != nil || key != "" {
+		t.Fatalf("missing credentials = %q, %v", key, err)
+	}
+
+	lookupErr := errors.New("keychain unavailable")
+	_, err = resolveRegistryWriteKey(context.Background(), "https://registry.example", func(context.Context, string) (string, error) {
+		return "", lookupErr
+	})
+	if !errors.Is(err, lookupErr) {
+		t.Fatalf("lookup error was not propagated: %v", err)
 	}
 }

@@ -36,3 +36,10 @@ func TestResolveLogoutRegistryPrefersExplicitFlag(t *testing.T) {
 		t.Fatalf("resolveLogoutRegistry() = %q", got)
 	}
 }
+
+func TestResolveLogoutRegistryFallsBackToDefault(t *testing.T) {
+	got := resolveLogoutRegistry("", func() string { return "" })
+	if got != defaultRegistryURL {
+		t.Fatalf("resolveLogoutRegistry() = %q, want %q", got, defaultRegistryURL)
+	}
+}

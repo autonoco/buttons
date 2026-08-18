@@ -138,12 +138,12 @@ buttons update
 
 Hosted-registry requests are bearer-authed (`Authorization: Bearer <key>`). Reads use the registry battery. Human writes use `buttons login` (standard OAuth/OIDC discovery, authorization-code + PKCE, and an OS-keychain credential envelope); machine and CI writes use an explicit environment credential:
 
-| Operation | Battery | Press-time env override |
+| Operation | Credential source | Press-time env override |
 |---|---|---|
 | `add`, `install`, `status`, `update` | `REGISTRY_KEY` | `$BUTTONS_BAT_REGISTRY_KEY` |
 | `publish` | OS keychain after `buttons login` | `$BUTTONS_BAT_REGISTRY_WRITE_KEY` (machine/CI only) |
 
-The registry base URL comes from `$BUTTONS_REGISTRY_URL`. This public repo does not bake in a real registry host.
+The registry base URL comes from `$BUTTONS_REGISTRY_URL` or the registry pinned by `buttons login`. Login and logout default to `https://api.buttons.sh`; publish has no implicit target beyond the environment or pinned login.
 
 Bearer keys authorize *what* an operation may do; the workspace's [agent identity](/concepts/agent-identity) proves *which device* is acting. Enroll a device once with `buttons agent setup` before publishing to a hosted registry.
 
