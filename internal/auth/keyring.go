@@ -35,6 +35,8 @@ func (KeyringStore) Load(registryURL string) (Credentials, error) {
 }
 
 func (KeyringStore) Save(registryURL string, credential Credentials) error {
+	// #nosec G117 -- credentials are intentionally serialized here; the
+	// encoded value goes straight into the OS keychain, never to disk or logs.
 	encoded, err := json.Marshal(credential)
 	if err != nil {
 		return err
