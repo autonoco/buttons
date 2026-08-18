@@ -269,6 +269,7 @@ func waitForLoopbackCode(ctx context.Context, listener net.Listener, state strin
 		}
 		if query.Get("code") == "" {
 			http.Error(w, "missing code", http.StatusBadRequest)
+			results <- result{err: errors.New("OAuth callback did not include an authorization code")}
 			return
 		}
 		fmt.Fprintln(w, "Machine authorized. You can close this tab and return to the terminal.")

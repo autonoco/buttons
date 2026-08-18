@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -148,8 +150,35 @@ func TestLoginUsesDiscoveryLoopbackPKCEAndStoresOneEnvelope(t *testing.T) {
 	if store.credential == nil || store.credential.RefreshToken != "oauth-refresh" {
 		t.Fatalf("credential envelope was not saved: %#v", store.credential)
 	}
-	if tokenRequests != 1 || capabilityRequests != 1 {
-		t.Fatalf("expected one provider and capability exchange, got %d/%d", tokenRequests, capabilityRequests)
+	mu.Lock()
+	gotTokenRequests, gotCapabilityRequests := tokenRequests, capabilityRequests
+	mu.Unlock()
+	if gotTokenRequests != 1 || gotCapabilityRequests != 1 {
+		t.Fatalf("expected one provider and capability exchange, got %d/%d", gotTokenRequests, gotCapabilityRequests)
+	}
+}
+
+func TestLoopbackCallbackWithoutCodeReturnsTerminalError(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, waitErr := waitForLoopbackCode(context.Background(), listener, "expected-state")
+		result <- waitErr
+	}()
+
+	response, err := http.Get("http://" + listener.Addr().String() + "/callback?state=expected-state")
+	if err != nil {
+		t.Fatalf("request callback: %v", err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("callback status = %d", response.StatusCode)
+	}
+	if waitErr := <-result; waitErr == nil || !strings.Contains(waitErr.Error(), "did not include an authorization code") {
+		t.Fatalf("unexpected callback result: %v", waitErr)
 	}
 }
 
@@ -264,12 +293,12 @@ func loginFailureFixture(t *testing.T, capabilityStatus int) (*httptest.Server, 
 }
 
 func TestCapabilityRefreshesExactlyOnceWhenExpired(t *testing.T) {
-	providerCalls := 0
-	capabilityCalls := 0
+	var providerCalls atomic.Int32
+	var capabilityCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/oauth/token":
-			providerCalls++
+			providerCalls.Add(1)
 			if r.FormValue("grant_type") != "refresh_token" || r.FormValue("refresh_token") != "refresh-old" {
 				http.Error(w, "bad refresh", http.StatusBadRequest)
 				return
@@ -278,7 +307,7 @@ func TestCapabilityRefreshesExactlyOnceWhenExpired(t *testing.T) {
 				"access_token": "access-new", "refresh_token": "refresh-new", "token_type": "Bearer", "expires_in": 3600,
 			})
 		case "/v1/cli-auth/exchange":
-			capabilityCalls++
+			capabilityCalls.Add(1)
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"token": "bpt_new", "org_id": "org_master", "expires_at": time.Now().Add(24 * time.Hour).Unix(),
@@ -302,8 +331,8 @@ func TestCapabilityRefreshesExactlyOnceWhenExpired(t *testing.T) {
 	if token != "bpt_new" || store.credential.RefreshToken != "refresh-new" {
 		t.Fatalf("unexpected refreshed credential: %q %#v", token, store.credential)
 	}
-	if providerCalls != 1 || capabilityCalls != 1 {
-		t.Fatalf("expected one refresh and exchange, got %d/%d", providerCalls, capabilityCalls)
+	if providerCalls.Load() != 1 || capabilityCalls.Load() != 1 {
+		t.Fatalf("expected one refresh and exchange, got %d/%d", providerCalls.Load(), capabilityCalls.Load())
 	}
 }
 
@@ -359,8 +388,11 @@ func TestCapabilityRequiresExplicitLoginToChangeOrganizations(t *testing.T) {
 
 func TestLogoutRevokesBothCredentialsBeforeDeletingKeychainEnvelope(t *testing.T) {
 	var calls []string
+	var callsMu sync.Mutex
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callsMu.Lock()
 		calls = append(calls, r.URL.Path+":"+r.Header.Get("Authorization"))
+		callsMu.Unlock()
 		if r.URL.Path == "/oauth/revoke" && r.FormValue("token") != "refresh-token" {
 			http.Error(w, "bad token", http.StatusBadRequest)
 			return
@@ -380,7 +412,9 @@ func TestLogoutRevokesBothCredentialsBeforeDeletingKeychainEnvelope(t *testing.T
 	if !store.deleted {
 		t.Fatal("credential envelope was not deleted")
 	}
+	callsMu.Lock()
 	joined := strings.Join(calls, ",")
+	callsMu.Unlock()
 	if joined != "/v1/cli-auth/capability:Bearer bpt_live,/oauth/revoke:" {
 		t.Fatalf("unexpected revocation sequence: %s", joined)
 	}
@@ -405,13 +439,13 @@ func TestLogoutKeepsEnvelopeWhenRevocationFails(t *testing.T) {
 }
 
 func TestLogoutFinishesWhenLiveAuthorityAlreadyDeniesTheCapability(t *testing.T) {
-	providerRevoked := false
+	var providerRevoked atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/cli-auth/capability" {
 			http.Error(w, "permission removed", http.StatusForbidden)
 			return
 		}
-		providerRevoked = true
+		providerRevoked.Store(true)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -423,7 +457,7 @@ func TestLogoutFinishesWhenLiveAuthorityAlreadyDeniesTheCapability(t *testing.T)
 	if err := NewClient(store).Logout(context.Background(), server.URL); err != nil {
 		t.Fatalf("logout: %v", err)
 	}
-	if !providerRevoked || !store.deleted {
+	if !providerRevoked.Load() || !store.deleted {
 		t.Fatal("logout must revoke the provider token and remove the denied capability envelope")
 	}
 }

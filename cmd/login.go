@@ -48,18 +48,17 @@ system keychain. The CLI contains no provider-specific authentication code.`,
 
 		// The registry URL is non-secret configuration. OAuth tokens and the
 		// publish capability exist only in the OS keychain envelope above.
-		svc, err := newBatteryService()
-		if err != nil {
-			return handleBatteryError(err)
-		}
-		if err := svc.Set("REGISTRY_URL", strings.TrimRight(loginRegistry, "/"), battery.ScopeGlobal); err != nil {
-			return handleBatteryError(err)
+		registry := strings.TrimRight(loginRegistry, "/")
+		if svc, batteryErr := newBatteryService(); batteryErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not persist REGISTRY_URL: %v\n", batteryErr)
+		} else if setErr := svc.Set("REGISTRY_URL", registry, battery.ScopeGlobal); setErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not persist REGISTRY_URL: %v\n", setErr)
 		}
 
 		if jsonOutput {
 			return config.WriteJSON(map[string]any{
 				"organization_id": credential.OrganizationID,
-				"registry_url":    strings.TrimRight(loginRegistry, "/"),
+				"registry_url":    registry,
 			})
 		}
 		fmt.Fprintf(os.Stderr, "Logged in to organization %s.\n", credential.OrganizationID)
