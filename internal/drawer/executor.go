@@ -258,7 +258,7 @@ func (e *Executor) runStep(ctx context.Context, d *Drawer, step *Step, ctxMap Co
 	if step.TimeoutSeconds > 0 {
 		timeout = step.TimeoutSeconds
 	}
-	stepCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	stepCtx, cancel := engine.WithOptionalTimeout(ctx, timeout)
 	defer cancel()
 
 	policy := step.OnFailure

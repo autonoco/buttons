@@ -6,7 +6,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/autonoco/buttons/internal/agentdoc"
 	"github.com/autonoco/buttons/internal/button"
@@ -194,7 +193,7 @@ func smashPress(ctx context.Context, name string, batteries map[string]string, t
 		}
 	}
 
-	cctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	cctx, cancel := engine.WithOptionalTimeout(ctx, timeout)
 	defer cancel()
 	res := engine.Execute(cctx, btn, map[string]string{}, batteries, nil, codePath)
 	if err := history.Record(res); err != nil {

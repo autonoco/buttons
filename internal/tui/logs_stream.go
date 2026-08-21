@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -74,5 +73,5 @@ func waitForLine(sink <-chan engine.LogLine) tea.Cmd {
 // timeout-seconds semantics as cmd/press uses, so behavior stays
 // identical whether you ran the press via CLI or logs TUI.
 func logsTimeoutContext(btn *button.Button) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), time.Duration(btn.TimeoutSeconds)*time.Second)
+	return engine.WithOptionalTimeout(context.Background(), btn.TimeoutSeconds)
 }

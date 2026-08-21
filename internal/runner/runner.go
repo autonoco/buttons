@@ -64,12 +64,8 @@ func Press(ctx context.Context, name string, args map[string]string, opts Option
 		timeout = opts.MaxTimeoutSeconds
 	}
 
-	runCtx := ctx
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		runCtx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
-		defer cancel()
-	}
+	runCtx, cancel := engine.WithOptionalTimeout(ctx, timeout)
+	defer cancel()
 
 	// Resolve the code/prompt path for non-HTTP buttons.
 	var codePath string
@@ -95,10 +91,7 @@ func Press(ctx context.Context, name string, args map[string]string, opts Option
 
 	// Honor a declared queue/concurrency limit, same as `buttons press`.
 	if btn.Queue != nil && btn.Queue.Name != "" {
-		deadline, ok := runCtx.Deadline()
-		if !ok {
-			deadline = time.Now().Add(time.Hour)
-		}
+		deadline, _ := runCtx.Deadline()
 		key := btn.Queue.Key
 		for k, v := range parsed {
 			key = strings.ReplaceAll(key, "${inputs."+k+"}", v)

@@ -41,6 +41,28 @@ func TestInterpreterForRuntimeBashMissing(t *testing.T) {
 	}
 }
 
+func TestWithOptionalTimeout(t *testing.T) {
+	t.Run("omitted means no deadline", func(t *testing.T) {
+		parent := context.Background()
+		ctx, cancel := WithOptionalTimeout(parent, 0)
+		defer cancel()
+		if ctx != parent {
+			t.Fatal("omitted timeout must preserve the caller context")
+		}
+		if _, ok := ctx.Deadline(); ok {
+			t.Fatal("omitted timeout must not create a deadline")
+		}
+	})
+
+	t.Run("positive timeout creates a deadline", func(t *testing.T) {
+		ctx, cancel := WithOptionalTimeout(context.Background(), 1)
+		defer cancel()
+		if _, ok := ctx.Deadline(); !ok {
+			t.Fatal("positive timeout must create a deadline")
+		}
+	})
+}
+
 // TestExecute_BatteriesInjectedAsEnv verifies the caller-provided
 // batteries map lands on the child process as BUTTONS_BAT_<KEY>. This
 // is the core contract of the batteries feature — a shell button has

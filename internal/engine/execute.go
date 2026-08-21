@@ -20,6 +20,16 @@ import (
 
 const sigTermGrace = 5 * time.Second
 
+// WithOptionalTimeout applies a deadline only when timeoutSeconds is positive.
+// An omitted timeout is represented as zero and means the caller's context is
+// authoritative, not an immediate deadline.
+func WithOptionalTimeout(ctx context.Context, timeoutSeconds int) (context.Context, context.CancelFunc) {
+	if timeoutSeconds <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
+}
+
 // Execute runs a button with the given args and returns a Result.
 // For code/file buttons, codePath is the path to the code file in the button folder.
 // batteries is the caller-provided map of battery KEY → VALUE; each entry is

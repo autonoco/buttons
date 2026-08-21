@@ -118,7 +118,7 @@ Examples:
 		}
 
 		// Execute
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+		ctx, cancel := engine.WithOptionalTimeout(context.Background(), timeout)
 		defer cancel()
 
 		// Load batteries so secrets can reach the press as BUTTONS_BAT_<KEY>

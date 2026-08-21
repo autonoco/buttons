@@ -747,7 +747,7 @@ func (m Model) pressButtonWithArgs(name string, args map[string]string) (tea.Mod
 func runPress(btn *button.Button, codePath string, batteries, args map[string]string, sink chan engine.LogLine) tea.Cmd {
 	name := btn.Name
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(btn.TimeoutSeconds)*time.Second)
+		ctx, cancel := engine.WithOptionalTimeout(context.Background(), btn.TimeoutSeconds)
 		defer cancel()
 
 		result := engine.Execute(ctx, btn, args, batteries, sink, codePath)
@@ -1851,4 +1851,3 @@ func countLines(s string) int {
 	}
 	return strings.Count(s, "\n") + 1
 }
-

@@ -83,6 +83,39 @@ func TestPress_Success(t *testing.T) {
 	}
 }
 
+func TestPress_OmittedTimeoutRunsWithoutDeadline(t *testing.T) {
+	env := newTestEnv(t)
+	script := env.createScriptWithContent("unbounded.sh", "#!/bin/sh\necho completed")
+	env.createButton("unbounded", script)
+
+	manifestPath := filepath.Join(env.home, "buttons", "unbounded", "button.json")
+	manifest, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec map[string]any
+	if err := json.Unmarshal(manifest, &spec); err != nil {
+		t.Fatal(err)
+	}
+	delete(spec, "timeout_seconds")
+	manifest, err = json.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	res := env.run("press", "unbounded", "--json")
+	if res.ExitCode != 0 {
+		t.Fatalf("omitted timeout must not impose a deadline: %s", res.Stderr)
+	}
+	pressed := parsePressResult(t, parseJSON(t, res.Stdout).Data)
+	if pressed.Status != "ok" || !strings.Contains(pressed.Stdout, "completed") {
+		t.Fatalf("press = %#v, want completed success", pressed)
+	}
+}
+
 func TestPress_WithArgs(t *testing.T) {
 	env := newTestEnv(t)
 	script := env.createScriptWithContent("greet.sh", "#!/bin/sh\necho \"Hello, $BUTTONS_ARG_NAME!\"")
