@@ -472,11 +472,9 @@ func drawerPress(name string, args []string) error {
 	if err != nil {
 		return handleDrawerError(err)
 	}
-	if d.DrawerKind == drawer.DrawerKindFlow {
-		return handleDrawerError(&drawer.ServiceError{
-			Code:    "FLOW_RUNTIME_REQUIRED",
-			Message: fmt.Sprintf("flow drawer %q is activated and run by a Buttons Flow runtime; it cannot be pressed as an action drawer", name),
-		})
+	execDrawer, err := drawer.PrepareForExecute(d)
+	if err != nil {
+		return handleDrawerError(err)
 	}
 
 	// Split --webhook-body <value> out of args before parseKV sees it.
@@ -519,12 +517,12 @@ func drawerPress(name string, args []string) error {
 	exec := drawer.NewExecutor()
 	var result *drawer.ExecuteResult
 	if pressMode == "parallel" {
-		result, err = exec.ExecuteParallel(context.Background(), d, inputValues, drawer.ParallelOptions{
+		result, err = exec.ExecuteParallel(context.Background(), execDrawer, inputValues, drawer.ParallelOptions{
 			OnFailure: onFailure,
 			Limit:     concurrency,
 		})
 	} else {
-		result, err = exec.Execute(context.Background(), d, inputValues)
+		result, err = exec.Execute(context.Background(), execDrawer, inputValues)
 	}
 	if err != nil {
 		return err

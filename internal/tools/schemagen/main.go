@@ -153,7 +153,19 @@ func (g *generator) walk(t reflect.Type) map[string]any {
 			"items": g.walk(t.Elem()),
 		}
 	case reflect.Map:
-		return map[string]any{"type": "object"}
+		schema := map[string]any{"type": "object"}
+		// Typed map values (e.g. map[string]FlowRole) become
+		// additionalProperties so each entry is validated.
+		if t.Key().Kind() == reflect.String {
+			elem := t.Elem()
+			for elem.Kind() == reflect.Pointer {
+				elem = elem.Elem()
+			}
+			if elem.Kind() == reflect.Struct || elem.Kind() == reflect.Interface {
+				schema["additionalProperties"] = g.walk(t.Elem())
+			}
+		}
+		return schema
 	case reflect.Interface:
 		// any — accept anything.
 		return map[string]any{}

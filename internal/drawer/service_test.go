@@ -169,3 +169,35 @@ func TestService_ReservedName_Rejected(t *testing.T) {
 		t.Fatal("expected reserved-name rejection")
 	}
 }
+
+func TestService_SetFlowProviderNormalizesAndPersists(t *testing.T) {
+	newTestHome(t)
+	svc := NewService()
+	if _, err := svc.CreateWithKind("research", "", nil, DrawerKindFlow); err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range []string{"local", "github"} {
+		if _, err := svc.SetFlowField("research", "provider", " \t"+provider+"\n"); err != nil {
+			t.Fatal(err)
+		}
+		got, err := svc.Get("research")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Flow.Provider != provider {
+			t.Fatalf("stored provider = %q, want %q", got.Flow.Provider, provider)
+		}
+	}
+	for _, invalid := range []any{" \t", " unsupported ", 42} {
+		if _, err := svc.SetFlowField("research", "provider", invalid); err == nil {
+			t.Fatalf("accepted invalid provider %v", invalid)
+		}
+		got, err := svc.Get("research")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Flow.Provider != "github" {
+			t.Fatalf("invalid update changed stored provider to %q", got.Flow.Provider)
+		}
+	}
+}
