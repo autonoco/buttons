@@ -15,13 +15,10 @@ permissions:
   contents: read
 
 env:
-  # Pinned Go toolchain. Bumping this also resolves stdlib CVEs
-  # tracked in autonoco/autono#331. 1.26.4 clears four reachable
-  # vulnerabilities that 1.26.2 is exposed to: GO-2026-4918 (net/http
-  # HTTP/2 infinite loop) and GO-2026-4971 (net) fixed in 1.26.3, plus
-  # GO-2026-5037 (crypto/x509) and GO-2026-5039 (net/textproto) fixed
-  # in 1.26.4.
-  GO_VERSION: "1.26.5"
+  # Keep all build workflows on the same patched Go toolchain.
+  # 1.26.6 fixes GO-2026-6218, GO-2026-6090, GO-2026-6089,
+  # GO-2026-5972, and GO-2026-5026 reported against 1.26.5.
+  GO_VERSION: "1.26.8"
 
 jobs:
   test:
