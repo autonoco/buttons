@@ -110,7 +110,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           # Keep in sync with GO_VERSION in ci.yml.
-          go-version: "1.26.6"
+          go-version: "1.26.8"
           cache: true
 
       - name: Set up QEMU

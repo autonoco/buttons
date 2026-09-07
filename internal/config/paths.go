@@ -98,6 +98,29 @@ func DrawersDir() (string, error) {
 	return filepath.Join(base, "drawers"), nil
 }
 
+// FlowsDir is where local flow-provider task files live:
+// <data>/flows/<board>/tasks/<id>.json
+func FlowsDir() (string, error) {
+	base, err := DataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "flows"), nil
+}
+
+// FlowBoardDir returns <data>/flows/<board> with path-escape rejection.
+func FlowBoardDir(board string) (string, error) {
+	dir, err := FlowsDir()
+	if err != nil {
+		return "", err
+	}
+	p := filepath.Join(dir, board)
+	if !strings.HasPrefix(p, dir+string(filepath.Separator)) {
+		return "", fmt.Errorf("flow board name resolves outside data directory: %q", board)
+	}
+	return p, nil
+}
+
 // DrawerDir returns the path to a specific drawer's folder. Mirrors
 // ButtonDir's path-escape rejection: even if a caller forgets to
 // sanitize the drawer name, we won't let it traverse outside the

@@ -11,6 +11,7 @@ import (
 
 	"github.com/autonoco/buttons/internal/button"
 	"github.com/autonoco/buttons/internal/config"
+	"github.com/autonoco/buttons/internal/flowkit"
 )
 
 // ServiceError mirrors button.ServiceError. Keeping a separate type
@@ -191,6 +192,20 @@ func (s *Service) SetFlowField(drawerName, path string, value any) (*Drawer, err
 		setErr = setString(&d.Flow.Manager.SystemPrompt)
 	case "manager.heartbeat_seconds":
 		setErr = setInt(&d.Flow.Manager.HeartbeatSeconds)
+	case "provider":
+		v, ok := value.(string)
+		if !ok {
+			setErr = fmt.Errorf("must be a string")
+		} else {
+			v = strings.TrimSpace(v)
+			if !flowkit.ValidProvider(v) {
+				setErr = fmt.Errorf("must be local or github")
+			} else {
+				d.Flow.Provider = v
+			}
+		}
+	case "roles":
+		setErr = decodeFlowValue(value, &d.Flow.Roles)
 	case "limits.max_active_tasks", "limits.max_runtime_seconds", "limits.max_attempts_per_stage":
 		if d.Flow.Limits == nil {
 			d.Flow.Limits = &FlowLimits{}
@@ -273,6 +288,37 @@ func (s *Service) SetFlowField(drawerName, path string, value any) (*Drawer, err
 			case "retry.initial_seconds":
 				setErr = setInt(&stage.Retry.InitialSeconds)
 			}
+		case "role":
+			setErr = setString(&stage.Role)
+		case "on_feedback":
+			setErr = setString(&stage.OnFeedback)
+		case "review":
+			setErr = setString(&stage.Review)
+		case "gate.requires_human_approval":
+			if stage.Gate == nil {
+				stage.Gate = &FlowGate{}
+			}
+			setErr = setBool(&stage.Gate.RequiresHumanApproval)
+		case "gate.approvers":
+			if stage.Gate == nil {
+				stage.Gate = &FlowGate{}
+			}
+			setErr = decodeFlowValue(value, &stage.Gate.Approvers)
+		case "evidence.required":
+			if stage.Evidence == nil {
+				stage.Evidence = &FlowEvidence{}
+			}
+			setErr = decodeFlowValue(value, &stage.Evidence.Required)
+		case "capabilities.skills":
+			if stage.Capabilities == nil {
+				stage.Capabilities = &FlowCapabilities{}
+			}
+			setErr = decodeFlowValue(value, &stage.Capabilities.Skills)
+		case "capabilities.tools":
+			if stage.Capabilities == nil {
+				stage.Capabilities = &FlowCapabilities{}
+			}
+			setErr = decodeFlowValue(value, &stage.Capabilities.Tools)
 		default:
 			return nil, &ServiceError{Code: "FLOW_FIELD_UNKNOWN", Message: fmt.Sprintf("unknown flow stage field %q", field)}
 		}
@@ -409,6 +455,26 @@ func (s *Service) Remove(name string) error {
 		return fmt.Errorf("failed to remove drawer: %w", err)
 	}
 	return nil
+}
+
+// ClearTriggers removes all triggers from a drawer and persists the change.
+func (s *Service) ClearTriggers(name string) (*Drawer, error) {
+	d, err := s.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	d.Triggers = nil
+	d.UpdatedAt = time.Now().UTC()
+	if err := s.save(d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// Save persists a drawer to disk. Exported for callers (e.g. research deck
+// install) that construct a Drawer in-memory and need to write it.
+func (s *Service) Save(d *Drawer) error {
+	return s.save(d)
 }
 
 // AddSteps appends one or more button steps to the drawer. Each
@@ -808,4 +874,38 @@ func (s *Service) PressedDir(name string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "pressed"), nil
+}
+
+// ResearchDeckDrawer returns the canonical research-deck flow definition for
+// a given provider. Single source of truth shared by store/builtin.go and
+// cmd/flow_research_deck.go.
+func ResearchDeckDrawer(provider string) *Drawer {
+	if provider == "" {
+		provider = "local"
+	}
+	return &Drawer{
+		SchemaVersion: SchemaVersion,
+		Name:          "research-deck",
+		DrawerKind:    DrawerKindFlow,
+		Description:   "Research a topic and create an open-slide deck (https://open-slide.dev/).",
+		Version:       "1",
+		Flow: &FlowDefinition{
+			InitialStage: "brief",
+			Provider:     provider,
+			Manager: FlowManager{
+				Agent:        "activation.manager",
+				SystemPrompt: "Supervise research-to-deck work. Prefer grounded claims, clear narrative, and open-slide (https://open-slide.dev/) as the deck format.",
+			},
+			Stages: []FlowStage{
+				{ID: "brief", Title: "Brief", SystemPrompt: "Capture audience, goal, length, tone, and success criteria for the deck. Advance to research when the brief is clear.", Worker: &FlowWorker{Agent: "activation.worker"}, Transitions: []string{"research", "done"}, TimeoutSeconds: 1800},
+				{ID: "research", Title: "Research", SystemPrompt: "Gather sources and talking points. Record key claims with citations in the task body/comments. Advance to outline when research is sufficient.", Worker: &FlowWorker{Agent: "activation.worker"}, Transitions: []string{"outline", "brief"}, TimeoutSeconds: 3600},
+				{ID: "outline", Title: "Outline", SystemPrompt: "Propose slide titles and section order before writing code. Advance to scaffold when the outline is locked.", Worker: &FlowWorker{Agent: "activation.worker"}, Transitions: []string{"scaffold", "research"}, TimeoutSeconds: 1800},
+				{ID: "scaffold", Title: "Scaffold", SystemPrompt: "Create the open-slide workspace with `npx @open-slide/cli init` (or equivalent). Record the deck path on the task. Advance to draft when the workspace exists.", Worker: &FlowWorker{Agent: "activation.worker"}, Transitions: []string{"draft", "outline"}, TimeoutSeconds: 1800},
+				{ID: "draft", Title: "Draft", SystemPrompt: "Author React pages for the deck (open-slide /create-slide style). One idea per slide where possible. Advance to review when a full first draft exists.", Worker: &FlowWorker{Agent: "activation.worker"}, Transitions: []string{"review"}, TimeoutSeconds: 3600},
+				{ID: "review", Title: "Review", SystemPrompt: "Human review gate. Reviewer leaves open-slide comments or approves. Do not invent approvals.", Transitions: []string{"polish", "draft"}, Gate: &FlowGate{RequiresHumanApproval: true}, TimeoutSeconds: 86400},
+				{ID: "polish", Title: "Polish", SystemPrompt: "Apply open-slide comments (/apply-comment or equivalent). Advance to done when feedback is addressed.", Worker: &FlowWorker{Agent: "activation.worker"}, Transitions: []string{"done", "review"}, TimeoutSeconds: 1800},
+				{ID: "done", Title: "Done", SystemPrompt: "Deck is ready to present or share."},
+			},
+		},
+	}
 }
