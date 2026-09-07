@@ -14,16 +14,17 @@ Publish a local package. A package can be a button
 (.buttons/drawers/`<name>`/drawer.json + AGENTS.md). Run history under pressed/
 is never published.
 
-Publish uses $BUTTONS_REGISTRY_URL as the registry base URL. This repo does not
-ship a default registry host; the caller must configure the target explicitly.
+Publish uses $BUTTONS_REGISTRY_URL when set, otherwise it uses the registry URL
+pinned by "buttons login". The https://api.buttons.sh default applies to login
+and logout only; publish requires $BUTTONS_REGISTRY_URL or a pinned registry.
 
 A registry publish takes a scoped name (@desk/name): the on-disk package is
 found by its bare name, and @desk is its registry namespace. The CLI detects
 whether the local package is a button or drawer from button.json or drawer.json.
 The registry pins immutable versions; publish starts at the package's current
 version and auto-bumps to the next number if that version already exists. Auth
-uses the *write* key (REGISTRY_WRITE_KEY battery or
-$BUTTONS_BAT_REGISTRY_WRITE_KEY) — distinct from the read key install uses.
+uses either the explicit machine/CI key in $BUTTONS_BAT_REGISTRY_WRITE_KEY or
+the human OAuth credential stored by "buttons login" in the OS keychain.
 
 **Examples:**
 
@@ -53,4 +54,3 @@ buttons publish <name | @desk/name> [flags]
 ### SEE ALSO
 
 * [buttons](buttons.md)	 - Deterministic workflow engine for agents
-
