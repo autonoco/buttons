@@ -196,10 +196,13 @@ func (s *Service) SetFlowField(drawerName, path string, value any) (*Drawer, err
 		v, ok := value.(string)
 		if !ok {
 			setErr = fmt.Errorf("must be a string")
-		} else if !flowkit.ValidProvider(v) {
-			setErr = fmt.Errorf("must be local or github")
 		} else {
-			d.Flow.Provider = v
+			v = strings.TrimSpace(v)
+			if !flowkit.ValidProvider(v) {
+				setErr = fmt.Errorf("must be local or github")
+			} else {
+				d.Flow.Provider = v
+			}
 		}
 	case "roles":
 		setErr = decodeFlowValue(value, &d.Flow.Roles)

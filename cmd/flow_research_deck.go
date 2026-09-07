@@ -21,10 +21,15 @@ func installResearchDeckBoard(provider string) error {
 	if _, err := svc.CreateWithKind("research-deck", "Research a topic and create an open-slide deck (https://open-slide.dev/).", nil, drawer.DrawerKindFlow); err != nil {
 		return err
 	}
-	// Overwrite with the canonical definition.
+	// Overwrite with the canonical definition; roll back the scaffold on failure
+	// so a half-installed board is not left behind.
 	d := drawer.ResearchDeckDrawer(provider)
 	now := time.Now().UTC()
 	d.CreatedAt = now
 	d.UpdatedAt = now
-	return svc.Save(d)
+	if err := svc.Save(d); err != nil {
+		_ = svc.Remove("research-deck")
+		return err
+	}
+	return nil
 }

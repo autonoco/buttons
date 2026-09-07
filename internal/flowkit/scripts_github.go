@@ -190,7 +190,9 @@ for part in filt.split(","):
         want_status = part.split("=",1)[1].strip()
 label = f"flow:{board}"
 proc = subprocess.run(["gh","issue","list","--repo",repo,"--label",label,"--state","all","--json","number,title,body,labels,state"], capture_output=True, text=True)
-issues = json.loads(proc.stdout or "[]") if proc.returncode == 0 else []
+if proc.returncode != 0:
+    print(json.dumps({"ok": False, "error": proc.stderr.strip() or "issue list failed"})); sys.exit(1)
+issues = json.loads(proc.stdout or "[]")
 items = []
 for issue in issues:
     labels = [l.get("name","") for l in (issue.get("labels") or [])]
@@ -235,13 +237,24 @@ if not repo:
     print(json.dumps({"ok": False, "error": "repo required"})); sys.exit(1)
 tid = os.environ["BUTTONS_ARG_ID"]
 patch = json.loads(os.environ.get("BUTTONS_ARG_PATCH") or "{}")
+def run_gh(cmd, label):
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(json.dumps({"ok": False, "error": proc.stderr.strip() or f"{label} failed"})); sys.exit(1)
 if "title" in patch:
-    subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--title",str(patch["title"])], check=False)
+    run_gh(["gh","issue","edit",tid,"--repo",repo,"--title",str(patch["title"])], "title update")
 if "body" in patch:
-    subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--body",str(patch["body"])], check=False)
+    run_gh(["gh","issue","edit",tid,"--repo",repo,"--body",str(patch["body"])], "body update")
 status = patch.get("status") or (patch.get("props") or {}).get("status")
 if status:
-    subprocess.run(["gh","issue","edit",tid,"--repo",repo,"--add-label",f"status:{status}"], check=False)
+    view = subprocess.run(["gh","issue","view",tid,"--repo",repo,"--json","labels"], capture_output=True, text=True)
+    if view.returncode != 0:
+        print(json.dumps({"ok": False, "error": view.stderr.strip() or "label read failed"})); sys.exit(1)
+    labels = [l.get("name","") for l in (json.loads(view.stdout or "{}").get("labels") or [])]
+    for lab in labels:
+        if lab.startswith("status:"):
+            run_gh(["gh","issue","edit",tid,"--repo",repo,"--remove-label",lab], "status clear")
+    run_gh(["gh","issue","edit",tid,"--repo",repo,"--add-label",f"status:{status}"], "status update")
 print(json.dumps({"ok": True, "id": tid, "patch": patch}))
 PY
 `
@@ -254,7 +267,9 @@ repo = os.environ.get("BUTTONS_ARG_REPO") or os.environ.get("BUTTONS_FLOW_REPO")
 if not repo:
     print(json.dumps({"ok": False, "error": "repo required"})); sys.exit(1)
 tid = os.environ["BUTTONS_ARG_ID"]
-subprocess.run(["gh","issue","close",tid,"--repo",repo,"--comment","removed via buttons flow task rm"], check=False)
+proc = subprocess.run(["gh","issue","close",tid,"--repo",repo,"--comment","removed via buttons flow task rm"], capture_output=True, text=True)
+if proc.returncode != 0:
+    print(json.dumps({"ok": False, "error": proc.stderr.strip() or "close failed"})); sys.exit(1)
 print(json.dumps({"ok": True, "id": tid}))
 PY
 `
