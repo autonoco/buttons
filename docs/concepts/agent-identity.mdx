@@ -71,7 +71,7 @@ Before setup it reports `not set up`. In `--json` mode it returns `{ "enrolled":
 
 ## How it relates to the registry
 
-Agent identity is the trust anchor under the [registry](/concepts/registry). The registry authorizes reads and writes with the `REGISTRY_KEY` / `REGISTRY_WRITE_KEY` batteries (bearer keys), while the agent's Ed25519 signature proves *which device* is acting — the two are complementary. Enroll once with `buttons agent setup`, then `buttons add` / `buttons install` / `buttons publish` against `$BUTTONS_REGISTRY_URL`.
+Agent identity is the trust anchor under the [registry](/concepts/registry). The registry authorizes reads with the `REGISTRY_KEY` battery; human publishing uses the OAuth credential stored by `buttons login`, while machine/CI publishing uses `$BUTTONS_BAT_REGISTRY_WRITE_KEY`. The agent's Ed25519 signature proves *which device* is acting — these boundaries are complementary. Enroll once with `buttons agent setup`, then use `buttons add`, `buttons install`, and `buttons publish` against the configured registry.
 
 ## Related
 

@@ -5,17 +5,15 @@ description: "CLI reference for buttons login"
 
 ## buttons login
 
-Connect this machine to the Buttons platform
+Sign in to a registry with OAuth
 
 ### Synopsis
 
-Authorize this machine in your browser and store a publish token.
+Sign in through the registry's standard OAuth/OIDC provider.
 
-Opens your Buttons console to approve the connection under your organization,
-then stores the issued token as the global REGISTRY_WRITE_KEY battery (used by
-"buttons publish") and pins the registry URL as the REGISTRY_URL battery.
-
-Revoke a machine any time from the console's Desks page.
+The CLI discovers the provider, opens an authorization-code + PKCE flow on a
+127.0.0.1 loopback callback, and stores one credential envelope in the operating
+system keychain. The CLI contains no provider-specific authentication code.
 
 ```
 buttons login [flags]
@@ -24,10 +22,10 @@ buttons login [flags]
 ### Options
 
 ```
-      --desk string       Buttons console URL that hosts the authorization page (default "https://desk.buttons.sh")
-  -h, --help              help for login
-      --no-browser        print the authorization URL instead of opening a browser
-      --registry string   registry base URL the token is issued for (default "https://api.buttons.sh")
+  -h, --help                  help for login
+      --no-browser            print the authorization URL instead of opening a browser
+      --registry string       registry base URL (default "https://api.buttons.sh")
+      --switch-organization   revoke the current login and select another organization
 ```
 
 ### Options inherited from parent commands

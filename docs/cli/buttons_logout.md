@@ -5,14 +5,12 @@ description: "CLI reference for buttons logout"
 
 ## buttons logout
 
-Disconnect this machine from the Buttons platform
+Revoke registry OAuth credentials and sign out
 
 ### Synopsis
 
-Remove the stored publish token and registry URL.
-
-The token itself stays valid until revoked from the console's Desks page —
-logout only forgets it on this machine.
+Revoke both the bounded publish capability and the OAuth refresh token,
+then remove the credential envelope from the operating system keychain.
 
 ```
 buttons logout [flags]
@@ -21,7 +19,8 @@ buttons logout [flags]
 ### Options
 
 ```
-  -h, --help   help for logout
+  -h, --help              help for logout
+      --registry string   registry base URL (defaults to the configured registry)
 ```
 
 ### Options inherited from parent commands
