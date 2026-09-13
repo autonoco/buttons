@@ -34,6 +34,7 @@ buttons [flags]
 * [buttons create](buttons_create.md)	 - Create a new button
 * [buttons delete](buttons_delete.md)	 - Delete a button
 * [buttons drawer](buttons_drawer.md)	 - Manage drawer workflows (chains of buttons)
+* [buttons flow](buttons_flow.md)	 - Buttons Flow — pressable boards for drawer_kind:flow
 * [buttons history](buttons_history.md)	 - Show run history
 * [buttons ignore](buttons_ignore.md)	 - Keep a button or drawer out of git (writes .buttons/.gitignore)
 * [buttons import](buttons_import.md)	 - Create buttons from external sources (skill, code, url)

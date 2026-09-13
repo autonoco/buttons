@@ -243,6 +243,107 @@ Manage drawer workflows (chains of buttons)
 buttons drawer
 ```
 
+### `buttons flow`
+
+Buttons Flow — pressable boards for drawer_kind:flow
+
+```
+buttons flow [command]
+```
+
+#### `buttons flow approve`
+
+Approve a gated transition
+
+```
+buttons flow approve
+```
+
+#### `buttons flow ensure-buttons`
+
+Install shared flow pipeline buttons for a provider
+
+```
+buttons flow ensure-buttons [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--on` | string | provider: local|github |
+
+#### `buttons flow init`
+
+Register triggers and prove a flow board presses
+
+```
+buttons flow init [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--manager` | string | manager agent ref |
+| `--no-verify` | bool | skip proof press |
+| `--on` | string | provider: local|github |
+| `--worker` | string | worker agent ref |
+
+#### `buttons flow logs`
+
+Recent press history for a board
+
+```
+buttons flow logs [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--failed` | bool | only failed presses |
+| `--limit` | int | max history entries |
+| `--task` | string | filter by task id (best-effort) |
+
+#### `buttons flow reject`
+
+Reject a gated transition
+
+```
+buttons flow reject [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--reason` | string | rejection reason |
+
+#### `buttons flow rm`
+
+Remove webhook trigger and schedule for a board
+
+```
+buttons flow rm [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--purge` | bool | also delete local tasks |
+
+#### `buttons flow status`
+
+Board status summary
+
+```
+buttons flow status
+```
+
+#### `buttons flow task`
+
+Task CRUD against a board's provider
+
+```
+buttons flow task [command]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--filter` | string | key=value filter (list) |
+
 ### `buttons history`
 
 Show run history
